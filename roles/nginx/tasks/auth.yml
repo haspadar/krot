@@ -16,32 +16,28 @@
     group: root
     mode: "0755"
 
-# openssl salts each run differently, so writing the hash unconditionally would
-# report a change on every play. Verifying the current file first keeps the run
-# honest about whether anything actually moved.
-- name: Check whether the stored password still matches
-  ansible.builtin.shell:
-    cmd: >-
-      set -o pipefail &&
-      stored=$(cut -d: -f2- /etc/nginx/.htpasswd 2>/dev/null) &&
-      [ -n "$stored" ] &&
-      [ "$(openssl passwd -apr1 -salt "$(printf '%s' "$stored" | cut -d'$' -f3)"
-           {{ nginx_auth_password | quote }})" = "$stored" ]
-    executable: /bin/bash
-  register: nginx_auth_current
-  changed_when: false
-  failed_when: false
+- name: Install the htpasswd sync helper
+  ansible.builtin.copy:
+    src: htpasswd-sync.sh
+    dest: /usr/local/sbin/krot-htpasswd-sync
+    owner: root
+    group: root
+    mode: "0755"
 
+# The helper compares before writing: openssl salts every run differently, so an
+# unconditional write would report a change on every play.
 - name: Write the password file
-  ansible.builtin.shell:
-    cmd: >-
-      set -o pipefail &&
-      printf '%s:%s\n' {{ nginx_auth_user | quote }}
-      "$(openssl passwd -apr1 {{ nginx_auth_password | quote }})"
-      > /etc/nginx/.htpasswd
-    executable: /bin/bash
-  when: nginx_auth_current.rc != 0
-  changed_when: true
+  ansible.builtin.command:
+    argv:
+      - /usr/local/sbin/krot-htpasswd-sync
+      - /etc/nginx/.htpasswd
+      - "{{ nginx_auth_user }}"
+      - "{{ nginx_auth_password }}"
+  register: nginx_auth_sync
+  changed_when: nginx_auth_sync.rc == 10
+  failed_when: nginx_auth_sync.rc not in [0, 10]
+  # The password would otherwise be echoed in the task output.
+  no_log: true
 
 - name: Restrict the password file to nginx
   ansible.builtin.file:
