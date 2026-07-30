@@ -1,0 +1,27 @@
+---
+extends: default
+
+rules:
+  # Ansible tasks nest deeply; 120 keeps templates readable without wrapping.
+  line-length:
+    max: 120
+    level: warning
+  # `key: yes` is meaningful in Ansible modules, so allow the full truthy set
+  # that ansible-lint itself accepts.
+  truthy:
+    allowed-values: ['true', 'false']
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1
+  # Required to be off by ansible-lint: Jinja-heavy files legitimately carry
+  # comments that do not line up with the block they document.
+  comments-indentation: false
+  braces:
+    max-spaces-inside: 1
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+
+ignore: |
+  collections/
+  .venv/

@@ -1,0 +1,21 @@
+---
+# Role-local names, per ansible-lint's role-prefix rule. Playbooks map the
+# cross-role krot_* values from group_vars onto these, so a machine still
+# declares its operator account in exactly one place.
+bootstrap_user: km
+bootstrap_user_shell: /usr/bin/fish
+
+# Public keys placed in the operator's authorized_keys. The playbook fills this
+# from Bitwarden; the role itself takes plain strings so it stays testable and
+# free of any secret-store dependency.
+bootstrap_authorized_keys: []
+
+# sshd hardening. Turning these off is what makes the key above the only way in,
+# so the role refuses to run with an empty key list (see tasks/main.yml).
+bootstrap_permit_root_login: "no"
+bootstrap_password_authentication: "no"
+
+# Ubuntu cloud images ship these drop-ins with PasswordAuthentication yes; they
+# are read after our own file, so they must be neutralised rather than ignored.
+bootstrap_conflicting_dropins:
+  - /etc/ssh/sshd_config.d/50-cloud-init.conf

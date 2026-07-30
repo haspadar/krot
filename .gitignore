@@ -1,0 +1,9 @@
+*.retry
+.venv/
+collections/
+roles/*/files/*.key
+
+# Local operator overrides, never shared.
+inventory/host_vars/*.local.yml
+CLAUDE.md
+docs/

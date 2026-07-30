@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    Baseline every Krot machine shares: hostname, timezone, base packages and
+    unattended security upgrades.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - system
+
+dependencies: []

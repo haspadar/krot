@@ -1,0 +1,14 @@
+---
+fail2ban_bantime: 1h
+fail2ban_findtime: 10m
+fail2ban_maxretry: 5
+
+# Never lock out the machine itself or the private ranges an operator may jump
+# from.
+fail2ban_ignoreip:
+  - 127.0.0.1/8
+  - ::1
+
+# sshd is the only jail that always applies. Roles that own a service add their
+# own jails through fail2ban_extra_jails.
+fail2ban_extra_jails: []

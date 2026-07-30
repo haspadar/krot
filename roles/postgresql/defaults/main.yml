@@ -1,0 +1,20 @@
+---
+postgresql_version: "16"
+
+# Server only. Per-site databases and roles are provisioned by busel's
+# `recipient:*` console commands, so this role never learns about sites.
+postgresql_listen_addresses: localhost
+postgresql_port: 5432
+
+postgresql_max_connections: 100
+postgresql_shared_buffers: 256MB
+postgresql_effective_cache_size: 768MB
+postgresql_work_mem: 8MB
+postgresql_maintenance_work_mem: 64MB
+
+# csvlog gives a shipper parseable fields without regex-guessing; stderr stays on
+# for anything logged before the collector starts.
+postgresql_log_destination: csvlog
+postgresql_log_min_duration_ms: 500
+postgresql_log_line_prefix: "%m [%p] %q%u@%d "
+postgresql_log_retention_days: 14

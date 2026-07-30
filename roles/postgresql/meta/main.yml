@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    PostgreSQL server from the pgdg repository. Installs the server only —
+    per-site databases and roles belong to the site provisioning step.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - database
+    - postgresql
+
+dependencies: []

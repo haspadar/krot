@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    nginx server layer: main config, the recipient log format and Cloudflare
+    real-IP restoration. Per-site vhosts stay with the site provisioning step.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - nginx
+    - web
+
+dependencies: []

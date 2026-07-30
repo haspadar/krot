@@ -1,0 +1,13 @@
+---
+# The template's own `validate` only checks the drop-in in isolation; this
+# re-checks the assembled config before restarting the service we log in through.
+- name: Verify assembled sshd config
+  ansible.builtin.command: /usr/sbin/sshd -t
+  changed_when: false
+  listen: Restart sshd
+
+- name: Restart sshd
+  ansible.builtin.service:
+    name: ssh
+    state: restarted
+  listen: Restart sshd

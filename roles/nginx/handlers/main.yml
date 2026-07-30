@@ -1,0 +1,13 @@
+---
+# Validate the assembled config first: a reload on a broken vhost leaves nginx
+# serving the old config, which hides the breakage until the next restart.
+- name: Verify nginx configuration
+  ansible.builtin.command: nginx -t
+  changed_when: false
+  listen: Reload nginx
+
+- name: Reload nginx
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  listen: Reload nginx

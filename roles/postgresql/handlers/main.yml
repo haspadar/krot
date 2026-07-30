@@ -1,0 +1,7 @@
+---
+# Restart, not reload: logging_collector, shared_buffers and max_connections are
+# postmaster-level settings that a reload accepts silently without applying.
+- name: Restart postgresql
+  ansible.builtin.service:
+    name: "postgresql@{{ postgresql_version }}-main"
+    state: restarted

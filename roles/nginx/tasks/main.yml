@@ -1,0 +1,61 @@
+---
+- name: Install nginx
+  ansible.builtin.apt:
+    name: nginx
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# No `validate:` here on purpose. It would test the file from Ansible's temp
+# directory, and nginx resolves relative includes (fastcgi_params in the
+# generated vhosts) against the config's own directory — so a perfectly good
+# config fails. `backup: true` plus the verify handler covers it instead: the
+# handler tests the assembled config in place and fails the play before any
+# reload, leaving the timestamped backup to restore from.
+- name: Configure nginx
+  ansible.builtin.template:
+    src: nginx.conf.j2
+    dest: /etc/nginx/nginx.conf
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Reload nginx
+
+- name: Define the recipient log format
+  ansible.builtin.template:
+    src: log-format.conf.j2
+    dest: "/etc/nginx/conf.d/{{ nginx_log_format_name }}-log-format.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
+
+- name: Restore the visitor IP from Cloudflare headers
+  ansible.builtin.include_tasks: real-ip.yml
+  when: nginx_real_ip_from_cloudflare
+
+- name: Drop the default site
+  ansible.builtin.file:
+    path: "/etc/nginx/sites-enabled/{{ item }}"
+    state: absent
+  loop:
+    - default
+  notify: Reload nginx
+
+- name: Include the vhost permission tasks
+  ansible.builtin.include_tasks: vhosts.yml
+
+- name: Rotate the nginx logs
+  ansible.builtin.template:
+    src: logrotate.j2
+    dest: /etc/logrotate.d/krot-nginx
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable nginx
+  ansible.builtin.service:
+    name: nginx
+    state: started
+    enabled: true

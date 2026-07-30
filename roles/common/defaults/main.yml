@@ -1,0 +1,17 @@
+---
+# Defaults to the inventory name: renaming a host is disruptive enough that it
+# should be an explicit inventory decision, not something a role invents.
+common_hostname: "{{ inventory_hostname }}"
+common_timezone: Europe/Minsk
+
+common_base_packages:
+  - curl
+  - git
+  - htop
+  - rsync
+  - unzip
+  - ca-certificates
+
+# Security updates only. Unattended feature upgrades on a machine serving live
+# sites buy nothing and can restart services at random.
+common_unattended_upgrades: true

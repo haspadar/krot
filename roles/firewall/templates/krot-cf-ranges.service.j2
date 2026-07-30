@@ -1,0 +1,10 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Refresh ufw rules from Cloudflare's published IP ranges
+Documentation=https://www.cloudflare.com/ips/
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/krot-cf-ranges

@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+{{ ansible_managed | comment }}
+#
+# Refreshes the ufw rules that allow {{ firewall_web_ports | join('/') }} from
+# Cloudflare only. Run by krot-cf-ranges.timer; safe to run by hand.
+set -euo pipefail
+
+RANGES_FILE=/etc/krot/cloudflare-ranges.txt
+WEB_PORTS=({{ firewall_web_ports | join(' ') }})
+COMMENT=krot-cloudflare
+
+tmp=$(mktemp)
+trap 'rm -f "$tmp"' EXIT
+
+for url in {{ firewall_cloudflare_ipv4_url }} {{ firewall_cloudflare_ipv6_url }}; do
+    if ! curl --fail --silent --show-error --max-time 30 "$url" >>"$tmp"; then
+        echo "krot-cf-ranges: fetching $url failed, keeping current rules" >&2
+        exit 1
+    fi
+    echo >>"$tmp"
+done
+
+# A truncated answer would silently shrink the allow-list and take the sites
+# offline, so treat anything implausible as a failed fetch.
+if [ "$(grep -c '/' "$tmp")" -lt 10 ]; then
+    echo "krot-cf-ranges: implausible range list, keeping current rules" >&2
+    exit 1
+fi
+
+if [ -f "$RANGES_FILE" ] && diff -q <(grep '/' "$tmp" | sort) <(sort "$RANGES_FILE") >/dev/null; then
+    echo "krot-cf-ranges: ranges unchanged"
+    exit 0
+fi
+
+# Drop the previous generation before adding the new one; ufw has no atomic
+# replace, so the window between the two is unavoidable but sub-second.
+while read -r line; do
+    num=${line%%]*}
+    num=${num#[}
+    [ -n "$num" ] && ufw --force delete "$num"
+done < <(ufw status numbered | grep "$COMMENT" | tac)
+
+grep '/' "$tmp" | while read -r cidr; do
+    for port in "${WEB_PORTS[@]}"; do
+        ufw allow proto tcp from "$cidr" to any port "$port" comment "$COMMENT"
+    done
+done
+
+grep '/' "$tmp" | sort >"$RANGES_FILE"
+echo "krot-cf-ranges: applied $(wc -l <"$RANGES_FILE") ranges"

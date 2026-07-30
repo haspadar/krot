@@ -1,0 +1,21 @@
+---
+# Not behind Cloudflare: 80/443 are open to the world, and the refresh timer has
+# nothing to maintain.
+- name: Disable the Cloudflare range refresh timer
+  ansible.builtin.systemd_service:
+    name: krot-cf-ranges.timer
+    state: stopped
+    enabled: false
+  failed_when: false
+
+- name: Allow web ports from anywhere
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+  loop: "{{ firewall_web_ports }}"
+
+- name: Drop any leftover Cloudflare-only rules
+  ansible.builtin.file:
+    path: /etc/krot/cloudflare-ranges.txt
+    state: absent

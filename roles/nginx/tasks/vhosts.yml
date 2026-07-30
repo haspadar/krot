@@ -1,0 +1,44 @@
+---
+# busel's `recipient:nginx:generate` writes vhosts here over sudo. Ansible owns
+# the directory and its permissions; the files inside belong to that command.
+- name: Ensure the vhost directories exist
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - /etc/nginx/sites-available
+    - /etc/nginx/sites-enabled
+
+- name: Find world-writable vhosts
+  ansible.builtin.find:
+    paths: /etc/nginx/sites-enabled
+    patterns: "*.conf"
+    file_type: any
+  register: nginx_enabled_vhosts
+
+# The generator created these as 0666, so any local account could rewrite a
+# vhost — including where it proxies and which document root it serves.
+- name: Tighten vhost permissions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    mode: "0644"
+    owner: root
+    group: root
+  loop: "{{ nginx_enabled_vhosts.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  notify: Reload nginx
+
+- name: Create the deploy root
+  ansible.builtin.file:
+    path: "{{ nginx_deploy_root }}"
+    state: directory
+    owner: "{{ nginx_deploy_user }}"
+    group: www-data
+    # Group-readable so php-fpm can read the release; not group-writable, so a
+    # web process cannot alter the code it serves.
+    mode: "0750"
+  when: nginx_deploy_root | length > 0

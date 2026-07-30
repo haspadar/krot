@@ -1,0 +1,12 @@
+{{ ansible_managed | comment('c') }}
+// Sorts after 50unattended-upgrades, so these origins replace the distro list.
+
+Unattended-Upgrade::Allowed-Origins {
+    "${distro_id}:${distro_codename}-security";
+    "${distro_id}ESMApps:${distro_codename}-apps-security";
+    "${distro_id}ESM:${distro_codename}-infra-security";
+};
+
+// Reboots are an operator decision: these machines serve live sites.
+Unattended-Upgrade::Automatic-Reboot "false";
+Unattended-Upgrade::Remove-Unused-Kernel-Packages "true";

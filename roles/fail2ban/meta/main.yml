@@ -1,0 +1,14 @@
+---
+galaxy_info:
+  author: haspadar
+  description: fail2ban with an sshd jail and opt-in service jails.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - security
+
+dependencies: []

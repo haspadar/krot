@@ -1,0 +1,43 @@
+{{ ansible_managed | comment }}
+
+user www-data;
+worker_processes {{ nginx_worker_processes }};
+pid /run/nginx.pid;
+error_log /var/log/nginx/error.log warn;
+include /etc/nginx/modules-enabled/*.conf;
+
+events {
+    worker_connections {{ nginx_worker_connections }};
+}
+
+http {
+    sendfile on;
+    tcp_nopush on;
+    tcp_nodelay on;
+    types_hash_max_size 2048;
+    keepalive_timeout {{ nginx_keepalive_timeout }};
+    client_max_body_size {{ nginx_client_max_body_size }};
+
+    # Do not advertise the nginx version in responses or error pages.
+    server_tokens {{ nginx_server_tokens }};
+
+    include /etc/nginx/mime.types;
+    default_type application/octet-stream;
+
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_tickets off;
+
+    gzip on;
+    gzip_vary on;
+    gzip_types text/plain text/css application/json application/javascript
+               text/xml application/xml image/svg+xml;
+
+    # conf.d holds the log format and the Cloudflare real-IP block, so it must be
+    # included before the vhosts that reference them.
+    include /etc/nginx/conf.d/*.conf;
+    include /etc/nginx/sites-enabled/*;
+
+    access_log /var/log/nginx/access.log {{ nginx_log_format_name }};
+}

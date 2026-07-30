@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    PHP-FPM from the ondrej PPA, tuned for the recipient sites and logging in a
+    shape a log shipper can consume.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - php
+    - web
+
+dependencies: []

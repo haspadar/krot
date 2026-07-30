@@ -1,0 +1,24 @@
+{{ ansible_managed | comment }}
+
+[DEFAULT]
+bantime = {{ fail2ban_bantime }}
+findtime = {{ fail2ban_findtime }}
+maxretry = {{ fail2ban_maxretry }}
+ignoreip = {{ fail2ban_ignoreip | join(' ') }}
+backend = systemd
+
+[sshd]
+enabled = true
+port = {{ firewall_ssh_port | default(22) }}
+
+{# Web jails are opt-in: behind Cloudflare the client address in nginx logs is
+   Cloudflare's edge, so banning on it would block the CDN, not the attacker.
+   Only enable these where real client IPs reach the logs. #}
+{% for jail in fail2ban_extra_jails %}
+[{{ jail.name }}]
+enabled = true
+{% for key, value in (jail.options | default({})).items() %}
+{{ key }} = {{ value }}
+{% endfor %}
+
+{% endfor %}

@@ -1,0 +1,11 @@
+---
+# Both families in one list: ufw takes v4 and v6 rules through the same module,
+# and every consumer below wants them together.
+#
+# Each response is split on its own before the two are combined: the v4 body
+# carries no trailing newline, so concatenating the texts first would fuse its
+# last range onto the first v6 one.
+firewall_cf_ranges: >-
+  {{ ((firewall_cf_v4.content | default('')).splitlines()
+      + (firewall_cf_v6.content | default('')).splitlines())
+     | map('trim') | select('search', '/') | list }}

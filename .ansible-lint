@@ -1,0 +1,18 @@
+---
+# The strictest profile: everything below it (min, basic, moderate, safety,
+# shared) is included. Krot is new code, so there is no legacy debt to grandfather
+# in — start at the top and stay there.
+profile: production
+
+exclude_paths:
+  - collections/
+  - .venv/
+  - .github/
+
+# Roles here are consumed by busel/matilda via ansible-galaxy + git, so they are
+# never published to a Galaxy hub and need no namespace-prefixed name.
+skip_list:
+  - galaxy[version-incorrect]
+
+use_default_rules: true
+offline: false

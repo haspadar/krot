@@ -1,0 +1,9 @@
+---
+# Users added to the docker group. Membership is effectively root on the host, so
+# this stays limited to the operator account.
+docker_users:
+  - km
+
+# Keeps container logs from filling the disk on a long-running donor host.
+docker_log_max_size: 100m
+docker_log_max_file: 3

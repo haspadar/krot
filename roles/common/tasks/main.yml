@@ -1,0 +1,42 @@
+---
+- name: Set the hostname
+  ansible.builtin.hostname:
+    name: "{{ common_hostname }}"
+
+# Without a matching 127.0.1.1 entry, sudo and anything resolving the local name
+# stalls on DNS after a rename.
+- name: Map the hostname in /etc/hosts
+  ansible.builtin.lineinfile:
+    path: /etc/hosts
+    regexp: '^127\.0\.1\.1\s'
+    line: "127.0.1.1 {{ common_hostname }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Set the timezone
+  community.general.timezone:
+    name: "{{ common_timezone }}"
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name: "{{ common_base_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install unattended-upgrades
+  ansible.builtin.apt:
+    name: unattended-upgrades
+    state: "{{ common_unattended_upgrades | ternary('present', 'absent') }}"
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Restrict unattended upgrades to security updates
+  ansible.builtin.template:
+    src: 52-krot-unattended.conf.j2
+    dest: /etc/apt/apt.conf.d/52-krot-unattended
+    owner: root
+    group: root
+    mode: "0644"
+  when: common_unattended_upgrades

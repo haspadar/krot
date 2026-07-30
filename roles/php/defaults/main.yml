@@ -1,0 +1,47 @@
+---
+php_version: "8.5"
+
+# Matches what busel's composer.json requires; ext-pgsql because the recipients
+# talk to PostgreSQL, ext-intl for locale-aware output on non-English sites.
+# opcache is absent on purpose: ondrej ships it inside php{{ php_version }}-common,
+# there is no separate package to install.
+php_extensions:
+  - cli
+  - fpm
+  - curl
+  - intl
+  - mbstring
+  - pgsql
+  - xml
+  - zip
+
+php_fpm_pool: www
+php_fpm_user: www-data
+php_fpm_pm: dynamic
+php_fpm_max_children: 20
+php_fpm_start_servers: 4
+php_fpm_min_spare_servers: 2
+php_fpm_max_spare_servers: 6
+
+php_memory_limit: 256M
+php_max_execution_time: 30
+php_post_max_size: 16M
+php_upload_max_filesize: 16M
+
+# Errors go to the log, never to the page: a stack trace on a live site leaks
+# paths and framework versions.
+php_display_errors: "Off"
+php_log_level: notice
+
+# Requests slower than this get a stack trace in the slowlog — the cheapest
+# profiler available once traffic is real.
+php_slowlog_timeout: 5s
+
+# Two weeks is enough to investigate an incident locally; anything longer is the
+# log shipper's job once it exists.
+php_log_retention_days: 14
+
+php_opcache_memory: 128
+php_opcache_max_files: 20000
+# Production: templates and code only change on deploy, and Deployer reloads FPM.
+php_opcache_validate_timestamps: 0

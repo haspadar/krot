@@ -1,0 +1,55 @@
+---
+# Ubuntu's own PostgreSQL trails the pgdg release, and busel pins its major
+# version, so take packages from upstream.
+- name: Add the PostgreSQL signing key
+  ansible.builtin.get_url:
+    url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+    dest: /usr/share/keyrings/pgdg.asc
+    owner: root
+    group: root
+    mode: "0644"
+
+# A hand-rolled pgdg.list from an earlier manual install points at a different
+# keyring path; apt refuses to read both, so the legacy file goes before ours
+# lands.
+- name: Drop the legacy pgdg source list
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/pgdg.list
+    state: absent
+
+- name: Add the PostgreSQL repository
+  ansible.builtin.deb822_repository:
+    name: pgdg
+    types: deb
+    uris: https://apt.postgresql.org/pub/repos/apt
+    suites: "{{ ansible_facts['distribution_release'] }}-pgdg"
+    components: main
+    signed_by: /usr/share/keyrings/pgdg.asc
+    state: present
+  register: postgresql_repo
+
+- name: Install PostgreSQL {{ postgresql_version }}
+  ansible.builtin.apt:
+    name:
+      - "postgresql-{{ postgresql_version }}"
+      # psycopg2 is what the community.postgresql modules use to connect; without
+      # it any later per-database task fails on import.
+      - python3-psycopg2
+    state: present
+    update_cache: true
+    cache_valid_time: "{{ postgresql_repo.changed | ternary(0, 3600) }}"
+
+- name: Configure the server
+  ansible.builtin.template:
+    src: krot.conf.j2
+    dest: "/etc/postgresql/{{ postgresql_version }}/main/conf.d/99-krot.conf"
+    owner: postgres
+    group: postgres
+    mode: "0640"
+  notify: Restart postgresql
+
+- name: Enable PostgreSQL
+  ansible.builtin.service:
+    name: "postgresql@{{ postgresql_version }}-main"
+    state: started
+    enabled: true

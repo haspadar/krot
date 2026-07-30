@@ -1,0 +1,15 @@
+---
+# Validate before touching the running service: `systemctl reload` on a pool with
+# a syntax error reports success while FPM dies on the next start, which hides
+# the breakage until something else restarts it.
+- name: Verify php-fpm configuration
+  ansible.builtin.command: "php-fpm{{ php_version }} --test"
+  changed_when: false
+  listen: Reload php-fpm
+
+# Reload, not restart: FPM finishes in-flight requests before swapping workers.
+- name: Reload php-fpm
+  ansible.builtin.service:
+    name: "php{{ php_version }}-fpm"
+    state: reloaded
+  listen: Reload php-fpm

@@ -1,0 +1,27 @@
+---
+# Server-level configuration only. Per-site vhosts are rendered by busel's
+# `recipient:nginx:generate`, so this role never enumerates domains.
+nginx_worker_processes: auto
+nginx_worker_connections: 1024
+nginx_keepalive_timeout: 65
+nginx_client_max_body_size: 16M
+
+# The recipient counts impressions from this log, so the name is part of the
+# contract with busel's stats code.
+nginx_log_format_name: felix
+# JSON lines: a shipper reads them without a custom parser, and adding a field
+# later does not break whatever already reads the old ones.
+nginx_log_json: true
+nginx_log_retention_days: 14
+
+# Restores the visitor's address from CF-Connecting-IP. Without it every hit is
+# logged as Cloudflare and the impression stats become meaningless.
+nginx_real_ip_from_cloudflare: true
+nginx_real_ip_header: CF-Connecting-IP
+
+nginx_server_tokens: "off"
+
+# Deployer writes releases here; Ansible only owns the directory and its
+# permissions, never its contents.
+nginx_deploy_root: ""
+nginx_deploy_user: km

@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    Docker Engine and the compose plugin, for hosts whose application stack is a
+    compose file rather than system services.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - docker
+
+dependencies: []

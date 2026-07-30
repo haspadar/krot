@@ -1,0 +1,9 @@
+{{ ansible_managed | comment }}
+# Sorts last in /etc/ssh/sshd_config.d/, so these values win over the distro and
+# cloud-image drop-ins.
+
+PermitRootLogin {{ bootstrap_permit_root_login }}
+PasswordAuthentication {{ bootstrap_password_authentication }}
+KbdInteractiveAuthentication no
+PubkeyAuthentication yes
+PermitEmptyPasswords no

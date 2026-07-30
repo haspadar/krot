@@ -1,0 +1,39 @@
+---
+name: lint
+
+"on":
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install linters
+        run: pip install ansible-lint yamllint
+
+      # ansible-lint resolves modules from these, so a missing collection would
+      # show up as a false "unknown module" failure.
+      - name: Install collections
+        run: ansible-galaxy collection install -r requirements.yml
+
+      - name: yamllint
+        run: yamllint .
+
+      - name: ansible-lint
+        run: ansible-lint
+
+      # Catches undefined variables and bad role references that linting alone
+      # does not: the playbooks are the entry points that must actually resolve.
+      - name: Check playbook syntax
+        run: |
+          for playbook in playbooks/*.yml; do
+            ansible-playbook --syntax-check "$playbook"
+          done

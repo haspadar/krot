@@ -1,0 +1,16 @@
+{{ ansible_managed | comment }}
+
+/var/log/php/*.log {
+    daily
+    rotate {{ php_log_retention_days }}
+    missingok
+    notifempty
+    compress
+    delaycompress
+    create 0640 {{ php_fpm_user }} adm
+    sharedscripts
+    postrotate
+        # USR1 makes FPM reopen its log files without dropping requests.
+        [ -f /run/php/php{{ php_version }}-fpm.pid ] && kill -USR1 "$(cat /run/php/php{{ php_version }}-fpm.pid)" || true
+    endscript
+}

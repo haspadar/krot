@@ -1,0 +1,19 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    First contact with a bare host: create the operator account, install its SSH
+    key and lock down sshd. Runs as root over password auth; every later role
+    connects as the operator user this one creates.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - system
+    - ssh
+    - bootstrap
+
+dependencies: []

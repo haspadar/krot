@@ -1,0 +1,31 @@
+---
+# When true, 80/443 accept traffic only from Cloudflare's published ranges and
+# the origin IP stops answering the open internet. Off by default so the role is
+# safe on any machine that is not behind CF (matilda).
+firewall_cloudflare_only: false
+
+firewall_ssh_port: 22
+# Anywhere by default: the operator's IP is dynamic, and locking SSH to a stale
+# address is a lockout waiting to happen. Narrow it per host when there is a
+# stable jump point.
+firewall_ssh_from: any
+
+firewall_web_ports:
+  - 80
+  - 443
+
+# ufw application profiles that would keep the web ports open to everyone. These
+# survive a port-based delete, so they are removed by name when the Cloudflare
+# lock is on. "OpenSSH" is deliberately absent: SSH stays reachable.
+firewall_app_profiles_to_remove:
+  - Nginx Full
+  - Nginx HTTP
+  - Nginx HTTPS
+
+firewall_cloudflare_ipv4_url: https://www.cloudflare.com/ips-v4
+firewall_cloudflare_ipv6_url: https://www.cloudflare.com/ips-v6
+
+# CF publishes range changes rarely but without notice; a weekly refresh keeps
+# the ruleset honest without hammering their endpoint.
+firewall_cloudflare_refresh_weekday: "1"
+firewall_cloudflare_refresh_hour: "4"

@@ -1,0 +1,28 @@
+{# php.ini comments start with `;`, not `#`. #}
+{{ ansible_managed | comment(decoration='; ') }}
+; Sorts last in conf.d/, so these values override the distro defaults.
+
+memory_limit = {{ php_memory_limit }}
+max_execution_time = {{ php_max_execution_time }}
+post_max_size = {{ php_post_max_size }}
+upload_max_filesize = {{ php_upload_max_filesize }}
+
+; Errors belong in the log, never on the page: a visible stack trace leaks paths
+; and framework versions.
+display_errors = {{ php_display_errors }}
+display_startup_errors = Off
+log_errors = On
+error_reporting = E_ALL
+
+; Hide the PHP version from response headers.
+expose_php = Off
+
+[opcache]
+opcache.enable = 1
+opcache.memory_consumption = {{ php_opcache_memory }}
+opcache.max_accelerated_files = {{ php_opcache_max_files }}
+{% if php_opcache_validate_timestamps | int == 0 %}
+; Code only changes on deploy, so skip the per-request stat() — this requires
+; the deploy to reload php-fpm, otherwise a release serves stale bytecode.
+{% endif %}
+opcache.validate_timestamps = {{ php_opcache_validate_timestamps }}

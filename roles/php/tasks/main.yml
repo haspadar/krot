@@ -1,0 +1,74 @@
+---
+# Ubuntu ships an older PHP than busel targets, so the ondrej PPA is what makes
+# {{ php_version }} available at all. The signing key is vendored (fingerprint
+# B8DC7E53946656EFBCE4C1DD71DAEAAB4AD4CAB6) rather than fetched at run time, so a
+# provision never depends on a keyserver being up or on what it hands back.
+- name: Add the ondrej PHP repository
+  ansible.builtin.deb822_repository:
+    name: ondrej-ubuntu-php
+    types: deb
+    uris: https://ppa.launchpadcontent.net/ondrej/php/ubuntu
+    suites: "{{ ansible_facts['distribution_release'] }}"
+    components: main
+    signed_by: "{{ lookup('ansible.builtin.file', 'ondrej-php.asc') }}"
+    state: present
+  register: php_repo
+
+- name: Install PHP {{ php_version }}
+  ansible.builtin.apt:
+    name: "{{ php_extensions | map('regex_replace', '^', 'php' ~ php_version ~ '-') | list }}"
+    state: present
+    update_cache: true
+    # Force a refresh when the repository was just added, otherwise the new
+    # packages are not in the cache yet.
+    cache_valid_time: "{{ php_repo.changed | ternary(0, 3600) }}"
+
+# FPM refuses to start if its log directory is missing, so this precedes the
+# pool config that points at it.
+- name: Create the PHP log directory
+  ansible.builtin.file:
+    path: /var/log/php
+    state: directory
+    owner: "{{ php_fpm_user }}"
+    group: adm
+    mode: "0750"
+
+- name: Rotate the PHP logs
+  ansible.builtin.template:
+    src: logrotate.j2
+    dest: /etc/logrotate.d/krot-php
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure the PHP CLI
+  ansible.builtin.template:
+    src: krot.ini.j2
+    dest: "/etc/php/{{ php_version }}/cli/conf.d/99-krot.ini"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Configure PHP-FPM
+  ansible.builtin.template:
+    src: krot.ini.j2
+    dest: "/etc/php/{{ php_version }}/fpm/conf.d/99-krot.ini"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload php-fpm
+
+- name: Configure the FPM pool
+  ansible.builtin.template:
+    src: pool.conf.j2
+    dest: "/etc/php/{{ php_version }}/fpm/pool.d/{{ php_fpm_pool }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload php-fpm
+
+- name: Enable PHP-FPM
+  ansible.builtin.service:
+    name: "php{{ php_version }}-fpm"
+    state: started
+    enabled: true

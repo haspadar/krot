@@ -1,0 +1,100 @@
+---
+- name: Fetch Cloudflare IPv4 ranges
+  ansible.builtin.uri:
+    url: "{{ firewall_cloudflare_ipv4_url }}"
+    return_content: true
+  register: firewall_cf_v4
+  # A CF outage must not wipe the ruleset mid-play; the guard below stops the
+  # run before any rule is touched.
+  failed_when: false
+  # Read-only, so it runs under --check too — otherwise a check run reports a
+  # failure the real run would not hit.
+  check_mode: false
+
+- name: Fetch Cloudflare IPv6 ranges
+  ansible.builtin.uri:
+    url: "{{ firewall_cloudflare_ipv6_url }}"
+    return_content: true
+  register: firewall_cf_v6
+  failed_when: false
+  check_mode: false
+
+- name: Assert the fetched ranges look sane
+  ansible.builtin.assert:
+    that:
+      - firewall_cf_v4.status | default(0) == 200
+      - firewall_cf_v6.status | default(0) == 200
+      - firewall_cf_ranges | length >= 10
+      - firewall_cf_ranges | select('search', '/') | list | length == firewall_cf_ranges | length
+    fail_msg: >-
+      Could not fetch a plausible Cloudflare range list. Refusing to rewrite the
+      firewall from a truncated or empty answer.
+    quiet: true
+
+- name: Create the Krot state directory
+  ansible.builtin.file:
+    path: /etc/krot
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# The refresh script diffs against this file to decide whether anything changed,
+# so recording what Ansible just applied keeps the timer from redoing the work.
+- name: Record the Cloudflare ranges
+  ansible.builtin.copy:
+    content: "{{ firewall_cf_ranges | sort | join('\n') }}\n"
+    dest: /etc/krot/cloudflare-ranges.txt
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Close web ports to the open internet
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    delete: true
+  loop: "{{ firewall_web_ports }}"
+
+# A rule added as an application profile ("Nginx Full") is not matched by the
+# port-based delete above, and leaving one in place would keep 80/443 open to
+# the world — defeating the entire point of this file.
+- name: Close web ports opened through an application profile
+  community.general.ufw:
+    rule: allow
+    name: "{{ item }}"
+    delete: true
+  loop: "{{ firewall_app_profiles_to_remove }}"
+
+- name: Allow web ports from Cloudflare only
+  community.general.ufw:
+    rule: allow
+    port: "{{ item.1 }}"
+    proto: tcp
+    from_ip: "{{ item.0 }}"
+    comment: krot-cloudflare
+  loop: "{{ firewall_cf_ranges | product(firewall_web_ports) | list }}"
+
+- name: Install the range refresh service
+  ansible.builtin.template:
+    src: krot-cf-ranges.service.j2
+    dest: /etc/systemd/system/krot-cf-ranges.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the range refresh timer
+  ansible.builtin.template:
+    src: krot-cf-ranges.timer.j2
+    dest: /etc/systemd/system/krot-cf-ranges.timer
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable the range refresh timer
+  ansible.builtin.systemd_service:
+    name: krot-cf-ranges.timer
+    state: started
+    enabled: true
+    daemon_reload: true

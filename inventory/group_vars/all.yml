@@ -1,0 +1,10 @@
+---
+# Operator account shared by every machine. Deployer pushes releases as this
+# user, so the name is part of the contract with busel/matilda deploy.php.
+krot_user: km
+krot_user_shell: /usr/bin/fish
+krot_timezone: Europe/Minsk
+
+# Bitwarden item holding the public key installed into ~km/.ssh/authorized_keys.
+# Resolved at run time by playbooks/bootstrap.yml; nothing secret is stored here.
+krot_ssh_key_bw_item: krot-km-ssh

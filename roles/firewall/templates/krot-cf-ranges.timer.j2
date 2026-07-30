@@ -1,0 +1,13 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Weekly refresh of the Cloudflare firewall ranges
+
+[Timer]
+OnCalendar=Mon *-*-* {{ firewall_cloudflare_refresh_hour }}:00:00
+# Spread the fetch so every machine does not hit Cloudflare at the same second.
+RandomizedDelaySec=30m
+# A machine that was off at the scheduled time still refreshes on next boot.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

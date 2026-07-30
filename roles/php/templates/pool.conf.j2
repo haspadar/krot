@@ -1,0 +1,43 @@
+{# FPM's parser only accepts `;` comments — a leading `#` is read as a malformed
+   entry and the pool fails to load. #}
+{{ ansible_managed | comment(decoration='; ') }}
+
+[{{ php_fpm_pool }}]
+user = {{ php_fpm_user }}
+group = {{ php_fpm_user }}
+
+; nginx talks to FPM over this socket; the path is part of the contract with the
+; vhosts busel generates.
+listen = /run/php/php{{ php_version }}-fpm.sock
+listen.owner = {{ php_fpm_user }}
+listen.group = {{ php_fpm_user }}
+listen.mode = 0660
+
+pm = {{ php_fpm_pm }}
+pm.max_children = {{ php_fpm_max_children }}
+pm.start_servers = {{ php_fpm_start_servers }}
+pm.min_spare_servers = {{ php_fpm_min_spare_servers }}
+pm.max_spare_servers = {{ php_fpm_max_spare_servers }}
+
+; Exposed to nginx and useful once metrics collection lands.
+pm.status_path = /fpm-status
+ping.path = /fpm-ping
+
+; Errors go to their own file rather than the systemd journal, so a log shipper
+; can pick PHP apart from everything else on the box.
+php_admin_value[error_log] = /var/log/php/fpm-error.log
+php_admin_flag[log_errors] = on
+catch_workers_output = yes
+decorate_workers_output = no
+
+; Requests over {{ php_slowlog_timeout }} get a stack trace — the cheapest
+; profiler available once real traffic arrives.
+slowlog = /var/log/php/fpm-slow.log
+request_slowlog_timeout = {{ php_slowlog_timeout }}
+
+; Access log in a shipper-friendly shape: one request per line, timing included.
+; Wrapped in `raw` because FPM's own %{...} placeholders collide with Jinja.
+access.log = /var/log/php/fpm-access.log
+{% raw -%}
+access.format = "%{%Y-%m-%dT%H:%M:%S%z}t pool=%n pid=%p uri=%r?%q status=%s duration_ms=%{milli}d mem=%{kilo}M cpu=%C%%"
+{%- endraw %}
