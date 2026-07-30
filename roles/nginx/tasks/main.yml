@@ -31,6 +31,25 @@
     mode: "0644"
   notify: Reload nginx
 
+# The file is named after the format, so renaming the variable leaves the old
+# definition behind. Two log_formats is not fatal, but the stale one hides which
+# definition is live and drifts as the template changes.
+- name: Find stale log format definitions
+  ansible.builtin.find:
+    paths: /etc/nginx/conf.d
+    patterns: "*-log-format.conf"
+    excludes: "{{ nginx_log_format_name }}-log-format.conf"
+  register: nginx_stale_formats
+
+- name: Drop stale log format definitions
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ nginx_stale_formats.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  notify: Reload nginx
+
 - name: Restore the visitor IP from Cloudflare headers
   ansible.builtin.include_tasks: real-ip.yml
   when: nginx_real_ip_from_cloudflare
