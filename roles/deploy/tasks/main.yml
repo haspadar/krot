@@ -32,11 +32,12 @@
 # running on the target.
 - name: Run Deployer
   ansible.builtin.command:
+    # The host is a positional selector in Deployer 8, not an option.
     cmd: >-
       {{ deploy_bin }} {{ deploy_task }}
       {{ ('--branch=' ~ deploy_branch) if deploy_branch | length > 0 else '' }}
-      {{ ('--hosts=' ~ deploy_host) if deploy_host | length > 0 else '' }}
       {{ deploy_extra_args | join(' ') }}
+      {{ deploy_host }}
     chdir: "{{ deploy_project_dir }}"
   delegate_to: localhost
   become: false
