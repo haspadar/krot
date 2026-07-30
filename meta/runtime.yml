@@ -1,0 +1,4 @@
+---
+# The floor for what the roles use: deb822_repository (2.15) and the module
+# argument shapes they rely on.
+requires_ansible: ">=2.15.0"

@@ -30,10 +30,7 @@ jobs:
       - name: ansible-lint
         run: ansible-lint
 
-      # Catches undefined variables and bad role references that linting alone
-      # does not: the playbooks are the entry points that must actually resolve.
-      - name: Check playbook syntax
-        run: |
-          for playbook in playbooks/*.yml; do
-            ansible-playbook --syntax-check "$playbook"
-          done
+      # Catches a malformed galaxy.yml or a role the manifest cannot package —
+      # neither shows up in linting, but both break every consumer's install.
+      - name: Build the collection
+        run: ansible-galaxy collection build --output-path /tmp/krot-build
