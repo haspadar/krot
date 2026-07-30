@@ -1,8 +1,0 @@
----
-# Donor machine: a bare host prepared for Matilda's docker compose stack. No PHP,
-# postgres or nginx here — compose.yaml owns all of that.
-krot_hostname: matilda
-
-# Matilda is not exposed through Cloudflare; its API is reached over the network
-# by the recipients, so the CF-only lock does not apply.
-firewall_cloudflare_only: false

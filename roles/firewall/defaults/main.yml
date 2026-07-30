@@ -1,7 +1,7 @@
 ---
 # When true, 80/443 accept traffic only from Cloudflare's published ranges and
 # the origin IP stops answering the open internet. Off by default so the role is
-# safe on any machine that is not behind CF (matilda).
+# safe on any machine that is not behind CF.
 firewall_cloudflare_only: false
 
 firewall_ssh_port: 22

@@ -1,8 +1,8 @@
 ---
 php_version: "8.5"
 
-# Matches what busel's composer.json requires; ext-pgsql because the recipients
-# talk to PostgreSQL, ext-intl for locale-aware output on non-English sites.
+# A PostgreSQL-backed PHP site: ext-pgsql for the database, ext-intl for
+# locale-aware output. Override the list per project.
 # opcache is absent on purpose: ondrej ships it inside php{{ php_version }}-common,
 # there is no separate package to install.
 php_extensions:

@@ -22,7 +22,7 @@
     backup: true
   notify: Reload nginx
 
-- name: Define the recipient log format
+- name: Define the log format
   ansible.builtin.template:
     src: log-format.conf.j2
     dest: "/etc/nginx/conf.d/{{ nginx_log_format_name }}-log-format.conf"

@@ -1,14 +1,14 @@
 ---
-# Server-level configuration only. Per-site vhosts are rendered by busel's
-# `recipient:nginx:generate`, so this role never enumerates domains.
+# Server-level configuration only: this role never enumerates sites or domains.
+# Rendering per-site vhosts belongs to whatever provisions the sites themselves.
 nginx_worker_processes: auto
 nginx_worker_connections: 1024
 nginx_keepalive_timeout: 65
 nginx_client_max_body_size: 16M
 
-# The recipient counts impressions from this log, so the name is part of the
-# contract with busel's stats code.
-nginx_log_format_name: felix
+# Name of the log_format the vhosts reference. Override it to match whatever
+# name the site configs expect.
+nginx_log_format_name: krot
 # JSON lines: a shipper reads them without a custom parser, and adding a field
 # later does not break whatever already reads the old ones.
 nginx_log_json: true

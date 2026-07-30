@@ -1,6 +1,6 @@
 ---
-# Ubuntu's own PostgreSQL trails the pgdg release, and busel pins its major
-# version, so take packages from upstream.
+# Ubuntu's own PostgreSQL trails the pgdg release, and the major version is
+# pinned per host, so take packages from upstream.
 - name: Add the PostgreSQL signing key
   ansible.builtin.get_url:
     url: https://www.postgresql.org/media/keys/ACCC4CF8.asc

@@ -1,5 +1,5 @@
 ---
-# Ubuntu ships an older PHP than busel targets, so the ondrej PPA is what makes
+# Ubuntu ships an older PHP than most projects target, so the ondrej PPA is what makes
 # {{ php_version }} available at all. The signing key is vendored (fingerprint
 # B8DC7E53946656EFBCE4C1DD71DAEAAB4AD4CAB6) rather than fetched at run time, so a
 # provision never depends on a keyserver being up or on what it hands back.

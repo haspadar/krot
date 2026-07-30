@@ -1,6 +1,6 @@
 ---
-# busel's `recipient:nginx:generate` writes vhosts here over sudo. Ansible owns
-# the directory and its permissions; the files inside belong to that command.
+# Site vhosts are written here by the project's own generator. Ansible owns the
+# directory and its permissions; the files inside belong to that generator.
 - name: Ensure the vhost directories exist
   ansible.builtin.file:
     path: "{{ item }}"

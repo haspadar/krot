@@ -6,8 +6,8 @@
 user = {{ php_fpm_user }}
 group = {{ php_fpm_user }}
 
-; nginx talks to FPM over this socket; the path is part of the contract with the
-; vhosts busel generates.
+; nginx talks to FPM over this socket; the path is part of the contract with
+; whatever generates the vhosts.
 listen = /run/php/php{{ php_version }}-fpm.sock
 listen.owner = {{ php_fpm_user }}
 listen.group = {{ php_fpm_user }}

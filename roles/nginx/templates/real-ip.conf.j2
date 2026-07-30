@@ -1,6 +1,6 @@
 {{ ansible_managed | comment }}
 # Without this every request is logged as coming from Cloudflare, and the
-# impression stats the recipient builds from these logs become meaningless.
+# per-visitor stats built from these logs become meaningless.
 #
 # Ranges come from /etc/krot/cloudflare-ranges.txt, the same file the firewall
 # role maintains — two separately-maintained CF lists would inevitably drift.
