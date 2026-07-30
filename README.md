@@ -62,6 +62,8 @@ ansible-playbook bootstrap.yml -u root -k
 | `postgresql` | PostgreSQL из pgdg, csvlog со slow-query логом. Только сервер, без баз |
 | `nginx` | nginx.conf, JSON-лог, real-IP по CF-заголовкам. Per-site vhost'ы не трогает |
 | `docker` | Docker + compose-плагин, лимит на рост логов контейнеров |
+| `deploy_keys` | Отдельный SSH-ключ на каждый приватный репозиторий + host-алиасы, чтобы git предъявлял нужный |
+| `deploy` | Запускает Deployer проекта с control-машины. Релизы и rollback остаются в `deploy.php` |
 
 Каждая роль атомарна и применима отдельно. Все параметры — в `roles/<role>/defaults/main.yml`.
 
@@ -72,6 +74,30 @@ ansible-playbook bootstrap.yml -u root -k
 - **Базы конкретных приложений** — роль `postgresql` ставит только сервер.
 - **Выкатку кода** — это Deployer/CI проекта. Пересечение одно: роль создаёт юзера и каталог
   с правами, куда потом кладутся релизы.
+
+## Деплой
+
+Роль `deploy` — тонкая обёртка: Deployer запускается **на control-машине** и сам ходит на сервер
+по SSH. CI для выкатки не нужен, это ручной путь.
+
+```bash
+ansible-playbook deploy.yml
+ansible-playbook deploy.yml -e deploy_task=rollback
+ansible-playbook deploy.yml -e deploy_branch=some-branch
+```
+
+Роль намеренно не переизобретает релизы, symlink и rollback — этим уже занимается `deploy.php`
+проекта.
+
+**Два подводных камня, оба реальные:**
+
+- **Один deploy key нельзя использовать в двух репозиториях GitHub.** Машина, тянущая несколько
+  приватных репо, получает по ключу на каждый (`deploy_keys`) плюс host-алиас: клонировать надо
+  с `git@<name>.github.com:owner/repo.git`. Без алиаса ssh предъявляет первый подошедший ключ,
+  и GitHub отвечает за чужой репозиторий.
+- **`nginx_log_format_name` обязан совпадать** с именем формата, на которое ссылаются
+  сгенерированные vhost'ы. nginx не стартует на неизвестном `log_format`, так что расхождение
+  роняет все сайты разом.
 
 ## Cloudflare-замок
 
