@@ -1,0 +1,15 @@
+{{ ansible_managed | comment }}
+# One alias per repository: GitHub rejects the same deploy key in two repos, so
+# each clone URL has to present its own. Clone with
+# git@<name>.github.com:owner/repo.git and git picks the matching key.
+
+{% for key in deploy_keys_repos %}
+Host {{ key.name }}.github.com
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/id_ed25519_{{ key.name }}
+    # Offer only this key: without it ssh walks every key it has and GitHub
+    # answers for whichever repo the first accepted one belongs to.
+    IdentitiesOnly yes
+
+{% endfor %}

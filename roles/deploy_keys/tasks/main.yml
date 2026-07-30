@@ -1,0 +1,56 @@
+---
+- name: Look up the deploy user
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ deploy_keys_user }}"
+
+- name: Create the SSH directory
+  ansible.builtin.file:
+    path: "{{ deploy_keys_home }}/.ssh"
+    state: directory
+    owner: "{{ deploy_keys_user }}"
+    group: "{{ deploy_keys_user }}"
+    mode: "0700"
+
+# `ssh-keygen` is not idempotent on its own, so the creates guard is what keeps a
+# re-run from replacing a key GitHub already trusts.
+- name: Generate a key per repository
+  ansible.builtin.command:
+    cmd: >-
+      ssh-keygen -t ed25519 -N '' -C '{{ item.comment | default(item.name ~ "-deploy") }}'
+      -f {{ deploy_keys_home }}/.ssh/id_ed25519_{{ item.name }}
+    creates: "{{ deploy_keys_home }}/.ssh/id_ed25519_{{ item.name }}"
+  # Generated as the deploy user, so the private key is owned by the account that
+  # will actually present it.
+  become: true
+  become_user: "{{ deploy_keys_user }}"
+  loop: "{{ deploy_keys_repos }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Route each repository to its own key
+  ansible.builtin.template:
+    src: ssh_config.j2
+    dest: "{{ deploy_keys_home }}/.ssh/config"
+    owner: "{{ deploy_keys_user }}"
+    group: "{{ deploy_keys_user }}"
+    mode: "0600"
+
+- name: Read the public keys to register on GitHub
+  ansible.builtin.slurp:
+    src: "{{ deploy_keys_home }}/.ssh/id_ed25519_{{ item.name }}.pub"
+  loop: "{{ deploy_keys_repos }}"
+  loop_control:
+    label: "{{ item.name }}"
+  register: deploy_keys_public
+
+# Registering the key is a GitHub-side action an operator has to authorise, so
+# the role surfaces it rather than reaching for the API itself.
+- name: Report the keys to add as deploy keys
+  ansible.builtin.debug:
+    msg: >-
+      Add as a read-only deploy key on {{ item.item.name }}:
+      {{ item.content | b64decode | trim }}
+  loop: "{{ deploy_keys_public.results }}"
+  loop_control:
+    label: "{{ item.item.name }}"

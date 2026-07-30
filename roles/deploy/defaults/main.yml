@@ -1,0 +1,24 @@
+---
+# Thin wrapper around the project's own Deployer setup. Krot does not reimplement
+# releases, symlinks or rollback — deploy.php already owns all of that. This role
+# exists so one entry point covers both provisioning and rollout.
+
+# Directory holding the project's deploy.php, on the control machine. Deployer
+# runs locally and reaches the server over SSH itself.
+deploy_project_dir: ""
+
+# Deployer binary, relative to deploy_project_dir.
+deploy_bin: vendor/bin/dep
+
+# Which deploy.php host to target. Empty means every host in the file.
+deploy_host: ""
+
+# Deployer task to run. `deploy` is the full release; `rollback` reverts to the
+# previous one.
+deploy_task: deploy
+
+# Branch to deploy. Empty keeps whatever deploy.php sets.
+deploy_branch: ""
+
+# Extra flags, e.g. ["-v"] for verbose output.
+deploy_extra_args: []

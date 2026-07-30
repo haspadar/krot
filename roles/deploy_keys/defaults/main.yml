@@ -1,0 +1,15 @@
+---
+# Per-repository deploy keys for the account that pulls code on the server.
+#
+# GitHub refuses the same deploy key in two repositories, so a machine serving
+# more than one private repo needs one key per repo, plus a host alias telling
+# git which key to use for which clone URL.
+deploy_keys_user: km
+
+# Each entry generates ~/.ssh/id_ed25519_<name> and a matching Host alias.
+# Clone with git@<name>.github.com:owner/repo.git to pick that key.
+#
+#   deploy_keys_repos:
+#     - name: busel
+#       comment: busel-deploy
+deploy_keys_repos: []
