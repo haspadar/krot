@@ -21,6 +21,21 @@ nginx_real_ip_header: CF-Connecting-IP
 
 nginx_server_tokens: "off"
 
+# Basic auth guarding sites that are not published yet. This role only installs
+# the password file and a snippet; whether a given vhost includes that snippet is
+# the site generator's call, so a site can be opened one at a time.
+#
+#   include /etc/nginx/snippets/krot-auth.conf;
+#
+# Krot deliberately does not decide which sites are published: that list lives
+# with the project that owns the sites.
+nginx_auth_enabled: false
+nginx_auth_realm: Preview
+nginx_auth_user: preview
+# Plain password; the role hashes it on the host so the hash never has to be
+# stored anywhere. Supply it from a secret store, never from a committed file.
+nginx_auth_password: ""
+
 # Deployer writes releases here; Ansible only owns the directory and its
 # permissions, never its contents.
 nginx_deploy_root: ""

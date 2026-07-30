@@ -62,6 +62,10 @@
     - default
   notify: Reload nginx
 
+- name: Provide basic auth for unpublished sites
+  ansible.builtin.include_tasks: auth.yml
+  when: nginx_auth_enabled
+
 - name: Include the vhost permission tasks
   ansible.builtin.include_tasks: vhosts.yml
 

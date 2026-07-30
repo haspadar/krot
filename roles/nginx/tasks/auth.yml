@@ -1,0 +1,60 @@
+---
+- name: Assert a password is available
+  ansible.builtin.assert:
+    that:
+      - nginx_auth_password | length > 0
+    fail_msg: >-
+      nginx_auth_enabled is on but nginx_auth_password is empty. Supply it from
+      a secret store; an empty password would leave the sites open.
+    quiet: true
+
+- name: Create the snippets directory
+  ansible.builtin.file:
+    path: /etc/nginx/snippets
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# openssl salts each run differently, so writing the hash unconditionally would
+# report a change on every play. Verifying the current file first keeps the run
+# honest about whether anything actually moved.
+- name: Check whether the stored password still matches
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail &&
+      stored=$(cut -d: -f2- /etc/nginx/.htpasswd 2>/dev/null) &&
+      [ -n "$stored" ] &&
+      [ "$(openssl passwd -apr1 -salt "$(printf '%s' "$stored" | cut -d'$' -f3)"
+           {{ nginx_auth_password | quote }})" = "$stored" ]
+    executable: /bin/bash
+  register: nginx_auth_current
+  changed_when: false
+  failed_when: false
+
+- name: Write the password file
+  ansible.builtin.shell:
+    cmd: >-
+      set -o pipefail &&
+      printf '%s:%s\n' {{ nginx_auth_user | quote }}
+      "$(openssl passwd -apr1 {{ nginx_auth_password | quote }})"
+      > /etc/nginx/.htpasswd
+    executable: /bin/bash
+  when: nginx_auth_current.rc != 0
+  changed_when: true
+
+- name: Restrict the password file to nginx
+  ansible.builtin.file:
+    path: /etc/nginx/.htpasswd
+    owner: root
+    group: www-data
+    mode: "0640"
+
+- name: Install the auth snippet
+  ansible.builtin.template:
+    src: auth.conf.j2
+    dest: /etc/nginx/snippets/krot-auth.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx
