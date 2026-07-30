@@ -99,6 +99,35 @@ ansible-playbook deploy.yml -e deploy_branch=some-branch
   сгенерированные vhost'ы. nginx не стартует на неизвестном `log_format`, так что расхождение
   роняет все сайты разом.
 
+## Закрытие неопубликованных сайтов
+
+Сайт не должен быть доступен, проиндексирован или обойдён краулером, пока его не посмотрели.
+Поэтому **закрытое состояние — умолчание**, а публикация — явное действие.
+
+Krot ставит только механизм: файл паролей `/etc/nginx/.htpasswd` (пароль берётся из секретницы
+в рантайме) и сниппет:
+
+```nginx
+# /etc/nginx/snippets/krot-auth.conf
+auth_basic "Preview";
+auth_basic_user_file /etc/nginx/.htpasswd;
+```
+
+**Какие сайты закрыты — решает не Krot, а генератор vhost'ов проекта.** Он добавляет в шаблон
+одну строку, пока сайт не помечен опубликованным:
+
+```nginx
+server {
+    server_name {{ domain }};
+{% raw %}{% if not published %}{% endraw %}
+    include /etc/nginx/snippets/krot-auth.conf;
+{% raw %}{% endif %}{% endraw %}
+    ...
+```
+
+Так сайты открываются по одному, а не все разом. Включается через `nginx_auth_enabled: true`
+плюс `nginx_auth_password` из секретницы.
+
 ## Cloudflare-замок
 
 `firewall_cloudflare_only: true` закрывает 80/443 для всего, кроме опубликованных диапазонов
