@@ -39,6 +39,61 @@
     update_cache: true
     cache_valid_time: "{{ postgresql_repo.changed | ternary(0, 3600) }}"
 
+# A major upgrade is not a version bump: PostgreSQL 18 cannot read PostgreSQL
+# 16's data directory, so raising postgresql_version installs a *second* cluster
+# beside the old one. pg_createcluster then picks the first free port, which is
+# 5433, while this role's config claims 5432 — so the new cluster fails to start
+# and the application keeps talking to the old one, none of it obviously.
+#
+# The role refuses rather than guesses, because the only ways forward are
+# pg_upgrade, a dump/restore, or discarding the old data — and discarding is not
+# something a variable change should do silently. Set
+# postgresql_remove_other_versions once the data is migrated or known to be
+# expendable.
+# pg_lsclusters, not the directories under /etc/postgresql: a package whose
+# postinst could not create a cluster (because this role's port was already
+# taken) still leaves config directories behind, so those directories answer
+# "which versions are installed" rather than "which clusters exist".
+- name: List the clusters that exist
+  ansible.builtin.command: pg_lsclusters --no-header
+  changed_when: false
+  register: postgresql_clusters
+
+- name: Refuse to run beside a cluster of another version
+  ansible.builtin.assert:
+    that: not postgresql_other_versions or postgresql_remove_other_versions
+    fail_msg: >-
+      PostgreSQL {{ postgresql_other_versions | join(', ') }} already has a
+      cluster on this host, and the requested version is
+      {{ postgresql_version }}. Two clusters cannot share port
+      {{ postgresql_port }}, so the new one would fail to start while the
+      application kept using the old one. Migrate the data (pg_upgrade or
+      dump/restore), then set postgresql_remove_other_versions=true to drop the
+      old cluster — doing so DESTROYS its databases.
+    quiet: true
+
+# Purge, not remove: leaving the old data directory behind occupies the disk
+# with databases nothing can read, and reinstalling that version later would
+# silently resurrect them.
+- name: Remove clusters of other versions
+  ansible.builtin.apt:
+    name: "postgresql-{{ item }}"
+    state: absent
+    purge: true
+  loop: "{{ postgresql_other_versions }}"
+  when: postgresql_remove_other_versions
+
+# postgresql-common only creates a cluster when the package's postinst finds the
+# port free. Installing beside a running old cluster therefore leaves the new
+# version with no cluster at all, and removing the old one does not retroactively
+# create it — hence this explicit step rather than trusting the package.
+- name: Create the cluster if the package could not
+  ansible.builtin.command:
+    cmd: >-
+      pg_createcluster {{ postgresql_version }} main
+      --port {{ postgresql_port }} --start
+    creates: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
+
 - name: Configure the server
   ansible.builtin.template:
     src: krot.conf.j2
