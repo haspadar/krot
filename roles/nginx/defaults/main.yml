@@ -6,18 +6,11 @@ nginx_worker_connections: 1024
 nginx_keepalive_timeout: 65
 nginx_client_max_body_size: 16M
 
-# Name of the log_format the vhosts reference. Override it to match whatever
-# name the site configs expect.
-nginx_log_format_name: krot
-# JSON lines: a shipper reads them without a custom parser, and adding a field
-# later does not break whatever already reads the old ones.
-nginx_log_json: true
+# The log format and Cloudflare real-IP restoration are deliberately absent: they
+# belong to whatever generates the vhosts, which knows the format name they
+# reference and refreshes the CF ranges every time it regenerates. This role only
+# guarantees conf.d is included before the vhosts that depend on it.
 nginx_log_retention_days: 14
-
-# Restores the visitor's address from CF-Connecting-IP. Without it every hit is
-# logged as Cloudflare and the impression stats become meaningless.
-nginx_real_ip_from_cloudflare: true
-nginx_real_ip_header: CF-Connecting-IP
 
 nginx_server_tokens: "off"
 

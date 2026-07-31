@@ -60,7 +60,7 @@ ansible-playbook bootstrap.yml -u root -k
 | `fail2ban` | fail2ban с джейлом `sshd` |
 | `php` | PHP-FPM из ondrej PPA; slowlog, access-log с таймингами |
 | `postgresql` | PostgreSQL из pgdg, csvlog со slow-query логом. Только сервер, без баз |
-| `nginx` | nginx.conf, JSON-лог, real-IP по CF-заголовкам. Per-site vhost'ы не трогает |
+| `nginx` | nginx.conf, права, ротация, basic auth. Per-site vhost'ы, log_format и real-IP не трогает |
 | `docker` | Docker + compose-плагин, лимит на рост логов контейнеров |
 | `deploy_keys` | Отдельный SSH-ключ на каждый приватный репозиторий + host-алиасы, чтобы git предъявлял нужный |
 | `deploy` | Запускает Deployer проекта с control-машины. Релизы и rollback остаются в `deploy.php` |
@@ -95,9 +95,10 @@ ansible-playbook deploy.yml -e deploy_branch=some-branch
   приватных репо, получает по ключу на каждый (`deploy_keys`) плюс host-алиас: клонировать надо
   с `git@<name>.github.com:owner/repo.git`. Без алиаса ssh предъявляет первый подошедший ключ,
   и GitHub отвечает за чужой репозиторий.
-- **`nginx_log_format_name` обязан совпадать** с именем формата, на которое ссылаются
-  сгенерированные vhost'ы. nginx не стартует на неизвестном `log_format`, так что расхождение
-  роняет все сайты разом.
+- **`log_format` и real-IP роль не пишет** — их владелец генератор vhost'ов проекта: он знает,
+  какое имя формата называют его же конфиги, и обновляет CF-диапазоны при каждой генерации, а не
+  раз в прогон Ansible. Два писателя на одну настройку неизбежно разъезжаются, а устаревший
+  `set_real_ip_from` молча пишет в логи адрес CDN вместо посетителя.
 
 ## Закрытие неопубликованных сайтов
 
@@ -135,8 +136,8 @@ Cloudflare, — origin-адрес перестаёт отвечать напря
 
 Диапазоны берутся с `cloudflare.com/ips-v4`/`ips-v6`, складываются в
 `/etc/krot/cloudflare-ranges.txt` и обновляются юнитом `krot-cf-ranges.timer` (еженедельно).
-Тот же файл читает роль `nginx` для `set_real_ip_from` — два независимых списка неминуемо
-разъехались бы.
+Роль `nginx` этот список не читает: real-IP настраивает генератор vhost'ов проекта, обновляя
+диапазоны при каждой генерации.
 
 Скрипт `/usr/local/sbin/krot-cf-ranges` отказывается менять правила, если ответ CF пустой или
 подозрительно короткий: усечённый список молча отрезал бы сайты от мира.
@@ -149,8 +150,8 @@ Cloudflare, — origin-адрес перестаёт отвечать напря
 
 Настроены под сбор (Loki/Alloy и аналоги), но агент не ставится — это отдельная роль.
 
-- **nginx** — JSON-строки с `request_time`, `upstream_time`, `cf_ray`, `cf_country`.
-  `$remote_addr` — уже настоящий посетитель, восстановленный из `CF-Connecting-IP`.
+- **nginx** — формат задаёт генератор vhost'ов проекта; роль отвечает за ротацию и за то, что
+  `conf.d` подключается раньше vhost'ов, которые на него опираются.
 - **php-fpm** — `/var/log/php/`: access с таймингами, slowlog со стек-трейсом медленных
   запросов, отдельный error-log.
 - **postgresql** — csvlog, медленные запросы, `log_lock_waits`, `log_checkpoints`.
