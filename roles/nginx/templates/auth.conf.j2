@@ -1,0 +1,10 @@
+{{ ansible_managed | comment }}
+# Guards a site that is not published yet. A vhost opts in by including this
+# file; removing that include is what publishes the site.
+#
+#   include /etc/nginx/snippets/krot-auth.conf;
+#
+# Included inside a server or location block — it sets no context of its own.
+
+auth_basic "{{ nginx_auth_realm }}";
+auth_basic_user_file /etc/nginx/.htpasswd;

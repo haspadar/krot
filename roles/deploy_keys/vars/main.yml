@@ -1,0 +1,2 @@
+---
+deploy_keys_home: "{{ ansible_facts.getent_passwd[deploy_keys_user][4] }}"

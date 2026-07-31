@@ -60,8 +60,10 @@ ansible-playbook bootstrap.yml -u root -k
 | `fail2ban` | fail2ban с джейлом `sshd` |
 | `php` | PHP-FPM из ondrej PPA; slowlog, access-log с таймингами |
 | `postgresql` | PostgreSQL из pgdg, csvlog со slow-query логом. Только сервер, без баз |
-| `nginx` | nginx.conf, JSON-лог, real-IP по CF-заголовкам. Per-site vhost'ы не трогает |
+| `nginx` | nginx.conf, права, ротация, basic auth. Per-site vhost'ы, log_format и real-IP не трогает |
 | `docker` | Docker + compose-плагин, лимит на рост логов контейнеров |
+| `deploy_keys` | Отдельный SSH-ключ на каждый приватный репозиторий + host-алиасы, чтобы git предъявлял нужный |
+| `deploy` | Запускает Deployer проекта с control-машины. Релизы и rollback остаются в `deploy.php` |
 
 Каждая роль атомарна и применима отдельно. Все параметры — в `roles/<role>/defaults/main.yml`.
 
@@ -73,6 +75,60 @@ ansible-playbook bootstrap.yml -u root -k
 - **Выкатку кода** — это Deployer/CI проекта. Пересечение одно: роль создаёт юзера и каталог
   с правами, куда потом кладутся релизы.
 
+## Деплой
+
+Роль `deploy` — тонкая обёртка: Deployer запускается **на control-машине** и сам ходит на сервер
+по SSH. CI для выкатки не нужен, это ручной путь.
+
+```bash
+ansible-playbook deploy.yml
+ansible-playbook deploy.yml -e deploy_task=rollback
+ansible-playbook deploy.yml -e deploy_branch=some-branch
+```
+
+Роль намеренно не переизобретает релизы, symlink и rollback — этим уже занимается `deploy.php`
+проекта.
+
+**Два подводных камня, оба реальные:**
+
+- **Один deploy key нельзя использовать в двух репозиториях GitHub.** Машина, тянущая несколько
+  приватных репо, получает по ключу на каждый (`deploy_keys`) плюс host-алиас: клонировать надо
+  с `git@<name>.github.com:owner/repo.git`. Без алиаса ssh предъявляет первый подошедший ключ,
+  и GitHub отвечает за чужой репозиторий.
+- **`log_format` и real-IP роль не пишет** — их владелец генератор vhost'ов проекта: он знает,
+  какое имя формата называют его же конфиги, и обновляет CF-диапазоны при каждой генерации, а не
+  раз в прогон Ansible. Два писателя на одну настройку неизбежно разъезжаются, а устаревший
+  `set_real_ip_from` молча пишет в логи адрес CDN вместо посетителя.
+
+## Закрытие неопубликованных сайтов
+
+Сайт не должен быть доступен, проиндексирован или обойдён краулером, пока его не посмотрели.
+Поэтому **закрытое состояние — умолчание**, а публикация — явное действие.
+
+Krot ставит только механизм: файл паролей `/etc/nginx/.htpasswd` (пароль берётся из секретницы
+в рантайме) и сниппет:
+
+```nginx
+# /etc/nginx/snippets/krot-auth.conf
+auth_basic "Preview";
+auth_basic_user_file /etc/nginx/.htpasswd;
+```
+
+**Какие сайты закрыты — решает не Krot, а генератор vhost'ов проекта.** Он добавляет в шаблон
+одну строку, пока сайт не помечен опубликованным:
+
+```nginx
+server {
+    server_name {{ domain }};
+{% raw %}{% if not published %}{% endraw %}
+    include /etc/nginx/snippets/krot-auth.conf;
+{% raw %}{% endif %}{% endraw %}
+    ...
+```
+
+Так сайты открываются по одному, а не все разом. Включается через `nginx_auth_enabled: true`
+плюс `nginx_auth_password` из секретницы.
+
 ## Cloudflare-замок
 
 `firewall_cloudflare_only: true` закрывает 80/443 для всего, кроме опубликованных диапазонов
@@ -80,8 +136,8 @@ Cloudflare, — origin-адрес перестаёт отвечать напря
 
 Диапазоны берутся с `cloudflare.com/ips-v4`/`ips-v6`, складываются в
 `/etc/krot/cloudflare-ranges.txt` и обновляются юнитом `krot-cf-ranges.timer` (еженедельно).
-Тот же файл читает роль `nginx` для `set_real_ip_from` — два независимых списка неминуемо
-разъехались бы.
+Роль `nginx` этот список не читает: real-IP настраивает генератор vhost'ов проекта, обновляя
+диапазоны при каждой генерации.
 
 Скрипт `/usr/local/sbin/krot-cf-ranges` отказывается менять правила, если ответ CF пустой или
 подозрительно короткий: усечённый список молча отрезал бы сайты от мира.
@@ -94,8 +150,8 @@ Cloudflare, — origin-адрес перестаёт отвечать напря
 
 Настроены под сбор (Loki/Alloy и аналоги), но агент не ставится — это отдельная роль.
 
-- **nginx** — JSON-строки с `request_time`, `upstream_time`, `cf_ray`, `cf_country`.
-  `$remote_addr` — уже настоящий посетитель, восстановленный из `CF-Connecting-IP`.
+- **nginx** — формат задаёт генератор vhost'ов проекта; роль отвечает за ротацию и за то, что
+  `conf.d` подключается раньше vhost'ов, которые на него опираются.
 - **php-fpm** — `/var/log/php/`: access с таймингами, slowlog со стек-трейсом медленных
   запросов, отдельный error-log.
 - **postgresql** — csvlog, медленные запросы, `log_lock_waits`, `log_checkpoints`.

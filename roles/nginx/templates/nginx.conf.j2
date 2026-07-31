@@ -34,10 +34,14 @@ http {
     gzip_types text/plain text/css application/json application/javascript
                text/xml application/xml image/svg+xml;
 
-    # conf.d holds the log format and the Cloudflare real-IP block, so it must be
-    # included before the vhosts that reference them.
+    # conf.d carries whatever the site generator writes into the http context —
+    # the log format its vhosts name, real-IP restoration — so it is included
+    # before the vhosts that depend on it.
     include /etc/nginx/conf.d/*.conf;
     include /etc/nginx/sites-enabled/*;
 
-    access_log /var/log/nginx/access.log {{ nginx_log_format_name }};
+    # No http-level access_log: each vhost logs to its own file in its own
+    # format. Naming a format here would tie this file to a definition it does
+    # not own and break nginx whenever that name changes.
+    access_log off;
 }

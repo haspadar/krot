@@ -22,18 +22,33 @@
     backup: true
   notify: Reload nginx
 
-- name: Define the log format
-  ansible.builtin.template:
-    src: log-format.conf.j2
-    dest: "/etc/nginx/conf.d/{{ nginx_log_format_name }}-log-format.conf"
-    owner: root
-    group: root
-    mode: "0644"
+# The log format and real-IP restoration used to live here. They belong to
+# whatever generates the vhosts: it knows which format name they reference, and
+# it can refresh the Cloudflare ranges every time it regenerates rather than only
+# when a provisioning run happens. Two writers for one setting drift apart, and
+# an outdated set_real_ip_from silently logs every visitor as the CDN.
+- name: Drop settings the site generator now owns
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/nginx/conf.d/krot-real-ip.conf
   notify: Reload nginx
 
-- name: Restore the visitor IP from Cloudflare headers
-  ansible.builtin.include_tasks: real-ip.yml
-  when: nginx_real_ip_from_cloudflare
+- name: Find log formats this role used to write
+  ansible.builtin.find:
+    paths: /etc/nginx/conf.d
+    patterns: "*-log-format.conf"
+  register: nginx_stale_formats
+
+- name: Drop log formats this role used to write
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ nginx_stale_formats.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  notify: Reload nginx
 
 - name: Drop the default site
   ansible.builtin.file:
@@ -42,6 +57,10 @@
   loop:
     - default
   notify: Reload nginx
+
+- name: Provide basic auth for unpublished sites
+  ansible.builtin.include_tasks: auth.yml
+  when: nginx_auth_enabled
 
 - name: Include the vhost permission tasks
   ansible.builtin.include_tasks: vhosts.yml

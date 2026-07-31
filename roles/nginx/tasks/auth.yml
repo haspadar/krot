@@ -1,0 +1,56 @@
+---
+- name: Assert a password is available
+  ansible.builtin.assert:
+    that:
+      - nginx_auth_password | length > 0
+    fail_msg: >-
+      nginx_auth_enabled is on but nginx_auth_password is empty. Supply it from
+      a secret store; an empty password would leave the sites open.
+    quiet: true
+
+- name: Create the snippets directory
+  ansible.builtin.file:
+    path: /etc/nginx/snippets
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the htpasswd sync helper
+  ansible.builtin.copy:
+    src: htpasswd-sync.sh
+    dest: /usr/local/sbin/krot-htpasswd-sync
+    owner: root
+    group: root
+    mode: "0755"
+
+# The helper compares before writing: openssl salts every run differently, so an
+# unconditional write would report a change on every play.
+- name: Write the password file
+  ansible.builtin.command:
+    argv:
+      - /usr/local/sbin/krot-htpasswd-sync
+      - /etc/nginx/.htpasswd
+      - "{{ nginx_auth_user }}"
+      - "{{ nginx_auth_password }}"
+  register: nginx_auth_sync
+  changed_when: nginx_auth_sync.rc == 10
+  failed_when: nginx_auth_sync.rc not in [0, 10]
+  # The password would otherwise be echoed in the task output.
+  no_log: true
+
+- name: Restrict the password file to nginx
+  ansible.builtin.file:
+    path: /etc/nginx/.htpasswd
+    owner: root
+    group: www-data
+    mode: "0640"
+
+- name: Install the auth snippet
+  ansible.builtin.template:
+    src: auth.conf.j2
+    dest: /etc/nginx/snippets/krot-auth.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx

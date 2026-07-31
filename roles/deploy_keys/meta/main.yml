@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    Per-repository SSH deploy keys and the host aliases that route each clone URL
+    to its own key, for machines pulling more than one private repository.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - ssh
+    - deployment
+
+dependencies: []

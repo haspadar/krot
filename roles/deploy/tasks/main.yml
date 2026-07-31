@@ -1,0 +1,52 @@
+---
+- name: Assert the project directory is configured
+  ansible.builtin.assert:
+    that:
+      - deploy_project_dir | length > 0
+    fail_msg: >-
+      deploy_project_dir is empty. Point it at the checkout holding the
+      project's deploy.php.
+    quiet: true
+
+- name: Look for the project's Deployer setup
+  ansible.builtin.stat:
+    path: "{{ deploy_project_dir }}/{{ item }}"
+  loop:
+    - deploy.php
+    - "{{ deploy_bin }}"
+  register: deploy_files
+  delegate_to: localhost
+  become: false
+
+- name: Assert Deployer is installed
+  ansible.builtin.assert:
+    that:
+      - deploy_files.results | map(attribute='stat.exists') | select | list | length == 2
+    fail_msg: >-
+      {{ deploy_project_dir }} has no deploy.php or no {{ deploy_bin }}.
+      Run `composer install` in the project first.
+    quiet: true
+
+# Deployer runs on the control machine and opens its own SSH connection from
+# deploy.php's host() entry — that is why this delegates to localhost rather than
+# running on the target.
+- name: Run Deployer
+  ansible.builtin.command:
+    # The host is a positional selector in Deployer 8, not an option.
+    cmd: >-
+      {{ deploy_bin }} {{ deploy_task }}
+      {{ ('--branch=' ~ deploy_branch) if deploy_branch | length > 0 else '' }}
+      {{ deploy_extra_args | join(' ') }}
+      {{ deploy_host }}
+    chdir: "{{ deploy_project_dir }}"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  register: deploy_run
+  # Deployer reports its own success or failure; a release either goes out or it
+  # does not, so there is no partial state to detect.
+  changed_when: deploy_run.rc == 0
+
+- name: Show what Deployer did
+  ansible.builtin.debug:
+    var: deploy_run.stdout_lines
