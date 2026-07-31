@@ -18,3 +18,25 @@ postgresql_log_destination: csvlog
 postgresql_log_min_duration_ms: 500
 postgresql_log_line_prefix: "%m [%p] %q%u@%d "
 postgresql_log_retention_days: 14
+
+# Query statistics, on by default: the slow log only catches a statement that is
+# slow *once*, and the query that actually needs the index is usually the fast
+# one called a hundred thousand times a day. Only pg_stat_statements aggregates
+# by normalised query text and shows that. The cost is a fixed slab of shared
+# memory (roughly a few MB at max 5000) and a hash lookup per statement — small
+# enough that a server role is better off measuring than guessing.
+postgresql_stat_statements: true
+# Distinct normalised statements tracked. Beyond this the least-executed entries
+# are evicted, so the number is a memory-vs-history trade, not a limit on load.
+postgresql_stat_statements_max: 5000
+# `top` records the statements a client sends; `all` also records those nested
+# inside functions and procedures, which multiplies entries for little gain here.
+postgresql_stat_statements_track: top
+
+# Libraries loaded into every backend at postmaster start. A list, not a string,
+# because PostgreSQL has no append syntax for it: whichever assignment comes last
+# wins outright. A future auto_explain or pg_cron therefore has to be added
+# *here* rather than in a second config file that would silently drop this one's
+# entry. pg_stat_statements is appended by the template when it is enabled, so it
+# need not be repeated in this list.
+postgresql_shared_preload_libraries: []

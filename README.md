@@ -59,7 +59,7 @@ ansible-playbook bootstrap.yml -u root -k
 | `firewall` | ufw; при `firewall_cloudflare_only` пускает 80/443 только с диапазонов Cloudflare и обновляет их weekly-таймером |
 | `fail2ban` | fail2ban с джейлом `sshd` |
 | `php` | PHP-FPM из ondrej PPA; slowlog, access-log с таймингами |
-| `postgresql` | PostgreSQL из pgdg, csvlog со slow-query логом. Только сервер, без баз |
+| `postgresql` | PostgreSQL из pgdg, csvlog со slow-query логом, `pg_stat_statements`. Только сервер, без баз |
 | `nginx` | nginx.conf, права, ротация, basic auth. Per-site vhost'ы, log_format и real-IP не трогает |
 | `docker` | Docker + compose-плагин, лимит на рост логов контейнеров |
 | `deploy_keys` | Отдельный SSH-ключ на каждый приватный репозиторий + host-алиасы, чтобы git предъявлял нужный |
@@ -154,9 +154,63 @@ Cloudflare, — origin-адрес перестаёт отвечать напря
   `conf.d` подключается раньше vhost'ов, которые на него опираются.
 - **php-fpm** — `/var/log/php/`: access с таймингами, slowlog со стек-трейсом медленных
   запросов, отдельный error-log.
-- **postgresql** — csvlog, медленные запросы, `log_lock_waits`, `log_checkpoints`.
+- **postgresql** — csvlog, медленные запросы, `log_lock_waits`, `log_checkpoints`, плюс
+  `pg_stat_statements` (см. ниже).
 
 nginx и php ротируются через logrotate, PostgreSQL ротирует себя сам.
+
+## Статистика запросов PostgreSQL
+
+Медленный лог (`log_min_duration_statement = 500`) ловит запрос, который тормозит **однажды**.
+Но запрос на 20 мс, вызываемый 100 000 раз в сутки, в него не попадёт никогда — а по суммарному
+времени он может быть первым в базе, и индекс просит именно он. Это видно только через
+`pg_stat_statements`, который агрегирует по нормализованному тексту запроса.
+
+Включено по умолчанию (`postgresql_stat_statements: true`). Расширение ставится в служебную базу
+`postgres`: представление показывает статистику **всего кластера** независимо от того, из какой
+базы смотреть, поэтому роль по-прежнему не знает про базы конкретных сайтов.
+
+Топ по суммарному времени:
+
+```sql
+SELECT calls,
+       round(total_exec_time::numeric)     AS total_ms,
+       round(mean_exec_time::numeric, 2)   AS mean_ms,
+       rows,
+       left(query, 120)                    AS query
+FROM pg_stat_statements
+ORDER BY total_exec_time DESC
+LIMIT 20;
+```
+
+С сервера — одной командой:
+
+```bash
+sudo -u postgres psql -d postgres -c "SELECT calls, round(total_exec_time::numeric) AS total_ms, \
+round(mean_exec_time::numeric, 2) AS mean_ms, rows, left(query, 120) AS query \
+FROM pg_stat_statements ORDER BY total_exec_time DESC LIMIT 20;"
+```
+
+Два подвоха, оба стоили бы минуты на сервере:
+
+- колонки в PG 13+ называются `total_exec_time`/`mean_exec_time`, а не `total_time`, как в старых
+  рецептах из интернета;
+- `::numeric` обязателен: времена хранятся как `double precision`, а двухаргументного
+  `round(double precision, integer)` в PostgreSQL нет — без приведения запрос падает.
+
+Статистика копится с момента рестарта, поэтому после добавления индекса старые цифры продолжат
+тянуть картину назад. Сбросить перед замером:
+
+```sql
+SELECT pg_stat_statements_reset();
+```
+
+**`shared_preload_libraries` — списочный параметр, и PostgreSQL берёт последнее присваивание
+целиком**, синтаксиса «дописать» у него нет. Поэтому роль пишет весь список разом, а не
+отдельной строкой на библиотеку. Второй потребитель (`auto_explain`, `pg_cron`) добавляется
+в `postgresql_shared_preload_libraries`, а не вторым конфигом — иначе он молча вытеснит
+`pg_stat_statements`. Смена этого параметра требует **рестарта** базы, то есть простоя всех
+сайтов на машине; роль рестартит только когда строка действительно изменилась.
 
 ## Разработка
 
