@@ -47,15 +47,6 @@ while IFS='|' read -r domain log; do
     # end in .html — GoAccess picks its output format from the extension.
     tmp="$WORK_DIR/$domain.html"
 
-    if [ ! -r "$log" ]; then
-        # A site whose log has not been written yet is not an error: nginx
-        # creates the file on the first request. Any report from an earlier run
-        # goes, though — the log may also have been moved or removed, and a
-        # report with no source left is the one thing this must not serve.
-        rm -f "$out"
-        continue
-    fi
-
     # Every log still on disk, oldest first, read from scratch on each run.
     #
     # The obvious alternative — GoAccess's --persist/--restore — is wrong here.
@@ -78,7 +69,19 @@ while IFS='|' read -r domain log; do
         [ -r "$candidate" ] && sources+=("$candidate")
     done < <(printf '%s\n' "$log".*.gz | sort -rV)
     [ -r "$log.1" ] && sources+=("$log.1")
-    sources+=("$log")
+    # The live log last, and only if it is there — nginx creates it on the first
+    # request, so a site that has had none simply has no live log yet.
+    [ -r "$log" ] && sources+=("$log")
+
+    # No readable source at all: the site is new, or its logs were moved or
+    # removed. Either way any report from an earlier run goes — a report with
+    # nothing behind it is the one thing this must not keep serving. Checked
+    # against the whole set rather than the live log alone, so a site whose
+    # recent traffic sits in rotated files keeps its report.
+    if [ ${#sources[@]} -eq 0 ]; then
+        rm -f "$out"
+        continue
+    fi
 
     # Only lines that start with a timestamp are fed in. GoAccess has no
     # tolerance setting: when every line it manages to read is unparseable it
