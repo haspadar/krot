@@ -68,6 +68,7 @@ collections:
 | `docker` | Docker + compose-плагин, лимит на рост логов контейнеров | matilda |
 | `deploy_keys` | Отдельный SSH-ключ на каждый приватный репозиторий + host-алиасы | все |
 | `deploy` | Запускает Deployer проекта с control-машины | все |
+| `goaccess` | Отчёты посещаемости по логам nginx, по одному на сайт, на loopback за basic auth | busel |
 
 Два набора: busel — `common + php + postgresql + nginx + firewall + fail2ban` (несколько сайтов
 на машине за Cloudflare); matilda — `common + docker + firewall + fail2ban` (голый хост под

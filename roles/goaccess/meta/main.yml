@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    GoAccess reports from the nginx access logs, one per site, served on a
+    loopback port behind basic auth. No third-party script touches the sites.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - monitoring
+    - analytics
+    - nginx
+
+dependencies: []

@@ -1,0 +1,170 @@
+---
+- name: Install GoAccess
+  ansible.builtin.apt:
+    name: goaccess
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# An account of its own rather than root: this reads logs and writes HTML, and
+# neither needs the machine. Membership in adm is what grants the 0640 nginx
+# logs, so no permissions on them have to change.
+- name: Create the reporting account
+  ansible.builtin.user:
+    name: "{{ goaccess_user }}"
+    system: true
+    create_home: false
+    home: "{{ goaccess_db_dir }}"
+    shell: /usr/sbin/nologin
+    groups: adm
+    append: true
+
+- name: Create the directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner | default(goaccess_user) }}"
+    group: "{{ item.group | default(goaccess_user) }}"
+    mode: "{{ item.mode }}"
+  loop:
+    # nginx reads the reports, so its group needs the directory; the world does
+    # not, because the file list alone is the list of domains on this machine.
+    - path: "{{ goaccess_report_dir }}"
+      group: www-data
+      mode: "0750"
+    - path: "{{ goaccess_db_dir }}"
+      mode: "0750"
+    - path: /var/log/goaccess
+      mode: "0750"
+    - path: /etc/goaccess
+      owner: root
+      group: root
+      mode: "0755"
+  loop_control:
+    label: "{{ item.path }}"
+
+- name: Configure the parser
+  ansible.builtin.template:
+    src: goaccess.conf.j2
+    dest: /etc/goaccess/krot-sites.conf
+    owner: root
+    group: root
+    mode: "0644"
+
+# When no sites are given, take them from the host: a domain is reported on if
+# it has an enabled vhost. Naming them in inventory would move the site list into
+# the machine's configuration, and this project deliberately keeps it out —
+# the sites live in the project's own database, not in Ansible. It also skips
+# the logs left behind by removed or test vhosts, which a glob over
+# /var/log/nginx would happily pick up.
+- name: Find the enabled sites
+  ansible.builtin.find:
+    paths: /etc/nginx/sites-enabled
+    patterns: "*.conf"
+    file_type: any
+  register: goaccess_enabled_vhosts
+  when: not goaccess_sites
+
+- name: List the sites to report on
+  ansible.builtin.template:
+    src: sites.j2
+    dest: /etc/goaccess/krot-sites.conf.sites
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the report builder
+  ansible.builtin.copy:
+    src: build-reports.sh
+    dest: /usr/local/sbin/krot-goaccess-reports
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Install the timer units
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/systemd/system/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: service.j2
+      dest: krot-goaccess.service
+    - src: timer.j2
+      dest: krot-goaccess.timer
+  loop_control:
+    label: "{{ item.dest }}"
+  notify: Restart the goaccess timer
+
+- name: Enable the timer
+  ansible.builtin.systemd_service:
+    name: krot-goaccess.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# Build once now rather than leaving the first report until the timer fires: a
+# role that finishes with nothing to show cannot be told from one that failed.
+#
+# The builder is run directly rather than through the systemd module: `state:
+# started` on a oneshot unit returns as soon as systemd accepts the job, so the
+# play would move on to serving reports that do not exist yet. Running the script
+# means this task finishes when the reports do, and a failure is this task's
+# failure rather than a unit that quietly went inactive.
+- name: Look for reports already built
+  ansible.builtin.find:
+    paths: "{{ goaccess_report_dir }}"
+    patterns: "*.html"
+  register: goaccess_existing_reports
+  # A read that decides whether the build below runs; skipping it under --check
+  # would report a build that is not going to happen.
+  check_mode: false
+
+- name: Build the reports once
+  ansible.builtin.command: /usr/local/sbin/krot-goaccess-reports
+  become: true
+  become_user: "{{ goaccess_user }}"
+  environment:
+    REPORT_DIR: "{{ goaccess_report_dir }}"
+    DB_DIR: "{{ goaccess_db_dir }}"
+  changed_when: true
+  # Nothing to predict without running it, and the run is what produces the
+  # reports the rest of this role serves.
+  check_mode: false
+  # Only when there is nothing to serve yet. Refreshing the numbers is the
+  # timer's job; a provisioning run that rebuilt them every time would report a
+  # change on every pass and drown out the ones that mean something.
+  when:
+    - goaccess_effective_sites | length > 0
+    - not goaccess_existing_reports.files
+
+- name: Check the auth snippet exists
+  ansible.builtin.stat:
+    path: /etc/nginx/snippets/krot-auth.conf
+  register: goaccess_auth_snippet
+  when: goaccess_auth_enabled
+
+# An include naming a file that is not there is not a broken page — nginx calls
+# it emerg and refuses the entire configuration, so every site on the machine
+# goes down with it. Better to stop here, with the sites still up.
+- name: Refuse to serve the reports without the password file
+  ansible.builtin.assert:
+    that: goaccess_auth_snippet.stat.exists
+    fail_msg: >-
+      goaccess_auth_enabled is on but /etc/nginx/snippets/krot-auth.conf is
+      missing. Run the nginx role with nginx_auth_enabled first; referencing a
+      snippet that does not exist takes down every site on this host, not just
+      the reports.
+    quiet: true
+  when: goaccess_auth_enabled
+
+- name: Serve the reports
+  ansible.builtin.template:
+    src: vhost.conf.j2
+    dest: /etc/nginx/conf.d/krot-goaccess.conf
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  notify: Reload nginx for goaccess
