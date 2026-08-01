@@ -49,7 +49,10 @@ while IFS='|' read -r domain log; do
 
     if [ ! -r "$log" ]; then
         # A site whose log has not been written yet is not an error: nginx
-        # creates the file on the first request.
+        # creates the file on the first request. Any report from an earlier run
+        # goes, though — the log may also have been moved or removed, and a
+        # report with no source left is the one thing this must not serve.
+        rm -f "$out"
         continue
     fi
 
