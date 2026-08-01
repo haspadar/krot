@@ -28,16 +28,104 @@
     state: present
   register: postgresql_repo
 
-- name: Install PostgreSQL {{ postgresql_version }}
+# postgresql-common carries pg_lsclusters and the postinst machinery, but no
+# server. Installing it alone lets the guard below look at the host before the
+# versioned package can create anything: apt's postinst would otherwise build a
+# cluster for the new version, and the role would be refusing to do something it
+# had already done.
+- name: Install the PostgreSQL tooling
   ansible.builtin.apt:
     name:
-      - "postgresql-{{ postgresql_version }}"
+      - postgresql-common
       # psycopg2 is what the community.postgresql modules use to connect; without
       # it any later per-database task fails on import.
       - python3-psycopg2
     state: present
     update_cache: true
     cache_valid_time: "{{ postgresql_repo.changed | ternary(0, 3600) }}"
+
+# A major upgrade is not a version bump: PostgreSQL 18 cannot read PostgreSQL
+# 16's data directory, so raising postgresql_version installs a *second* cluster
+# beside the old one. pg_createcluster assigns it the first port not already
+# claimed by an existing cluster — 5433 — while this role's config claims 5432,
+# so the new cluster fails to start and the application keeps talking to the old
+# one, none of it obviously.
+#
+# The role refuses rather than guesses, because the only ways forward are
+# pg_upgrade, a dump/restore, or discarding the old data — and discarding is not
+# something a variable change should do silently. Set
+# postgresql_remove_other_versions once the data is migrated or known to be
+# expendable.
+#
+# pg_lsclusters, not the directories under /etc/postgresql: a package whose
+# postinst could not create a cluster (because this role's port was already
+# taken) still leaves config directories behind, so those directories answer
+# "which versions are installed" rather than "which clusters exist".
+- name: List the clusters that exist
+  ansible.builtin.command: pg_lsclusters --no-header
+  changed_when: false
+  # Without this the task is skipped under --check, leaving the list empty — so
+  # a dry run would report a clean upgrade over a cluster it never looked at,
+  # which is the one run where the guard matters most.
+  check_mode: false
+  register: postgresql_clusters
+
+- name: Refuse to run beside a cluster of another version
+  ansible.builtin.assert:
+    that: not postgresql_other_versions or postgresql_remove_other_versions
+    fail_msg: >-
+      PostgreSQL {{ postgresql_other_versions | join(', ') }} already has a
+      cluster on this host, and the requested version is
+      {{ postgresql_version }}. Two clusters cannot share port
+      {{ postgresql_port }}, so the new one would fail to start while the
+      application kept using the old one. Migrate the data (pg_upgrade or
+      dump/restore), then set postgresql_remove_other_versions=true to drop the
+      old cluster — doing so DESTROYS its databases.
+    quiet: true
+
+# Purge, not remove: leaving the old data directory behind occupies the disk
+# with databases nothing can read, and reinstalling that version later would
+# silently resurrect them.
+- name: Remove clusters of other versions
+  ansible.builtin.apt:
+    name:
+      - "postgresql-{{ item }}"
+      # The client package is not pulled in by the server one, so purging only
+      # the server leaves psql and pg_dump of the retired version on the host.
+      - "postgresql-client-{{ item }}"
+    state: absent
+    purge: true
+  loop: "{{ postgresql_other_versions }}"
+  when: postgresql_remove_other_versions
+
+# purge removes what the package owns, and this role's drop-in is not part of any
+# package — so /etc/postgresql/<old>/main/conf.d/99-krot.conf survives it. Left
+# behind, it silently reconfigures that version if it is ever reinstalled.
+- name: Remove this role's config from other versions
+  ansible.builtin.file:
+    path: "/etc/postgresql/{{ item }}"
+    state: absent
+  loop: "{{ postgresql_other_versions }}"
+  when: postgresql_remove_other_versions
+
+# Only now, once the guard has passed and any retired version is gone. Its
+# postinst is free to create the cluster on the port this role wants, because
+# nothing else holds it any more.
+- name: Install PostgreSQL {{ postgresql_version }}
+  ansible.builtin.apt:
+    name: "postgresql-{{ postgresql_version }}"
+    state: present
+
+# The postinst creates a cluster only when it finds the port free, and a run
+# that removed an old cluster in the same play has already passed that point —
+# so the new version can end up with no cluster at all. `creates` keeps this a
+# fallback: on a clean host the package got there first and the task is skipped.
+- name: Create the cluster if the package could not
+  ansible.builtin.command:
+    cmd: >-
+      pg_createcluster {{ postgresql_version }} main
+      --port {{ postgresql_port }} --start
+    creates: "/etc/postgresql/{{ postgresql_version }}/main/postgresql.conf"
 
 - name: Configure the server
   ansible.builtin.template:

@@ -1,5 +1,12 @@
 ---
-postgresql_version: "16"
+postgresql_version: "18"
+
+# Raising postgresql_version installs a new cluster beside the old one; it does
+# not upgrade it, because PostgreSQL cannot read the previous major version's
+# data directory. Off by default so that a version bump fails loudly instead of
+# destroying databases: turn it on only once the data is migrated or known to be
+# expendable.
+postgresql_remove_other_versions: false
 
 # Server only: creating per-site databases and roles belongs to whatever
 # provisions the sites, so this role never learns about them.

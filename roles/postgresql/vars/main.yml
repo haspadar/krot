@@ -1,0 +1,9 @@
+---
+# Major versions with an existing cluster, other than the requested one. The
+# first column of pg_lsclusters is the version; a host normally has one, and
+# anything else means an upgrade left both behind.
+postgresql_other_versions: >-
+  {{ (postgresql_clusters.stdout_lines | default([]))
+     | map('split') | map('first')
+     | reject('equalto', postgresql_version | string)
+     | unique | list }}
