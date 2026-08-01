@@ -1,8 +1,7 @@
 #!/bin/bash
 # Rebuild one GoAccess report per site. Managed by Ansible (role: goaccess).
 #
-# Each site gets its own report. There is deliberately no
-# combined report: one page listing every domain is where the link between the
+# Each site gets its own report. There is deliberately no combined one: one page listing every domain is where the link between the
 # sites of a network becomes visible to whoever gets hold of it.
 set -euo pipefail
 
@@ -43,12 +42,9 @@ while IFS='|' read -r domain log; do
     case "$domain" in ''|\#*) continue ;; esac
 
     out="$REPORT_DIR/$domain.html"
-    # Built outside the served directory: a half-written report under the
-    # document root is reachable at a predictable path while it is being
-    # written, and nothing in the vhost refuses dotfiles. It still has to end in
-    # .html — GoAccess picks its output format from the extension, and for
-    # anything it does not recognise it writes nothing at all, successfully and
-    # without a word.
+    # Built out of sight: a half-written report under the document root is
+    # reachable at a predictable path while it is being written. It still has to
+    # end in .html — GoAccess picks its output format from the extension.
     tmp="$WORK_DIR/$domain.html"
 
     if [ ! -r "$log" ]; then
@@ -87,21 +83,27 @@ while IFS='|' read -r domain log; do
     # pipefail that would read as a failed report rather than as a site with no
     # traffic yet.
     # zcat -f reads compressed and plain files alike, so rotated generations
-    # need no special case.
+    # need no special case. The parseable lines are counted first: reading from
+    # stdin, GoAccess writes a report whatever it is given, so an empty input
+    # produces a page of zeroes rather than nothing — and this is the only place
+    # that can tell the difference.
+    parseable=$(zcat -f "${sources[@]}" 2>/dev/null | grep -c '^\[' || true)
+
+    # Either the site has had no traffic yet, or its last requests have rotated
+    # off the disk. Any previous report goes: now that the numbers are rebuilt
+    # from what is on disk, one that outlived its logs would keep showing
+    # traffic no source still holds — quietly, for as long as the machine runs.
+    if [ "$parseable" -eq 0 ]; then
+        rm -f "$out"
+        continue
+    fi
+
     if ! { zcat -f "${sources[@]}" 2>/dev/null | grep '^\[' || true; } | goaccess - \
         --config-file="$CONF" \
         --output="$tmp"; then
         echo "report failed: $domain" >&2
         status=1
         rm -f "$tmp"
-        continue
-    fi
-
-    # A site with no traffic yet leaves GoAccess with nothing to write, and it
-    # produces no file rather than an empty one. Not a failure — but without
-    # this check the mv below would fail and take the remaining sites' reports
-    # down with it.
-    if [ ! -f "$tmp" ]; then
         continue
     fi
 
