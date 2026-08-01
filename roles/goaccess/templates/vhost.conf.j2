@@ -27,6 +27,12 @@ server {
     include /etc/nginx/snippets/krot-auth.conf;
 {% endif %}
 
+    # Reports are assembled here before being moved into place. Serving it would
+    # hand out a half-written report to anyone who asked at the wrong moment.
+    location ^~ /.build {
+        deny all;
+    }
+
     location / {
         try_files $uri =404;
     }

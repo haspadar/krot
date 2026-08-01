@@ -9,6 +9,11 @@ set -euo pipefail
 CONF=/etc/goaccess/krot-sites.conf
 REPORT_DIR="${REPORT_DIR:-/var/www/goaccess}"
 DB_DIR="${DB_DIR:-/var/lib/goaccess}"
+# Reports are built here and moved into place. Inside REPORT_DIR, because a move
+# is only atomic within one filesystem and a role that runs on machines it has
+# never seen cannot assume /var/www and /var/lib share one. The vhost refuses
+# this directory, so a half-written report is not reachable while it is written.
+WORK_DIR="$REPORT_DIR/.build"
 
 if [ ! -r "$CONF" ]; then
     echo "missing site list: $CONF" >&2
@@ -16,6 +21,8 @@ if [ ! -r "$CONF" ]; then
 fi
 
 status=0
+
+mkdir -p "$WORK_DIR"
 
 # Drop reports for sites that are no longer listed. A vhost can be removed or a
 # domain retired, and the report would otherwise stay served for as long as the
@@ -40,10 +47,13 @@ while IFS='|' read -r domain log; do
 
     db="$DB_DIR/$domain"
     out="$REPORT_DIR/$domain.html"
-    # The temporary name has to end in .html too: GoAccess picks its output
-    # format from the extension, and for anything it does not recognise it
-    # writes nothing at all — successfully, without a word.
-    tmp="$REPORT_DIR/.$domain.new.html"
+    # Built outside the served directory: a half-written report under the
+    # document root is reachable at a predictable path while it is being
+    # written, and nothing in the vhost refuses dotfiles. It still has to end in
+    # .html — GoAccess picks its output format from the extension, and for
+    # anything it does not recognise it writes nothing at all, successfully and
+    # without a word.
+    tmp="$WORK_DIR/$domain.html"
     mkdir -p "$db"
 
     # --persist keeps counts across runs, so history outlives the log files it
@@ -59,6 +69,20 @@ while IFS='|' read -r domain log; do
         continue
     fi
 
+    # The live log plus the most recent rotated one. logrotate runs daily while
+    # this runs hourly, so the requests written between the last build and the
+    # rotation live only in the rotated file — read the live log alone and that
+    # hour disappears from the statistics for good. Feeding the rotated file
+    # again on later runs costs nothing: GoAccess keys on the lines it has
+    # already stored, so repeats do not accumulate (checked: the same input
+    # three times gives the same count).
+    #
+    # Only .1, and only while it is still uncompressed — logrotate is configured
+    # with delaycompress, so the one file that can hold uncounted requests is
+    # readable. Older generations were counted long ago.
+    sources=("$log")
+    [ -r "$log.1" ] && sources+=("$log.1")
+
     # Only lines that start with a timestamp are fed in. GoAccess has no
     # tolerance setting: when every line it manages to read is unparseable it
     # gives up on the file entirely rather than skipping those lines. A log
@@ -68,7 +92,7 @@ while IFS='|' read -r domain log; do
     # `|| true` because grep exits 1 when it matches nothing, and under
     # pipefail that would read as a failed report rather than as a site with no
     # traffic yet.
-    if ! { grep '^\[' "$log" || true; } | goaccess - \
+    if ! { grep -h '^\[' "${sources[@]}" || true; } | goaccess - \
         --config-file="$CONF" \
         --db-path="$db" \
         --persist --restore \
