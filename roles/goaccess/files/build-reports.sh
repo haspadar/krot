@@ -69,10 +69,14 @@ while IFS='|' read -r domain log; do
     # Rebuilding instead means the numbers depend only on what is on disk, and
     # the window is exactly the retention logrotate is configured for. Reading a
     # fortnight of one site's logs takes well under a second.
+    # Oldest first. logrotate numbers upwards as files age, so a reverse sort of
+    # the compressed generations puts them in chronological order; .1 is the
+    # newest rotated one and delaycompress leaves it uncompressed.
     sources=()
-    for candidate in $(ls -1r "$log".*.gz 2>/dev/null); do
-        sources+=("$candidate")
-    done
+    while IFS= read -r candidate; do
+        # A glob that matches nothing comes back as the pattern itself.
+        [ -r "$candidate" ] && sources+=("$candidate")
+    done < <(printf '%s\n' "$log".*.gz | sort -rV)
     [ -r "$log.1" ] && sources+=("$log.1")
     sources+=("$log")
 
