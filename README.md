@@ -246,6 +246,10 @@ SELECT pg_stat_statements_reset();
 
 ## Разработка
 
+Архитектура и принятые решения — `openspec/ARCHITECTURE.md`. Изменения ведутся как в busel и
+matilda: `openspec/changes/<дата>-<слаг>/` с `proposal.md` (зачем и что меняется) и `tasks.md`,
+отработанные уезжают в `changes/archive/`.
+
 ```bash
 yamllint .        # форматирование YAML
 ansible-lint      # профиль production — строжайший

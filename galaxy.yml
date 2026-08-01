@@ -1,7 +1,7 @@
 ---
 namespace: haspadar
 name: krot
-version: 0.1.0
+version: 1.0.0
 readme: README.md
 authors:
   - haspadar
@@ -28,3 +28,7 @@ build_ignore:
   - ansible.cfg
   - inventory
   - playbooks
+  # Development history, not something the installed collection needs to carry.
+  - openspec
+  - .idea
+  - .ansible
