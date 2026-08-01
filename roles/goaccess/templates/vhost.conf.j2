@@ -1,0 +1,39 @@
+{{ ansible_managed | comment }}
+# Reports served on their own port, bound to loopback. Reach it through a tunnel:
+#
+#   ssh -L {{ goaccess_listen_port }}:127.0.0.1:{{ goaccess_listen_port }} <host>
+#
+# No TLS here on purpose: the connection never leaves the machine, and SSH
+# already encrypts the hop that does. A certificate would mean a domain, a
+# Cloudflare zone and a renewal to forget about.
+
+server {
+    listen {{ goaccess_listen_address }}:{{ goaccess_listen_port }};
+    server_name _;
+
+    root {{ goaccess_report_dir }};
+
+    # The report names are the domains on this machine, so an index would hand
+    # over the whole list. Each report is reached by knowing its name.
+    autoindex off;
+
+    # This page has no reason to appear anywhere, ever.
+    add_header X-Robots-Tag "noindex, nofollow" always;
+
+    access_log /var/log/nginx/goaccess-access.log;
+    error_log  /var/log/nginx/goaccess-error.log;
+
+{% if goaccess_auth_enabled %}
+    include /etc/nginx/snippets/krot-auth.conf;
+{% endif %}
+
+    # Reports are assembled here before being moved into place. Serving it would
+    # hand out a half-written report to anyone who asked at the wrong moment.
+    location ^~ /.build {
+        deny all;
+    }
+
+    location / {
+        try_files $uri =404;
+    }
+}

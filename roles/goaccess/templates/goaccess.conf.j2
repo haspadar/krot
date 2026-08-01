@@ -1,0 +1,23 @@
+{{ ansible_managed | comment }}
+# Parsing rules only. Which sites are reported on lives in krot-sites.conf.sites,
+# and the paths are passed per invocation, so this file never names a domain.
+
+log-format {{ goaccess_log_format }}
+date-format {{ goaccess_date_format }}
+time-format {{ goaccess_time_format }}
+
+# Count crawlers rather than drop them. On a site behind Cloudflare most of the
+# early traffic is bots, and a report that hides them looks like no traffic at
+# all rather than like the traffic it is.
+ignore-crawlers false
+
+# A line older than the format is not a failure: entries written before the
+# timestamp was added stay in the file until they rotate out, and they are meant
+# to be skipped rather than to stop the run.
+invalid-requests /var/log/goaccess/invalid.log
+
+# The report is read by a person through the SSH tunnel, so it may as well carry
+# the pieces
+# that make it worth reading.
+html-report-title Access report
+real-os true

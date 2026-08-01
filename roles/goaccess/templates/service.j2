@@ -1,0 +1,28 @@
+{{ ansible_managed | comment }}
+
+[Unit]
+Description=Rebuild the GoAccess reports
+Documentation=man:goaccess(1)
+After=network.target
+
+[Service]
+Type=oneshot
+User={{ goaccess_user }}
+Group={{ goaccess_user }}
+# The logs are 0640 www-data:adm, so membership in adm is what makes them
+# readable without running any of this as root.
+SupplementaryGroups=adm
+Environment=REPORT_DIR={{ goaccess_report_dir }}
+ExecStart=/usr/local/sbin/krot-goaccess-reports
+
+# It reads logs and writes its reports; nothing else on the host is any of its
+# business.
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+ReadWritePaths={{ goaccess_report_dir }} /var/log/goaccess
