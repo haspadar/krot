@@ -17,6 +17,23 @@ fi
 
 status=0
 
+# Drop reports for sites that are no longer listed. A vhost can be removed or a
+# domain retired, and the report would otherwise stay served for as long as the
+# machine lives — still naming the domain and its traffic to anyone who kept the
+# URL. The database goes with it, so a domain brought back later starts clean
+# rather than resuming someone else's history.
+listed=$(cut -d'|' -f1 "$CONF.sites" | grep -v '^[[:space:]]*\(#\|$\)' || true)
+
+for report in "$REPORT_DIR"/*.html; do
+    [ -e "$report" ] || continue
+    domain=$(basename "$report" .html)
+
+    if ! printf '%s\n' "$listed" | grep -qxF "$domain"; then
+        rm -f "$report"
+        rm -rf "${DB_DIR:?}/$domain"
+    fi
+done
+
 while IFS='|' read -r domain log; do
     # Blank lines and comments in the generated list.
     case "$domain" in ''|\#*) continue ;; esac
