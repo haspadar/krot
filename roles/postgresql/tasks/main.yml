@@ -53,3 +53,24 @@
     name: "postgresql@{{ postgresql_version }}-main"
     state: started
     enabled: true
+
+# The extension can only be created once the library is actually in memory, and
+# that happens at restart. Flushing here rather than at the end of the play keeps
+# the two steps in one run instead of needing a second one to catch up.
+- name: Apply the pending restart before using the extension
+  ansible.builtin.meta: flush_handlers
+
+# Into `postgres`, the cluster's own maintenance database. The view reports every
+# database in the cluster no matter which one it is read from, so installing it
+# here keeps the promise made in defaults/main.yml: this role provisions a server
+# and never learns the names of the sites' databases.
+- name: Collect query statistics
+  community.postgresql.postgresql_ext:
+    name: pg_stat_statements
+    db: postgres
+    state: "{{ postgresql_stat_statements | ternary('present', 'absent') }}"
+  become: true
+  become_user: postgres
+  # Reads and writes the catalogue directly; there is nothing for check mode to
+  # predict without a live connection.
+  check_mode: false
