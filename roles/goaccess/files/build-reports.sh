@@ -111,9 +111,13 @@ while IFS='|' read -r domain log; do
     if ! { zcat -f "${sources[@]}" 2>/dev/null | grep '^\[' || true; } | goaccess - \
         --config-file="$CONF" \
         --output="$tmp"; then
+        # The previous report goes too. `grep '^\['` only proves a line starts
+        # with a bracket, not that GoAccess can read it, so a format change can
+        # land here with a report still on disk — and a stale page that nothing
+        # can refresh is worse than an absent one, because it looks current.
         echo "report failed: $domain" >&2
         status=1
-        rm -f "$tmp"
+        rm -f "$tmp" "$out"
         continue
     fi
 

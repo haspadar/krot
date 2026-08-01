@@ -53,7 +53,7 @@ origin-сертификата, а список доменов с их трафи
 
 Формат `recipient` нёс всё, кроме момента запроса. Это не «отчёт без динамики», а полный отказ:
 
-```
+```text
 Fatal error has occurred
 Error occurred at: src/parser.c - parse_log - 2196
 No time format was found on your conf file.
