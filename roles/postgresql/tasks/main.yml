@@ -28,10 +28,15 @@
     state: present
   register: postgresql_repo
 
-- name: Install PostgreSQL {{ postgresql_version }}
+# postgresql-common carries pg_lsclusters and the postinst machinery, but no
+# server. Installing it alone lets the guard below look at the host before the
+# versioned package can create anything: apt's postinst would otherwise build a
+# cluster for the new version, and the role would be refusing to do something it
+# had already done.
+- name: Install the PostgreSQL tooling
   ansible.builtin.apt:
     name:
-      - "postgresql-{{ postgresql_version }}"
+      - postgresql-common
       # psycopg2 is what the community.postgresql modules use to connect; without
       # it any later per-database task fails on import.
       - python3-psycopg2
@@ -41,9 +46,10 @@
 
 # A major upgrade is not a version bump: PostgreSQL 18 cannot read PostgreSQL
 # 16's data directory, so raising postgresql_version installs a *second* cluster
-# beside the old one. pg_createcluster then picks the first free port, which is
-# 5433, while this role's config claims 5432 — so the new cluster fails to start
-# and the application keeps talking to the old one, none of it obviously.
+# beside the old one. pg_createcluster assigns it the first port not already
+# claimed by an existing cluster — 5433 — while this role's config claims 5432,
+# so the new cluster fails to start and the application keeps talking to the old
+# one, none of it obviously.
 #
 # The role refuses rather than guesses, because the only ways forward are
 # pg_upgrade, a dump/restore, or discarding the old data — and discarding is not
@@ -58,6 +64,10 @@
 - name: List the clusters that exist
   ansible.builtin.command: pg_lsclusters --no-header
   changed_when: false
+  # Without this the task is skipped under --check, leaving the list empty — so
+  # a dry run would report a clean upgrade over a cluster it never looked at,
+  # which is the one run where the guard matters most.
+  check_mode: false
   register: postgresql_clusters
 
 - name: Refuse to run beside a cluster of another version
@@ -98,10 +108,18 @@
   loop: "{{ postgresql_other_versions }}"
   when: postgresql_remove_other_versions
 
-# postgresql-common only creates a cluster when the package's postinst finds the
-# port free. Installing beside a running old cluster therefore leaves the new
-# version with no cluster at all, and removing the old one does not retroactively
-# create it — hence this explicit step rather than trusting the package.
+# Only now, once the guard has passed and any retired version is gone. Its
+# postinst is free to create the cluster on the port this role wants, because
+# nothing else holds it any more.
+- name: Install PostgreSQL {{ postgresql_version }}
+  ansible.builtin.apt:
+    name: "postgresql-{{ postgresql_version }}"
+    state: present
+
+# The postinst creates a cluster only when it finds the port free, and a run
+# that removed an old cluster in the same play has already passed that point —
+# so the new version can end up with no cluster at all. `creates` keeps this a
+# fallback: on a clean host the package got there first and the task is skipped.
 - name: Create the cluster if the package could not
   ansible.builtin.command:
     cmd: >-
