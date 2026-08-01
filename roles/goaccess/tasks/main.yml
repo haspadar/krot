@@ -70,6 +70,7 @@
     owner: root
     group: root
     mode: "0644"
+  register: goaccess_site_list
 
 - name: Install the report builder
   ansible.builtin.copy:
@@ -129,12 +130,15 @@
   # Nothing to predict without running it, and the run is what produces the
   # reports the rest of this role serves.
   check_mode: false
-  # Only when there is nothing to serve yet. Refreshing the numbers is the
-  # timer's job; a provisioning run that rebuilt them every time would report a
-  # change on every pass and drown out the ones that mean something.
+  # When there is nothing to serve yet, or when the site list just changed. A
+  # removed vhost leaves its report served until something rebuilds, and waiting
+  # for the timer would keep a retired domain readable for up to an hour.
+  # Otherwise this stays out of the way: refreshing the numbers is the timer's
+  # job, and rebuilding on every pass would report a change each time and drown
+  # out the ones that mean something.
   when:
     - goaccess_effective_sites | length > 0
-    - not goaccess_existing_reports.files
+    - not goaccess_existing_reports.files or goaccess_site_list.changed
 
 - name: Check the auth snippet exists
   ansible.builtin.stat:
