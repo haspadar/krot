@@ -14,7 +14,7 @@
     name: "{{ goaccess_user }}"
     system: true
     create_home: false
-    home: "{{ goaccess_db_dir }}"
+    home: /nonexistent
     shell: /usr/sbin/nologin
     groups: adm
     append: true
@@ -31,8 +31,6 @@
     # not, because the file list alone is the list of domains on this machine.
     - path: "{{ goaccess_report_dir }}"
       group: www-data
-      mode: "0750"
-    - path: "{{ goaccess_db_dir }}"
       mode: "0750"
     - path: /var/log/goaccess
       mode: "0750"
@@ -127,7 +125,6 @@
   become_user: "{{ goaccess_user }}"
   environment:
     REPORT_DIR: "{{ goaccess_report_dir }}"
-    DB_DIR: "{{ goaccess_db_dir }}"
   changed_when: true
   # Nothing to predict without running it, and the run is what produces the
   # reports the rest of this role serves.

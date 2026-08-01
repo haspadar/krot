@@ -27,11 +27,6 @@ goaccess_log_format: >-
 goaccess_date_format: "%d/%b/%Y"
 goaccess_time_format: "%H:%M:%S"
 
-# Persisted state, one database per site. Without it every run would see only
-# the logs still on disk, so the numbers would reset each time logrotate ran.
-# With it, history outlives the log files it came from.
-goaccess_db_dir: /var/lib/goaccess
-
 # How often the reports are rebuilt. A systemd timer, not cron: it keeps the
 # schedule, the command and the failure handling in one unit the host already
 # knows how to report on.

@@ -13,11 +13,10 @@ Group={{ goaccess_user }}
 # readable without running any of this as root.
 SupplementaryGroups=adm
 Environment=REPORT_DIR={{ goaccess_report_dir }}
-Environment=DB_DIR={{ goaccess_db_dir }}
 ExecStart=/usr/local/sbin/krot-goaccess-reports
 
-# It reads logs and writes two directories of its own; nothing else on the host
-# is any of its business.
+# It reads logs and writes its reports; nothing else on the host is any of its
+# business.
 NoNewPrivileges=true
 PrivateTmp=true
 PrivateDevices=true
@@ -26,4 +25,4 @@ ProtectHome=true
 ProtectKernelTunables=true
 ProtectControlGroups=true
 RestrictSUIDSGID=true
-ReadWritePaths={{ goaccess_report_dir }} {{ goaccess_db_dir }} /var/log/goaccess
+ReadWritePaths={{ goaccess_report_dir }} /var/log/goaccess
