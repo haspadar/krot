@@ -1,4 +1,19 @@
 ---
+# Ubuntu 24.04 ships GoAccess 1.8.1; the project's own repository has 1.11.
+# Worth the extra repository for what it fixes rather than for the number:
+# parsing is about a third faster and uses about a fifth less memory, which is
+# what a machine hosting thirty sites will care about, and the geolocation panel
+# gained cities plus a corrected country-to-continent mapping.
+#
+# Turn off to stay on whatever the distribution provides — the role works with
+# either, and the reports look the same apart from the city breakdown.
+#
+# Switching it off removes the repository but does not put the older version
+# back: apt does not downgrade on its own, and a role that silently replaced a
+# working binary with an older one would be doing something nobody asked for.
+# Downgrading is `apt install goaccess=<version>` by hand.
+goaccess_upstream_repository: true
+
 # Which logs to report on. One report per entry, never a combined one: a single
 # page listing every domain is exactly where the link between sites of a network
 # becomes visible to whoever gets hold of it.
