@@ -7,6 +7,20 @@ set -euo pipefail
 
 CONF=/etc/goaccess/krot-sites.conf
 REPORT_DIR="${REPORT_DIR:-/var/www/goaccess}"
+
+# One build at a time. The timer and an Ansible run can land together — more
+# easily than it sounds, because Persistent=true fires a missed build as soon as
+# the machine is back — and the second one clears the work directory out from
+# under the first, which then fails moving a report that is no longer there.
+# Re-executing under flock rather than waiting: a build that is already running
+# produces the same reports this one would.
+if [ -z "${GOACCESS_REPORTS_LOCKED:-}" ]; then
+    export GOACCESS_REPORTS_LOCKED=1
+    # --conflict-exit-code, because plain --nonblock exits 1 on a held lock and
+    # systemd would record a failed unit for what is the intended outcome. 0
+    # says the reports are being rebuilt, just not by this process.
+    exec flock --nonblock --conflict-exit-code 0 "$REPORT_DIR" "$0" "$@"
+fi
 # Reports are built here and moved into place. Inside REPORT_DIR, because a move
 # is only atomic within one filesystem and a role that runs on machines it has
 # never seen cannot assume /var/www and /var/lib share one. The name starts with
