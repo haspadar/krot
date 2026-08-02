@@ -4,13 +4,31 @@
 common_hostname: "{{ inventory_hostname }}"
 common_timezone: Europe/Minsk
 
+# What a person needs the moment they ssh in to find out why a machine is
+# unwell — installed everywhere rather than apt-get'ed on the spot, because the
+# moment you need them is the moment you would rather not be installing things.
+#
+# btop covers CPU, memory, disk and network on one screen; ncdu answers where
+# the disk went, which htop cannot. ripgrep searches a gigabyte of access log in
+# the time grep -r spends deciding where to start, and jq is what turns the JSON
+# these services emit into something answerable — both earn their place on a box
+# whose logs are the only thing to look at when a site misbehaves.
+#
+# fd-find installs its binary as `fdfind`, not `fd`: the name is taken by
+# another package in Debian. No alias is set here — what a login shell offers is
+# the operator's business, not the machine's.
 common_base_packages:
+  - btop
+  - ca-certificates
   - curl
+  - fd-find
   - git
   - htop
+  - jq
+  - ncdu
+  - ripgrep
   - rsync
   - unzip
-  - ca-certificates
 
 # Security updates only. Unattended feature upgrades on a machine serving live
 # sites buy nothing and can restart services at random.
