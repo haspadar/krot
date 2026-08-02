@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    MaxMind GeoLite2 databases kept current by a systemd timer, for whatever on
+    the host wants to map an address to a country.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - geoip
+    - maxmind
+
+dependencies: []

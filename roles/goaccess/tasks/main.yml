@@ -66,6 +66,27 @@
     mode: "2750"
   when: goaccess_humans_report
 
+- name: Check the GeoIP database is there
+  ansible.builtin.stat:
+    path: "{{ goaccess_geoip_database }}"
+  register: goaccess_geoip_stat
+  check_mode: false
+  when: goaccess_geoip_database | length > 0
+
+# Naming a database that is not on disk makes GoAccess exit on startup, so every
+# report on the machine would stop being rebuilt at once — and the ones already
+# built would sit there looking current. Stopping here says which file is
+# missing instead.
+- name: Refuse to configure a GeoIP database that is missing
+  ansible.builtin.assert:
+    that: goaccess_geoip_stat.stat.exists
+    fail_msg: >-
+      goaccess_geoip_database points at {{ goaccess_geoip_database }}, which is
+      not on this host. Run the geoip role first, or leave the variable empty to
+      build the reports without a geolocation panel.
+    quiet: true
+  when: goaccess_geoip_database | length > 0
+
 - name: Configure the parser
   ansible.builtin.template:
     src: goaccess.conf.j2

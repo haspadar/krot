@@ -1,0 +1,26 @@
+---
+# MaxMind account credentials. Empty by default and filled from the project's
+# secret store at run time — the same arrangement as nginx_auth_password: the
+# role knows it needs a key, not where the key is kept, so it stays portable to
+# a machine whose secrets live somewhere else entirely.
+#
+# The account id is the number on maxmind.com under "My Account"; the license
+# key is generated under "Manage license keys" and shown exactly once. MaxMind
+# hashes them, so a lost key cannot be recovered — only replaced.
+geoip_account_id: ""
+geoip_license_key: ""
+
+# Which databases to fetch. Country is what a traffic report needs; City costs
+# more to download and is only worth it if something actually reads it.
+geoip_editions:
+  - GeoLite2-Country
+
+# Where geoipupdate puts them. The path most consumers look in by default, and
+# the one goaccess is pointed at.
+geoip_database_dir: /var/lib/GeoIP
+
+# MaxMind publishes GeoLite2 twice a week (Tuesdays and Fridays). Checking daily
+# costs one conditional request and means a machine is never more than a day
+# behind, which matters because an address block reassigned to another country
+# is reported wrongly until the database catches up.
+geoip_update_interval: daily
