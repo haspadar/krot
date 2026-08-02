@@ -150,6 +150,12 @@
 # so the build below would be skipped and the humans reports would not appear
 # until the timer next fired — up to an hour of a feature that is on by default
 # quietly not being there.
+#
+# Compared against the full reports rather than the site list, because the two
+# are built as a pair and a site whose logs hold nothing deliberately gets
+# neither. Measuring against the sites would count rozly.nl — listed, no traffic
+# yet, no report by design — as missing, and rebuild on every single run
+# forever.
 - name: Look for humans reports already built
   ansible.builtin.find:
     paths: "{{ goaccess_report_dir }}/{{ goaccess_humans_subdir }}"
@@ -183,7 +189,9 @@
     - goaccess_effective_sites | length > 0
     - not goaccess_existing_reports.files
       or goaccess_site_list.changed
-      or (goaccess_humans_report and not goaccess_existing_humans.files | default([]))
+      or (goaccess_humans_report
+          and goaccess_existing_humans.files | default([]) | length
+              < goaccess_existing_reports.files | length)
 
 # The builder sets these on every report it writes, so a new machine never needs
 # this. An existing one does: reports written by an earlier version keep their
