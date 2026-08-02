@@ -7,6 +7,16 @@ set -euo pipefail
 
 CONF=/etc/goaccess/krot-sites.conf
 REPORT_DIR="${REPORT_DIR:-/var/www/goaccess}"
+# The second report per site: the same log read again with crawlers filtered
+# out. Kept in a subdirectory rather than as <domain>-humans.html so that
+# anything listing the reports by *.html still sees one file per domain and does
+# not have to know the suffix. Measured on berlindame.de 2026-08-02: 94 unique
+# visitors with crawlers, 37 without — the full report cannot answer "how many
+# people",
+# and a report without bots cannot show whether Googlebot is coming at all, so
+# both are kept.
+HUMANS_DIR="$REPORT_DIR/${HUMANS_SUBDIR:-humans}"
+BUILD_HUMANS="${BUILD_HUMANS:-1}"
 
 # One build at a time. The timer and an Ansible run can land together — more
 # easily than it sounds, because Persistent=true fires a missed build as soon as
@@ -53,7 +63,31 @@ status=0
 # left the directory behind with the wrong group. Nothing outlives a run in
 # here — a leftover is a report whose build was interrupted.
 rm -rf "$WORK_DIR"
-mkdir "$WORK_DIR"
+# Same narrowed umask as the humans directory below, and for the same reason:
+# while a build is running this holds finished reports, and the caller's umask
+# would leave it 2775 or 2755 — readable to every account on the machine, with
+# only the closed parent standing in the way.
+(umask 0027 && mkdir "$WORK_DIR")
+
+# Same inheritance as .build/: created under REPORT_DIR so the setgid bit gives
+# it the group that reads the reports. Not recreated each run, because unlike
+# .build/ its contents are what gets served — but mkdir -p is enough, since a
+# directory that already exists was made the same way.
+if [ "$BUILD_HUMANS" = "1" ]; then
+    # Made by Ansible with the mode it needs; this only covers a directory
+    # removed between runs. The umask is narrowed for the mkdir alone, because
+    # the caller's decides the mode here and neither candidate is right: 0002
+    # gives 2775, a plain 0022 host gives 2755, and the file names in this
+    # directory are the list of domains on the machine.
+    #
+    # Deliberately a umask rather than a chmod afterwards. This account is not
+    # in the group that owns the directory, and for such a user the kernel drops
+    # S_ISGID on *any* chmod while reporting success — measured: a chmod o-rwx,
+    # which does not name the bit at all, turned 2750 into 750. Reports would
+    # then be written into a group nothing else can read. A umask never touches
+    # the bit: measured 2750 under both 0002 and 0022.
+    (umask 0027 && mkdir -p "$HUMANS_DIR")
+fi
 
 # Drop reports for sites that are no longer listed. A vhost can be removed or a
 # domain retired, and the report would otherwise stay served for as long as the
@@ -61,7 +95,10 @@ mkdir "$WORK_DIR"
 # URL.
 listed=$(cut -d'|' -f1 "$CONF.sites" | grep -v '^[[:space:]]*\(#\|$\)' || true)
 
-for report in "$REPORT_DIR"/*.html; do
+# Both directories, not just the top one: the humans report of a retired domain
+# would otherwise sit there for the life of the machine, still naming the domain
+# and its traffic — the very thing this loop exists to prevent.
+for report in "$REPORT_DIR"/*.html "$HUMANS_DIR"/*.html; do
     [ -e "$report" ] || continue
     domain=$(basename "$report" .html)
 
@@ -79,6 +116,8 @@ while IFS='|' read -r domain log; do
     # reachable at a predictable path while it is being written. It still has to
     # end in .html — GoAccess picks its output format from the extension.
     tmp="$WORK_DIR/$domain.html"
+    humans_out="$HUMANS_DIR/$domain.html"
+    humans_tmp="$WORK_DIR/$domain.humans.html"
 
     # Every log still on disk, oldest first, read from scratch on each run.
     #
@@ -112,7 +151,7 @@ while IFS='|' read -r domain log; do
     # against the whole set rather than the live log alone, so a site whose
     # recent traffic sits in rotated files keeps its report.
     if [ ${#sources[@]} -eq 0 ]; then
-        rm -f "$out"
+        rm -f "$out" "$humans_out"
         continue
     fi
 
@@ -137,26 +176,65 @@ while IFS='|' read -r domain log; do
     # from what is on disk, one that outlived its logs would keep showing
     # traffic no source still holds — quietly, for as long as the machine runs.
     if [ "$parseable" -eq 0 ]; then
-        rm -f "$out"
+        rm -f "$out" "$humans_out"
         continue
     fi
 
-    if ! { zcat -f "${sources[@]}" 2>/dev/null | grep '^\[' || true; } | goaccess - \
-        --config-file="$CONF" \
-        --output="$tmp"; then
+    # Kept on disk rather than piped twice: the same lines feed both reports, and
+    # decompressing a fortnight of rotated logs a second time buys nothing.
+    lines="$WORK_DIR/$domain.log"
+    { zcat -f "${sources[@]}" 2>/dev/null | grep '^\[' || true; } > "$lines"
+
+    if ! goaccess - --config-file="$CONF" --output="$tmp" < "$lines"; then
         # The previous report goes too. `grep '^\['` only proves a line starts
         # with a bracket, not that GoAccess can read it, so a format change can
         # land here with a report still on disk — and a stale page that nothing
         # can refresh is worse than an absent one, because it looks current.
+        # The humans report goes with it: half a pair, silently older than the
+        # page beside it, is worse than none.
         echo "report failed: $domain" >&2
         status=1
-        rm -f "$tmp" "$out"
+        rm -f "$tmp" "$out" "$humans_out" "$lines"
         continue
     fi
+
+    # The same lines again, minus the crawlers. GoAccess decides what a crawler
+    # is from the user agent, so this is a filter on the data, not a different
+    # set of panels: referrers, countries and everything else appear in both,
+    # counted over a different set of visitors.
+    #
+    # --unknowns-as-crawlers is deliberately left out: measured on berlindame.de
+    # it moved the count by a single visit out of 36, which does not justify a
+    # flag whose meaning a reader would have to look up.
+    #
+    # Built before the full report is moved into place, so the pair appears
+    # together: a fresh humans page next to a full one still showing yesterday
+    # invites exactly the wrong comparison.
+    humans_built=0
+    if [ "$BUILD_HUMANS" = "1" ]; then
+        if goaccess - --config-file="$CONF" --ignore-crawlers \
+            --output="$humans_tmp" < "$lines"; then
+            humans_built=1
+        else
+            # The full report still stands — it was built from the same lines and
+            # is not in doubt. Only the humans one is dropped, so a stale copy is
+            # never served beside a fresh page.
+            echo "humans report failed: $domain" >&2
+            status=1
+            rm -f "$humans_tmp" "$humans_out"
+        fi
+    fi
+
+    rm -f "$lines"
 
     # Rename last: a half-written report is never served, and a reader either
     # gets the previous one or the new one, never a truncated page.
     mv "$tmp" "$out"
+
+    if [ "$humans_built" = "1" ]; then
+        mv "$humans_tmp" "$humans_out"
+        chmod 0640 "$humans_out"
+    fi
     # Readable by the account that serves it and by nobody else. The directory
     # is closed already, but a report is the traffic of a domain and there is no
     # reason for a second pair of eyes on the machine to have it.

@@ -52,6 +52,20 @@
   loop_control:
     label: "{{ item.path }}"
 
+# Created here rather than left to the builder, which runs as an account that is
+# not in the reader group — and for such a user the kernel silently drops the
+# setgid bit on chmod, so the builder can inherit the bit but never set it. This
+# task runs as root, where that restriction does not apply, and it also fixes a
+# directory left with the wrong mode by an earlier version.
+- name: Create the humans report directory
+  ansible.builtin.file:
+    path: "{{ goaccess_report_dir }}/{{ goaccess_humans_subdir }}"
+    state: directory
+    owner: "{{ goaccess_user }}"
+    group: "{{ goaccess_reader_group }}"
+    mode: "2750"
+  when: goaccess_humans_report
+
 - name: Configure the parser
   ansible.builtin.template:
     src: goaccess.conf.j2
@@ -131,12 +145,34 @@
   # would report a build that is not going to happen.
   check_mode: false
 
+# Counted separately from the full reports: on a machine upgraded from a version
+# without them, the full ones are all present and the site list has not changed,
+# so the build below would be skipped and the humans reports would not appear
+# until the timer next fired — up to an hour of a feature that is on by default
+# quietly not being there.
+#
+# Compared against the full reports rather than the site list, because the two
+# are built as a pair and a site whose logs hold nothing deliberately gets
+# neither. Measuring against the sites would count rozly.nl — listed, no traffic
+# yet, no report by design — as missing, and rebuild on every single run
+# forever.
+- name: Look for humans reports already built
+  ansible.builtin.find:
+    paths: "{{ goaccess_report_dir }}/{{ goaccess_humans_subdir }}"
+    patterns: "*.html"
+  register: goaccess_existing_humans
+  check_mode: false
+  failed_when: false
+  when: goaccess_humans_report
+
 - name: Build the reports once
   ansible.builtin.command: /usr/local/sbin/krot-goaccess-reports
   become: true
   become_user: "{{ goaccess_user }}"
   environment:
     REPORT_DIR: "{{ goaccess_report_dir }}"
+    BUILD_HUMANS: "{{ '1' if goaccess_humans_report else '0' }}"
+    HUMANS_SUBDIR: "{{ goaccess_humans_subdir }}"
   changed_when: true
   # check_mode: false forces the command to run even under --check, which is
   # what the two reads above need; here it would make a dry run write actual
@@ -151,7 +187,11 @@
   when:
     - not ansible_check_mode
     - goaccess_effective_sites | length > 0
-    - not goaccess_existing_reports.files or goaccess_site_list.changed
+    - not goaccess_existing_reports.files
+      or goaccess_site_list.changed
+      or (goaccess_humans_report
+          and goaccess_existing_humans.files | default([]) | length
+              < goaccess_existing_reports.files | length)
 
 # The builder sets these on every report it writes, so a new machine never needs
 # this. An existing one does: reports written by an earlier version keep their
@@ -165,6 +205,16 @@
   loop: "{{ goaccess_existing_reports.files }}"
   loop_control:
     label: "{{ item.path | basename }}"
+
+# Turning the humans report off leaves its directory behind, and the pages in it
+# stop being rebuilt while still being served — traffic frozen on the day the
+# switch was flipped, next to a full report that keeps moving. Whoever reads
+# them has no way to tell.
+- name: Remove the humans reports when they are switched off
+  ansible.builtin.file:
+    path: "{{ goaccess_report_dir }}/{{ goaccess_humans_subdir }}"
+    state: absent
+  when: not goaccess_humans_report
 
 # Earlier versions of this role served the reports themselves, on a loopback
 # port behind a password, reached over an SSH tunnel. Removed: the reports are

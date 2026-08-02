@@ -43,6 +43,21 @@ goaccess_interval: hourly
 # /var/log/nginx (group adm) and write its own directories.
 goaccess_user: goaccess
 
+# A second report per site with crawlers filtered out, alongside the full one.
+# Both are kept because they answer different questions: measured on
+# berlindame.de 2026-08-02, 94 unique visitors with crawlers against 37
+# without. The full
+# report cannot say how many people came; one without bots cannot show whether
+# Googlebot is coming at all, which matters more on a young site.
+#
+# On by default — it is the same log read a second time, a fraction of a second.
+goaccess_humans_report: true
+
+# Where those go, under goaccess_report_dir. A subdirectory rather than a
+# <domain>-humans.html suffix so that anything listing reports by *.html still
+# sees exactly one file per domain and needs no rule for telling the two apart.
+goaccess_humans_subdir: humans
+
 # GoAccess can serve a live report itself, over a websocket, rebuilding as
 # requests arrive. Not used here: it means a daemon holding the logs open, a
 # port to reach it on and a page whose cost is paid on every view. A timer
