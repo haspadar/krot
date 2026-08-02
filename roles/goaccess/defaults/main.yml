@@ -59,14 +59,26 @@ goaccess_interval: hourly
 goaccess_user: goaccess
 
 # A second report per site with crawlers filtered out, alongside the full one.
-# Both are kept because they answer different questions: measured on
-# berlindame.de 2026-08-02, 94 unique visitors with crawlers against 37
-# without. The full
-# report cannot say how many people came; one without bots cannot show whether
-# Googlebot is coming at all, which matters more on a young site.
 #
-# On by default — it is the same log read a second time, a fraction of a second.
-goaccess_humans_report: true
+# Off by default, and the reason is that it never became trustworthy. Three
+# passes were measured on berlindame.de: --ignore-crawlers alone left 41
+# "visitors", the name list below brought it to 36, and requiring browser-like
+# behaviour on top of that brought 103 addresses to 6. Of those six, three
+# fetched /media/ with referers exactly as a browser does and cannot be told
+# from people by the log at all. The honest count was two.
+#
+# A number that swings from 41 to 6 under filters that all look reasonable is
+# not a measurement, and it is read as one — which is worse than having no
+# figure. Distinguishing people from machines by request pattern alone has a
+# ceiling, and this is it. Anything needing a real count wants a mark the
+# browser executes, which the log cannot supply.
+#
+# The full report is unaffected and remains the point of the role: it counts
+# everything and answers whether a site is being crawled at all.
+#
+# Turning this on restores the second report; the role then rebuilds it on the
+# same run rather than waiting for the timer.
+goaccess_humans_report: false
 
 # Where those go, under goaccess_report_dir. A subdirectory rather than a
 # <domain>-humans.html suffix so that anything listing reports by *.html still
@@ -74,7 +86,11 @@ goaccess_humans_report: true
 goaccess_humans_subdir: humans
 
 # Agents counted as crawlers in the humans report on top of the ones GoAccess
-# knows. --ignore-crawlers only catches those that say so — "bot", "crawler",
+# knows. Unused while goaccess_humans_report is off, and kept for when it is
+# turned on: the list is measured against real traffic and would only have to be
+# rediscovered.
+#
+# --ignore-crawlers only catches those that say so — "bot", "crawler",
 # "spider" in the user agent — and half the machines crawling a site do not.
 # Measured on berlindame.de 2026-08-02: 41 "visitors" became 36, and the browser
 # list went from naming GoogleOther and Dataprovider to nothing but Chrome,
