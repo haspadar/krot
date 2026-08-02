@@ -4,12 +4,48 @@
 # alternative is a role that knows which host is an admin, which domain it
 # answers on and how its sessions work, none of which is true of the next
 # machine it runs on.
+# The signing key is vendored (fingerprint
+# C03B48887D5E56B046715D3297BD1A0133449C3D, Gerardo Orellana, the author of
+# GoAccess) rather than fetched at run time, so a provision never depends on a
+# keyserver being up or on what it hands back. Same arrangement as the ondrej
+# repository in the php role.
+- name: Add the GoAccess repository
+  ansible.builtin.deb822_repository:
+    name: goaccess
+    types: deb
+    uris: https://deb.goaccess.io/
+    suites: "{{ ansible_facts['distribution_release'] }}"
+    components: main
+    signed_by: "{{ lookup('ansible.builtin.file', 'goaccess-repo.asc') }}"
+    state: present
+  register: goaccess_repo
+  when: goaccess_upstream_repository
+
+# Left behind when the repository is switched off, apt would go on offering the
+# upstream package — and an installed 1.11 would stay installed, since apt does
+# not downgrade on its own.
+- name: Remove the GoAccess repository when it is switched off
+  ansible.builtin.deb822_repository:
+    name: goaccess
+    state: absent
+  register: goaccess_repo_removed
+  when: not goaccess_upstream_repository
+
 - name: Install GoAccess
   ansible.builtin.apt:
     name: goaccess
-    state: present
+    # latest only while the upstream repository is in use: `present` means "a
+    # goaccess is installed", so a machine that already had the distribution's
+    # 1.8.1 would keep it and the added repository would change nothing — the
+    # role would report success having done none of what it was asked. Without
+    # the repository this stays `present`, so the role never quietly pulls a new
+    # version of a package the distribution is supposed to own.
+    state: "{{ goaccess_upstream_repository | ternary('latest', 'present') }}"
     update_cache: true
-    cache_valid_time: 3600
+    # A repository added or removed on this run is not in the cache yet.
+    cache_valid_time: "{{ ((goaccess_repo.changed | default(false))
+                           or (goaccess_repo_removed.changed | default(false)))
+                          | ternary(0, 3600) }}"
 
 # An account of its own rather than root: this reads logs and writes HTML, and
 # neither needs the machine. Membership in adm is what grants the 0640 nginx

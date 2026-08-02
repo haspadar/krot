@@ -10,10 +10,15 @@
 geoip_account_id: ""
 geoip_license_key: ""
 
-# Which databases to fetch. Country is what a traffic report needs; City costs
-# more to download and is only worth it if something actually reads it.
+# Which databases to fetch. City includes the country, so it is not listed
+# alongside — GoAccess reads one file and shows both levels from it. It is
+# roughly seven times the size of the country-only database, which is the price
+# of the city breakdown.
+#
+# City is only shown by GoAccess 1.10 and later; on the version Ubuntu ships the
+# extra download buys nothing.
 geoip_editions:
-  - GeoLite2-Country
+  - GeoLite2-City
 
 # Where geoipupdate puts them. The path most consumers look in by default, and
 # the one goaccess is pointed at.

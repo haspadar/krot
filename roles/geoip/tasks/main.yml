@@ -74,6 +74,25 @@
     - geoip_existing.results | rejectattr('stat.exists') | list | length > 0
       or geoip_config.changed
 
+# A database dropped from geoip_editions stops being refreshed but keeps sitting
+# there, and a stale copy of exactly the file a consumer might still be pointed
+# at is worse than no copy: it answers, wrongly, and nothing says how old it is.
+- name: Find databases no longer configured
+  ansible.builtin.find:
+    paths: "{{ geoip_database_dir }}"
+    patterns: "*.mmdb"
+  register: geoip_all_databases
+  check_mode: false
+
+- name: Remove databases no longer configured
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ geoip_all_databases.files | map(attribute='path') | list }}"
+  when: (item | basename | regex_replace('\.mmdb$', '')) not in geoip_editions
+  loop_control:
+    label: "{{ item | basename }}"
+
 - name: Install the update timer units
   ansible.builtin.template:
     src: "{{ item.src }}"
