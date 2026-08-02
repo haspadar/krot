@@ -4,9 +4,13 @@
 # geography in it. Better to say so here than to leave that to be discovered.
 - name: Refuse to run without MaxMind credentials
   ansible.builtin.assert:
+    # Cast first: an account id written without quotes is a YAML integer, and
+    # length on an integer fails while resolving the task's own arguments — the
+    # operator would see "object of type 'int' has no len()" instead of the
+    # message below telling them which two values are missing.
     that:
-      - geoip_account_id | length > 0
-      - geoip_license_key | length > 0
+      - geoip_account_id | string | length > 0
+      - geoip_license_key | string | length > 0
     fail_msg: >-
       geoip_account_id and geoip_license_key are empty. Both come from a MaxMind
       account: the id is on the account page, the key is generated under "Manage
@@ -45,11 +49,17 @@
   # every run, and Ansible logs are not where secrets should end up.
   no_log: true
 
-- name: Look for databases already downloaded
-  ansible.builtin.find:
-    paths: "{{ geoip_database_dir }}"
-    patterns: "*.mmdb"
+# Each edition by name, not a count of *.mmdb files: a database left behind by
+# an earlier edition list keeps the count up while the one actually configured
+# is missing, and the download below would be skipped for a directory that has
+# the wrong file in it.
+- name: Look for the databases this host is configured for
+  ansible.builtin.stat:
+    path: "{{ geoip_database_dir }}/{{ item }}.mmdb"
   register: geoip_existing
+  loop: "{{ geoip_editions }}"
+  loop_control:
+    label: "{{ item }}"
   check_mode: false
 
 # Fetched here rather than left to the timer: a role that finishes with no
@@ -61,7 +71,7 @@
   check_mode: false
   when:
     - not ansible_check_mode
-    - geoip_existing.files | length < geoip_editions | length
+    - geoip_existing.results | rejectattr('stat.exists') | list | length > 0
       or geoip_config.changed
 
 - name: Install the update timer units
