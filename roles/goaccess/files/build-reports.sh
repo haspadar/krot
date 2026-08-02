@@ -9,8 +9,9 @@ CONF=/etc/goaccess/krot-sites.conf
 REPORT_DIR="${REPORT_DIR:-/var/www/goaccess}"
 # Reports are built here and moved into place. Inside REPORT_DIR, because a move
 # is only atomic within one filesystem and a role that runs on machines it has
-# never seen cannot assume /var/www and /var/lib share one. The vhost refuses
-# this directory, so a half-written report is not reachable while it is written.
+# never seen cannot assume /var/www and /var/lib share one. The name starts with
+# a dot and the reports are addressed by domain, so nothing that serves them by
+# name will hand out a half-written one.
 WORK_DIR="$REPORT_DIR/.build"
 
 if [ ! -r "$CONF" ]; then
@@ -18,9 +19,27 @@ if [ ! -r "$CONF" ]; then
     exit 1
 fi
 
+# Checked before anything below removes a path built from it: an empty or
+# mistyped REPORT_DIR would otherwise turn the cleanup into a delete somewhere
+# else entirely.
+if [ ! -d "$REPORT_DIR" ]; then
+    echo "missing report directory: $REPORT_DIR" >&2
+    exit 1
+fi
+
 status=0
 
-mkdir -p "$WORK_DIR"
+# The setgid bit on REPORT_DIR is what gives a report the group that reads it —
+# this account is deliberately not a member of that group, so it cannot set it
+# itself. A file built in .build/ takes the group of *that* directory and mv
+# does not change it, so .build/ has to carry the bit and the group as well.
+#
+# Recreated from scratch each run rather than reused: that way it inherits both
+# from REPORT_DIR every time, including on a machine where an earlier version
+# left the directory behind with the wrong group. Nothing outlives a run in
+# here — a leftover is a report whose build was interrupted.
+rm -rf "$WORK_DIR"
+mkdir "$WORK_DIR"
 
 # Drop reports for sites that are no longer listed. A vhost can be removed or a
 # domain retired, and the report would otherwise stay served for as long as the
@@ -124,7 +143,16 @@ while IFS='|' read -r domain log; do
     # Rename last: a half-written report is never served, and a reader either
     # gets the previous one or the new one, never a truncated page.
     mv "$tmp" "$out"
-    chmod 0644 "$out"
+    # Readable by the account that serves it and by nobody else. The directory
+    # is closed already, but a report is the traffic of a domain and there is no
+    # reason for a second pair of eyes on the machine to have it.
+    #
+    # The group is not set here: it comes from the setgid bit on the directory,
+    # because this account is deliberately not a member of the group that reads
+    # the reports, and chgrp into a group you are not in is refused for anyone
+    # but root. Setgid has the kernel do it instead — including for the file
+    # built in .build/ and moved in, since that directory inherits the bit too.
+    chmod 0640 "$out"
 done < "$CONF.sites"
 
 exit "$status"

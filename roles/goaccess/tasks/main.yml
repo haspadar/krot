@@ -1,21 +1,9 @@
 ---
-# The reports name every domain on the machine and how much traffic each one
-# gets. Behind a tunnel that is fine; on a public interface it is the list the
-# network exists to keep apart, and with auth off it is that list handed to
-# anyone who finds the port. The address stays configurable — a host reached
-# over a private network may legitimately want another one — but leaving the
-# loopback has to be a deliberate act, not a typo in a variable.
-- name: Refuse to publish the reports beyond loopback without a password
-  ansible.builtin.assert:
-    that: goaccess_listen_address.startswith('127.') or goaccess_auth_enabled
-    fail_msg: >-
-      goaccess_listen_address is {{ goaccess_listen_address }}, which is
-      reachable from outside this machine, and goaccess_auth_enabled is off.
-      That serves every domain on this host, and its traffic, to whoever finds
-      the port. Keep the default 127.0.0.1 and use an SSH tunnel, or turn the
-      password on.
-    quiet: true
-
+# This role builds the reports and stops there. Serving them is the project's
+# job — busel puts them behind the sign-in its admin already has — because the
+# alternative is a role that knows which host is an admin, which domain it
+# answers on and how its sessions work, none of which is true of the next
+# machine it runs on.
 - name: Install GoAccess
   ansible.builtin.apt:
     name: goaccess
@@ -44,11 +32,17 @@
     group: "{{ item.group | default(goaccess_user) }}"
     mode: "{{ item.mode }}"
   loop:
-    # nginx reads the reports, so its group needs the directory; the world does
-    # not, because the file list alone is the list of domains on this machine.
+    # The account serving the reports reads them through this group; the world
+    # does not get in, because the file list alone is the list of domains on
+    # this machine.
+    #
+    # setgid: reports are written by an account that is not in that group, and
+    # it cannot chgrp into one it does not belong to. The bit makes the kernel
+    # assign the group instead, and .build/ inherits it in turn, so a report
+    # carries the right group from creation rather than after a fix-up.
     - path: "{{ goaccess_report_dir }}"
-      group: www-data
-      mode: "0750"
+      group: "{{ goaccess_reader_group }}"
+      mode: "2750"
     - path: /var/log/goaccess
       mode: "0750"
     - path: /etc/goaccess
@@ -159,61 +153,26 @@
     - goaccess_effective_sites | length > 0
     - not goaccess_existing_reports.files or goaccess_site_list.changed
 
-- name: Read the auth snippet
-  ansible.builtin.slurp:
-    src: /etc/nginx/snippets/krot-auth.conf
-  register: goaccess_auth_snippet
-  failed_when: false
-  # A read whose result decides whether the vhost is written at all.
-  check_mode: false
-  when: goaccess_auth_enabled
+# The builder sets these on every report it writes, so a new machine never needs
+# this. An existing one does: reports written by an earlier version keep their
+# old mode until something rebuilds them, which is the timer, up to an hour
+# away. For that hour the role would claim a permission the files do not have.
+- name: Correct the mode of reports built earlier
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    group: "{{ goaccess_reader_group }}"
+    mode: "0640"
+  loop: "{{ goaccess_existing_reports.files }}"
+  loop_control:
+    label: "{{ item.path | basename }}"
 
-# An include naming a file that is not there is not a broken page — nginx calls
-# it emerg and refuses the entire configuration, so every site on the machine
-# goes down with it. Better to stop here, with the sites still up.
-#
-# The contents are checked, not just the path: an empty or edited snippet passes
-# a existence test and leaves the reports served to anyone who reaches the port.
-# The password file it names has to be there too, for the same emerg reason.
-- name: Refuse to serve the reports without working authentication
-  ansible.builtin.assert:
-    that:
-      - goaccess_auth_snippet.content is defined
-      - "'auth_basic' in (goaccess_auth_snippet.content | b64decode)"
-      - "'auth_basic_user_file' in (goaccess_auth_snippet.content | b64decode)"
-    fail_msg: >-
-      goaccess_auth_enabled is on but /etc/nginx/snippets/krot-auth.conf is
-      missing or does not set auth_basic. Run the nginx role with
-      nginx_auth_enabled first: without it the reports would be served to
-      whoever reaches the port, and a missing include takes down every site on
-      this host rather than just these pages.
-    quiet: true
-  when: goaccess_auth_enabled
-
-- name: Check the password file the snippet names
-  ansible.builtin.stat:
-    path: "{{ (goaccess_auth_snippet.content | b64decode)
-              | regex_search('auth_basic_user_file\\s+([^;]+);', '\\1') | first | trim }}"
-  register: goaccess_auth_password_file
-  check_mode: false
-  when: goaccess_auth_enabled
-
-- name: Refuse to serve the reports without the password file
-  ansible.builtin.assert:
-    that: goaccess_auth_password_file.stat.exists
-    fail_msg: >-
-      The auth snippet names a password file that does not exist. nginx treats
-      that as emerg and refuses the whole configuration, so every site on this
-      host would go down with the reports.
-    quiet: true
-  when: goaccess_auth_enabled
-
-- name: Serve the reports
-  ansible.builtin.template:
-    src: vhost.conf.j2
-    dest: /etc/nginx/conf.d/krot-goaccess.conf
-    owner: root
-    group: root
-    mode: "0644"
-    backup: true
+# Earlier versions of this role served the reports themselves, on a loopback
+# port behind a password, reached over an SSH tunnel. Removed: the reports are
+# read through the project's admin now, and leaving a second way in would mean a
+# second password to rotate and a port to remember. Machines provisioned by that
+# version still have the vhost, and nginx would go on serving it.
+- name: Remove the report vhost this role used to install
+  ansible.builtin.file:
+    path: /etc/nginx/conf.d/krot-goaccess.conf
+    state: absent
   notify: Reload nginx for goaccess
