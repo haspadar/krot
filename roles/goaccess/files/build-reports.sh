@@ -69,6 +69,16 @@ mkdir "$WORK_DIR"
 # .build/ its contents are what gets served — but mkdir -p is enough, since a
 # directory that already exists was made the same way.
 if [ "$BUILD_HUMANS" = "1" ]; then
+    # Made by Ansible with the mode it needs; this only covers the case of a
+    # directory removed between runs, where inheriting the parent's setgid bit
+    # and 0750 through umask is the best that can be done here.
+    #
+    # Deliberately no chmod afterwards. This account is not in the group that
+    # owns the directory, and for such a user the kernel drops S_ISGID on *any*
+    # chmod while reporting success — measured: a chmod o-rwx, which does not
+    # name the bit at all, turned 2750 into 750. Reports would then be written
+    # into a group nothing else can read, and only the next Ansible run would
+    # notice.
     mkdir -p "$HUMANS_DIR"
 fi
 
