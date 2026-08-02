@@ -6,6 +6,9 @@
 set -euo pipefail
 
 CONF=/etc/goaccess/krot-sites.conf
+# Agents to treat as crawlers in the humans report beyond the ones GoAccess
+# knows. Written by Ansible; absent when the humans report is switched off.
+CRAWLERS="${CRAWLERS:-/etc/goaccess/krot-crawlers.list}"
 REPORT_DIR="${REPORT_DIR:-/var/www/goaccess}"
 # The second report per site: the same log read again with crawlers filtered
 # out. Kept in a subdirectory rather than as <domain>-humans.html so that
@@ -212,7 +215,16 @@ while IFS='|' read -r domain log; do
     # invites exactly the wrong comparison.
     humans_built=0
     if [ "$BUILD_HUMANS" = "1" ]; then
-        if goaccess - --config-file="$CONF" --ignore-crawlers \
+        # -b adds to GoAccess's own browsers.list rather than replacing it, so
+        # the agents it already knows stay filtered. Only passed if the file is
+        # there: an unreadable one makes GoAccess exit, and losing the humans
+        # report over a missing list is worse than a report with more bots in
+        # it. Every name in it is one --ignore-crawlers does not catch, because
+        # the agent never calls itself a bot.
+        humans_args=(--ignore-crawlers)
+        [ -r "$CRAWLERS" ] && humans_args+=(-b "$CRAWLERS")
+
+        if goaccess - --config-file="$CONF" "${humans_args[@]}" \
             --output="$humans_tmp" < "$lines"; then
             humans_built=1
         else

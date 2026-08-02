@@ -74,6 +74,18 @@
     group: root
     mode: "0644"
 
+# Passed to the humans build with -b, never named in the parser config: the
+# config is shared by both reports, and the full one counts crawlers on purpose.
+- name: List the crawlers GoAccess does not know
+  ansible.builtin.template:
+    src: crawlers.j2
+    dest: /etc/goaccess/krot-crawlers.list
+    owner: root
+    group: root
+    mode: "0644"
+  register: goaccess_crawler_list
+  when: goaccess_humans_report
+
 # When no sites are given, take them from the host: a domain is reported on if
 # it has an enabled vhost. Naming them in inventory would move the site list into
 # the machine's configuration, and this project deliberately keeps it out —
@@ -189,6 +201,7 @@
     - goaccess_effective_sites | length > 0
     - not goaccess_existing_reports.files
       or goaccess_site_list.changed
+      or goaccess_crawler_list.changed | default(false)
       or (goaccess_humans_report
           and goaccess_existing_humans.files | default([]) | length
               < goaccess_existing_reports.files | length)
@@ -212,8 +225,14 @@
 # them has no way to tell.
 - name: Remove the humans reports when they are switched off
   ansible.builtin.file:
-    path: "{{ goaccess_report_dir }}/{{ goaccess_humans_subdir }}"
+    path: "{{ item }}"
     state: absent
+  loop:
+    - "{{ goaccess_report_dir }}/{{ goaccess_humans_subdir }}"
+    # The crawler list goes with them. On its own it is harmless, but a list of
+    # agents to filter, sitting next to no report that filters them, reads as a
+    # feature that is on when it is not.
+    - /etc/goaccess/krot-crawlers.list
   when: not goaccess_humans_report
 
 # Earlier versions of this role served the reports themselves, on a loopback
