@@ -55,7 +55,7 @@ ansible-playbook bootstrap.yml -u root -k
 | Роль | Что делает |
 |------|-----------|
 | `bootstrap` | Операторский юзер + sudo, `authorized_keys`, `PermitRootLogin no`, `PasswordAuthentication no` |
-| `common` | hostname, timezone, базовые пакеты, unattended security-upgrades |
+| `common` | hostname, timezone, базовые пакеты (включая `btop`, `ncdu`, `ripgrep`, `jq`), unattended security-upgrades |
 | `firewall` | ufw; при `firewall_cloudflare_only` пускает 80/443 только с диапазонов Cloudflare и обновляет их weekly-таймером |
 | `fail2ban` | fail2ban с джейлом `sshd` |
 | `php` | PHP-FPM из ondrej PPA; slowlog, access-log с таймингами |
@@ -67,6 +67,10 @@ ansible-playbook bootstrap.yml -u root -k
 | `goaccess` | Отчёты посещаемости по логам nginx — по одному на сайт, на loopback-порту за basic auth |
 
 Каждая роль атомарна и применима отдельно. Все параметры — в `roles/<role>/defaults/main.yml`.
+
+**`fd` на машине называется `fdfind`.** Пакет `fd-find` не может занять имя `fd` — оно
+принадлежит другому пакету Debian. Алиас роль не заводит: содержимое login-шелла — дело
+оператора, а не машины.
 
 ### Что роли намеренно НЕ делают
 
