@@ -10,8 +10,15 @@
 # `log` defaults to /var/log/nginx/<domain>-access.log when omitted.
 goaccess_sites: []
 
-# Where the generated reports land. Served by nginx, never world-readable.
+# Where the generated reports land. This role writes them and stops; what reads
+# them is the project — busel serves them through its admin. The directory is
+# group-readable so that account can get in, and closed to everyone else,
+# because the file names alone are the list of domains on this machine.
 goaccess_report_dir: /var/www/goaccess
+
+# The group allowed to read the reports. Whatever runs the page that serves
+# them: on busel that is PHP-FPM, which shares www-data with nginx.
+goaccess_reader_group: www-data
 
 # The nginx log_format the reports are parsed with. The default matches the
 # `recipient` format the sites generate:
@@ -36,20 +43,7 @@ goaccess_interval: hourly
 # /var/log/nginx (group adm) and write its own directories.
 goaccess_user: goaccess
 
-# Served on a port of its own, bound to loopback: reached over an SSH tunnel
-#
-#   ssh -L 8443:127.0.0.1:8443 <host>   then http://127.0.0.1:8443/
-#
-# rather than published. A subdomain would need a Cloudflare zone, a DNS record
-# and an origin certificate, and it would put the list of domains and their
-# traffic behind nothing but a password on the public internet. Binding to
-# loopback means the firewall has nothing to close, because nothing outside the
-# machine can reach the port in the first place.
-goaccess_listen_address: 127.0.0.1
-goaccess_listen_port: 8443
-
-# Basic auth on top of the tunnel. The mechanism is the nginx role's — the same
-# password file and snippet — because a second one would be a second thing to
-# get wrong. Krot never decides which sites are published; this is its own page,
-# so here it does decide, and the answer is always "closed".
-goaccess_auth_enabled: true
+# GoAccess can serve a live report itself, over a websocket, rebuilding as
+# requests arrive. Not used here: it means a daemon holding the logs open, a
+# port to reach it on and a page whose cost is paid on every view. A timer
+# writing a file costs one second an hour and leaves nothing listening.
