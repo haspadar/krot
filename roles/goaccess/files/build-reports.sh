@@ -20,6 +20,10 @@ REPORT_DIR="${REPORT_DIR:-/var/www/goaccess}"
 # both are kept.
 HUMANS_DIR="$REPORT_DIR/${HUMANS_SUBDIR:-humans}"
 BUILD_HUMANS="${BUILD_HUMANS:-1}"
+# How many requests carrying one of this site's own pages as the referer an
+# address must make before the humans report counts it. See the two-pass awk
+# below for why this is not 1.
+HUMANS_MIN_REFERERS="${HUMANS_MIN_REFERERS:-2}"
 
 # One build at a time. The timer and an Ansible run can land together — more
 # easily than it sounds, because Persistent=true fires a missed build as soon as
@@ -121,6 +125,9 @@ while IFS='|' read -r domain log; do
     tmp="$WORK_DIR/$domain.html"
     humans_out="$HUMANS_DIR/$domain.html"
     humans_tmp="$WORK_DIR/$domain.humans.html"
+    # Named here rather than where it is written, so the cleanup below can name
+    # it too even when the humans report is switched off and nothing wrote it.
+    humans_lines="$WORK_DIR/$domain.humans.log"
 
     # Every log still on disk, oldest first, read from scratch on each run.
     #
@@ -215,6 +222,45 @@ while IFS='|' read -r domain log; do
     # invites exactly the wrong comparison.
     humans_built=0
     if [ "$BUILD_HUMANS" = "1" ]; then
+        # Two passes over the log before GoAccess sees it, because the question
+        # cannot be answered line by line: keep only addresses that asked for
+        # something with one of this site's own pages as the referer, at least
+        # $HUMANS_MIN_REFERERS times.
+        #
+        # What this tells apart: a browser that renders a page then fetches its
+        # images, sending the page's address as Referer, from a scanner walking
+        # a list of URLs with no referer at all. GoAccess reads each line on its
+        # own and never knows what the same address did before, so grouping has
+        # to happen here.
+        #
+        # The threshold is not 1. Measured on berlindame.de: a scanner probing
+        # /.git/HEAD made 53 requests, exactly one of them a HEAD / carrying a
+        # referer — enough to pass a "has any" test. Requiring two drops it,
+        # because a browser loading a page emits referers by the dozen. At 2 the
+        # site's 102 addresses come down to 6; at 3 to 5, so the number is not
+        # balanced on the edge of the threshold.
+        #
+        # Names are still filtered as well, by -b below: neither test works
+        # alone. Googlebot fetches images and sends referers like a browser, and
+        # a scanner pretending to be Chrome is invisible to a name list.
+        # $3 is the address only in the current log format, where the bracketed
+        # timestamp takes the first two fields. Lines written before the format
+        # carried a time start with the address itself, and there $3 is the
+        # server name — counting those would file requests under "berlindame.de"
+        # as if it were a visitor. They cannot reach here, because $lines is
+        # built with grep '^\[' above, but the dependency is checked rather than
+        # assumed: it is one deletion away from silently counting hostnames.
+        awk -v dom="$domain" -v min="$HUMANS_MIN_REFERERS" '
+            !/^\[/ { next }
+            # Pass 1: count each address requests that carry one of this site own
+            # pages as the referer.
+            NR == FNR {
+                if (index($0, "\"http://" dom) || index($0, "\"https://" dom)) seen[$3]++
+                next
+            }
+            # Pass 2: keep every line belonging to an address that cleared it.
+            seen[$3] >= min
+        ' "$lines" "$lines" > "$humans_lines"
         # -b adds to GoAccess's own browsers.list rather than replacing it, so
         # the agents it already knows stay filtered. Only passed if the file is
         # there: an unreadable one makes GoAccess exit, and losing the humans
@@ -224,8 +270,12 @@ while IFS='|' read -r domain log; do
         humans_args=(--ignore-crawlers)
         [ -r "$CRAWLERS" ] && humans_args+=(-b "$CRAWLERS")
 
+        # Nobody cleared the behaviour test: on a new site that is the honest
+        # answer, and a page of zeroes says it better than a stale report or a
+        # missing one. GoAccess writes a report for empty input when reading a
+        # stream, so this needs no special case beyond not pretending otherwise.
         if goaccess - --config-file="$CONF" "${humans_args[@]}" \
-            --output="$humans_tmp" < "$lines"; then
+            --output="$humans_tmp" < "$humans_lines"; then
             humans_built=1
         else
             # The full report still stands — it was built from the same lines and
@@ -237,7 +287,7 @@ while IFS='|' read -r domain log; do
         fi
     fi
 
-    rm -f "$lines"
+    rm -f "$lines" "$humans_lines"
 
     # Rename last: a half-written report is never served, and a reader either
     # gets the previous one or the new one, never a truncated page.

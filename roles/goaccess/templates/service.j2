@@ -15,6 +15,7 @@ SupplementaryGroups=adm
 Environment=REPORT_DIR={{ goaccess_report_dir }}
 Environment=BUILD_HUMANS={{ '1' if goaccess_humans_report else '0' }}
 Environment=HUMANS_SUBDIR={{ goaccess_humans_subdir }}
+Environment=HUMANS_MIN_REFERERS={{ goaccess_humans_min_referers }}
 ExecStart=/usr/local/sbin/krot-goaccess-reports
 
 # It reads logs and writes its reports; nothing else on the host is any of its

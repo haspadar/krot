@@ -195,6 +195,7 @@
       dest: krot-goaccess.timer
   loop_control:
     label: "{{ item.dest }}"
+  register: goaccess_timer_units
   notify: Restart the goaccess timer
 
 - name: Enable the timer
@@ -249,6 +250,7 @@
     REPORT_DIR: "{{ goaccess_report_dir }}"
     BUILD_HUMANS: "{{ '1' if goaccess_humans_report else '0' }}"
     HUMANS_SUBDIR: "{{ goaccess_humans_subdir }}"
+    HUMANS_MIN_REFERERS: "{{ goaccess_humans_min_referers }}"
   changed_when: true
   # check_mode: false forces the command to run even under --check, which is
   # what the two reads above need; here it would make a dry run write actual
@@ -267,6 +269,7 @@
       or goaccess_site_list.changed
       or goaccess_crawler_list.changed | default(false)
       or goaccess_parser_config.changed | default(false)
+      or goaccess_timer_units.changed | default(false)
       or (goaccess_humans_report
           and goaccess_existing_humans.files | default([]) | length
               < goaccess_existing_reports.files | length)
