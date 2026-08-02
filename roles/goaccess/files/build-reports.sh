@@ -10,8 +10,9 @@ REPORT_DIR="${REPORT_DIR:-/var/www/goaccess}"
 # The second report per site: the same log read again with crawlers filtered
 # out. Kept in a subdirectory rather than as <domain>-humans.html so that
 # anything listing the reports by *.html still sees one file per domain and does
-# not have to know the suffix. Measured on berlindame.de: 93 unique visitors
-# with crawlers, 36 without — the full report cannot answer "how many people",
+# not have to know the suffix. Measured on berlindame.de 2026-08-02: 94 unique
+# visitors with crawlers, 37 without — the full report cannot answer "how many
+# people",
 # and a report without bots cannot show whether Googlebot is coming at all, so
 # both are kept.
 HUMANS_DIR="$REPORT_DIR/${HUMANS_SUBDIR:-humans}"
@@ -62,24 +63,30 @@ status=0
 # left the directory behind with the wrong group. Nothing outlives a run in
 # here — a leftover is a report whose build was interrupted.
 rm -rf "$WORK_DIR"
-mkdir "$WORK_DIR"
+# Same narrowed umask as the humans directory below, and for the same reason:
+# while a build is running this holds finished reports, and the caller's umask
+# would leave it 2775 or 2755 — readable to every account on the machine, with
+# only the closed parent standing in the way.
+(umask 0027 && mkdir "$WORK_DIR")
 
 # Same inheritance as .build/: created under REPORT_DIR so the setgid bit gives
 # it the group that reads the reports. Not recreated each run, because unlike
 # .build/ its contents are what gets served — but mkdir -p is enough, since a
 # directory that already exists was made the same way.
 if [ "$BUILD_HUMANS" = "1" ]; then
-    # Made by Ansible with the mode it needs; this only covers the case of a
-    # directory removed between runs, where inheriting the parent's setgid bit
-    # and 0750 through umask is the best that can be done here.
+    # Made by Ansible with the mode it needs; this only covers a directory
+    # removed between runs. The umask is narrowed for the mkdir alone, because
+    # the caller's decides the mode here and neither candidate is right: 0002
+    # gives 2775, a plain 0022 host gives 2755, and the file names in this
+    # directory are the list of domains on the machine.
     #
-    # Deliberately no chmod afterwards. This account is not in the group that
-    # owns the directory, and for such a user the kernel drops S_ISGID on *any*
-    # chmod while reporting success — measured: a chmod o-rwx, which does not
-    # name the bit at all, turned 2750 into 750. Reports would then be written
-    # into a group nothing else can read, and only the next Ansible run would
-    # notice.
-    mkdir -p "$HUMANS_DIR"
+    # Deliberately a umask rather than a chmod afterwards. This account is not
+    # in the group that owns the directory, and for such a user the kernel drops
+    # S_ISGID on *any* chmod while reporting success — measured: a chmod o-rwx,
+    # which does not name the bit at all, turned 2750 into 750. Reports would
+    # then be written into a group nothing else can read. A umask never touches
+    # the bit: measured 2750 under both 0002 and 0022.
+    (umask 0027 && mkdir -p "$HUMANS_DIR")
 fi
 
 # Drop reports for sites that are no longer listed. A vhost can be removed or a

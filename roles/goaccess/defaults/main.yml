@@ -45,7 +45,8 @@ goaccess_user: goaccess
 
 # A second report per site with crawlers filtered out, alongside the full one.
 # Both are kept because they answer different questions: measured on
-# berlindame.de, 93 unique visitors with crawlers against 36 without. The full
+# berlindame.de 2026-08-02, 94 unique visitors with crawlers against 37
+# without. The full
 # report cannot say how many people came; one without bots cannot show whether
 # Googlebot is coming at all, which matters more on a young site.
 #
