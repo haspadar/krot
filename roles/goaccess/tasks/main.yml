@@ -137,6 +137,8 @@
   become_user: "{{ goaccess_user }}"
   environment:
     REPORT_DIR: "{{ goaccess_report_dir }}"
+    BUILD_HUMANS: "{{ '1' if goaccess_humans_report else '0' }}"
+    HUMANS_SUBDIR: "{{ goaccess_humans_subdir }}"
   changed_when: true
   # check_mode: false forces the command to run even under --check, which is
   # what the two reads above need; here it would make a dry run write actual
@@ -165,6 +167,16 @@
   loop: "{{ goaccess_existing_reports.files }}"
   loop_control:
     label: "{{ item.path | basename }}"
+
+# Turning the humans report off leaves its directory behind, and the pages in it
+# stop being rebuilt while still being served — traffic frozen on the day the
+# switch was flipped, next to a full report that keeps moving. Whoever reads
+# them has no way to tell.
+- name: Remove the humans reports when they are switched off
+  ansible.builtin.file:
+    path: "{{ goaccess_report_dir }}/{{ goaccess_humans_subdir }}"
+    state: absent
+  when: not goaccess_humans_report
 
 # Earlier versions of this role served the reports themselves, on a loopback
 # port behind a password, reached over an SSH tunnel. Removed: the reports are
