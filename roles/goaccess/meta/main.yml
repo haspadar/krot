@@ -2,8 +2,9 @@
 galaxy_info:
   author: haspadar
   description: >-
-    GoAccess reports from the nginx access logs, one per site, served on a
-    loopback port behind basic auth. No third-party script touches the sites.
+    GoAccess reports from the nginx access logs, one per site plus one counting
+    people rather than crawlers. Built by a timer and left on disk for the
+    project to serve. No third-party script touches the sites.
   license: MIT
   min_ansible_version: "2.15"
   platforms:

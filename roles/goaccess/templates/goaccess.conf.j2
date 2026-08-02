@@ -11,6 +11,13 @@ time-format {{ goaccess_time_format }}
 # all rather than like the traffic it is.
 ignore-crawlers false
 
+{% if goaccess_geoip_database %}
+# Addresses are mapped to countries through this database. GoAccess exits if the
+# file is named but missing, so the role checks for it before writing this line
+# rather than letting every report fail at once.
+geoip-database {{ goaccess_geoip_database }}
+
+{% endif %}
 # A line older than the format is not a failure: entries written before the
 # timestamp was added stay in the file until they rotate out, and they are meant
 # to be skipped rather than to stop the run.

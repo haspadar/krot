@@ -1,0 +1,109 @@
+---
+# Without these geoipupdate authenticates as nobody and writes an error where a
+# database should be, which the consumer only notices as a report with no
+# geography in it. Better to say so here than to leave that to be discovered.
+- name: Refuse to run without MaxMind credentials
+  ansible.builtin.assert:
+    # Cast first: an account id written without quotes is a YAML integer, and
+    # length on an integer fails while resolving the task's own arguments — the
+    # operator would see "object of type 'int' has no len()" instead of the
+    # message below telling them which two values are missing.
+    that:
+      - geoip_account_id | string | length > 0
+      - geoip_license_key | string | length > 0
+    fail_msg: >-
+      geoip_account_id and geoip_license_key are empty. Both come from a MaxMind
+      account: the id is on the account page, the key is generated under "Manage
+      license keys" and displayed once. Put them in the project's secret store
+      and pass them in, the way nginx_auth_password is passed.
+    quiet: true
+
+- name: Install geoipupdate
+  ansible.builtin.apt:
+    name: geoipupdate
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the database directory
+  ansible.builtin.file:
+    path: "{{ geoip_database_dir }}"
+    state: directory
+    owner: root
+    group: root
+    # World-readable on purpose: the databases are public data, and whatever
+    # reads them runs as its own unprivileged account.
+    mode: "0755"
+
+# 0600 root: the file holds the license key, and a key readable by every account
+# on the machine is a key that leaks with the first misconfigured service.
+- name: Configure geoipupdate
+  ansible.builtin.template:
+    src: GeoIP.conf.j2
+    dest: /etc/GeoIP.conf
+    owner: root
+    group: root
+    mode: "0600"
+  register: geoip_config
+  # The template contains the license key; a diff would print it into the log of
+  # every run, and Ansible logs are not where secrets should end up.
+  no_log: true
+
+# Each edition by name, not a count of *.mmdb files: a database left behind by
+# an earlier edition list keeps the count up while the one actually configured
+# is missing, and the download below would be skipped for a directory that has
+# the wrong file in it.
+- name: Look for the databases this host is configured for
+  ansible.builtin.stat:
+    path: "{{ geoip_database_dir }}/{{ item }}.mmdb"
+  register: geoip_existing
+  loop: "{{ geoip_editions }}"
+  loop_control:
+    label: "{{ item }}"
+  check_mode: false
+
+# Fetched here rather than left to the timer: a role that finishes with no
+# database on disk leaves everything downstream reporting no geography at all,
+# and the first timer run may be a day away.
+- name: Download the databases
+  ansible.builtin.command: geoipupdate
+  changed_when: true
+  check_mode: false
+  when:
+    - not ansible_check_mode
+    - geoip_existing.results | rejectattr('stat.exists') | list | length > 0
+      or geoip_config.changed
+
+- name: Install the update timer units
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/systemd/system/{{ item.dest }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: service.j2
+      dest: krot-geoipupdate.service
+    - src: timer.j2
+      dest: krot-geoipupdate.timer
+  loop_control:
+    label: "{{ item.dest }}"
+  notify: Restart the geoipupdate timer
+
+- name: Enable the update timer
+  ansible.builtin.systemd_service:
+    name: krot-geoipupdate.timer
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# Ubuntu ships its own geoipupdate timer with the package. Two timers fetching
+# the same files on different schedules is one more thing to reason about when
+# a database turns out to be stale, and the packaged one is not the one this
+# role configures.
+- name: Disable the timer shipped with the package
+  ansible.builtin.systemd_service:
+    name: geoipupdate.timer
+    enabled: false
+    state: stopped
+  failed_when: false

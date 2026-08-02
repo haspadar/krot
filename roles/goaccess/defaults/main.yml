@@ -94,6 +94,22 @@ goaccess_extra_crawlers:
   # A browser driven by a script, usually pretending to be a normal one.
   - HeadlessChrome
 
+# The MaxMind database the reports map addresses through, giving them a
+# geolocation panel. Empty means no panel: the role does not install the
+# database — that is what the geoip role is for, and a machine may well want one
+# without the other.
+#
+# The country comes from the address, not from Cloudflare's cf= header, which
+# the log format deliberately skips: GoAccess has no field type to receive a
+# ready-made country code, and the only way to feed it one would be to occupy a
+# column that means something else.
+#
+# This assumes the log holds the visitor's address rather than Cloudflare's.
+# Behind a CDN that is true only if real-IP is configured, which on busel the
+# project's vhost generator does — without it the panel would map the CDN's own
+# datacentres and look plausible while being wrong.
+goaccess_geoip_database: ""
+
 # GoAccess can serve a live report itself, over a websocket, rebuilding as
 # requests arrive. Not used here: it means a daemon holding the logs open, a
 # port to reach it on and a page whose cost is paid on every view. A timer

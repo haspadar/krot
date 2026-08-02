@@ -66,6 +66,33 @@
     mode: "2750"
   when: goaccess_humans_report
 
+- name: Check the GeoIP database is there
+  ansible.builtin.stat:
+    path: "{{ goaccess_geoip_database }}"
+  register: goaccess_geoip_stat
+  check_mode: false
+  when: goaccess_geoip_database | length > 0
+
+# Naming a database that is not on disk makes GoAccess exit on startup, so every
+# report on the machine would stop being rebuilt at once — and the ones already
+# built would sit there looking current. Stopping here says which file is
+# missing instead.
+- name: Refuse to configure a GeoIP database that is missing
+  ansible.builtin.assert:
+    # A regular file, not merely something at that path: stat.exists is true for
+    # a directory and for a symlink to nothing, and GoAccess treats both the
+    # same way it treats an absent file — it exits.
+    that: goaccess_geoip_stat.stat.isreg | default(false)
+    fail_msg: >-
+      goaccess_geoip_database points at {{ goaccess_geoip_database }}, which is
+      not a readable database file on this host. Run the geoip role first, or
+      leave the variable empty to build the reports without a geolocation panel.
+    quiet: true
+  when: goaccess_geoip_database | length > 0
+
+# Registered because a change here changes what the reports contain — turning
+# the geolocation panel on, or changing the log format — and reports already on
+# disk would otherwise keep the old shape until the timer next fired.
 - name: Configure the parser
   ansible.builtin.template:
     src: goaccess.conf.j2
@@ -73,6 +100,7 @@
     owner: root
     group: root
     mode: "0644"
+  register: goaccess_parser_config
 
 # Passed to the humans build with -b, never named in the parser config: the
 # config is shared by both reports, and the full one counts crawlers on purpose.
@@ -202,6 +230,7 @@
     - not goaccess_existing_reports.files
       or goaccess_site_list.changed
       or goaccess_crawler_list.changed | default(false)
+      or goaccess_parser_config.changed | default(false)
       or (goaccess_humans_report
           and goaccess_existing_humans.files | default([]) | length
               < goaccess_existing_reports.files | length)
