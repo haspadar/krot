@@ -2,8 +2,10 @@
 galaxy_info:
   author: haspadar
   description: >-
-    nginx server layer: main config, log format and Cloudflare real-IP
-    restoration. Per-site vhosts stay with the site provisioning step.
+    nginx server layer: main config, directory ownership, log rotation and
+    optional basic auth. Per-site vhosts, log_format and Cloudflare real-IP
+    belong to the site provisioning step, which owns the format its configs
+    name — this role removes what earlier versions wrote.
   license: MIT
   min_ansible_version: "2.15"
   platforms:
