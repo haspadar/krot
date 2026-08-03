@@ -55,7 +55,7 @@ ansible-playbook bootstrap.yml -u root -k
 | Роль | Что делает |
 |------|-----------|
 | `bootstrap` | Операторский юзер + sudo, `authorized_keys`, `PermitRootLogin no`, `PasswordAuthentication no` |
-| `common` | hostname, timezone, базовые пакеты (включая `btop`, `ncdu`, `ripgrep`, `jq`), unattended security-upgrades |
+| `common` | hostname, timezone, базовые пакеты (включая `btop`, `ncdu`, `ripgrep`, `fd-find`, `jq`), unattended security-upgrades |
 | `firewall` | ufw; при `firewall_cloudflare_only` пускает 80/443 только с диапазонов Cloudflare и обновляет их weekly-таймером |
 | `fail2ban` | fail2ban с джейлом `sshd` |
 | `php` | PHP-FPM из ondrej PPA; slowlog, access-log с таймингами |
@@ -64,7 +64,7 @@ ansible-playbook bootstrap.yml -u root -k
 | `docker` | Docker + compose-плагин, лимит на рост логов контейнеров |
 | `deploy_keys` | Отдельный SSH-ключ на каждый приватный репозиторий + host-алиасы, чтобы git предъявлял нужный |
 | `deploy` | Запускает Deployer проекта с control-машины. Релизы и rollback остаются в `deploy.php` |
-| `goaccess` | Отчёты посещаемости по логам nginx — полный и «только люди» на каждый сайт |
+| `goaccess` | Отчёт посещаемости по логам nginx на каждый сайт. Второй, «только люди», выключен по умолчанию |
 | `geoip` | Базы MaxMind GeoLite2, обновляются таймером. Нужна ролям, которым надо сопоставить адрес со страной |
 
 Каждая роль атомарна и применима отдельно. Все параметры — в `roles/<role>/defaults/main.yml`.
