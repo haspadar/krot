@@ -2,8 +2,8 @@
 galaxy_info:
   author: haspadar
   description: >-
-    Baseline every Krot machine shares: hostname, timezone, base packages and
-    unattended security upgrades.
+    Baseline every Krot machine shares: hostname, timezone, base packages,
+    unattended security upgrades and a ceiling on the systemd journal.
   license: MIT
   min_ansible_version: "2.15"
   platforms:

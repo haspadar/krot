@@ -1,0 +1,14 @@
+---
+# Restart, not reload: journald re-reads its size limit on start, and a plain
+# reload leaves an oversized journal sitting at the old ceiling until whatever
+# rotation happens next. The restart is a moment of nothing writing to the
+# journal, not a gap in it — the units keep their output and it lands once the
+# socket is back.
+#
+# This applies the cap to new writes; it does not shrink a journal that already
+# exceeds it. Trimming that one is `journalctl --vacuum-size`, an operator
+# decision, because it destroys history the machine still has room for.
+- name: Restart journald
+  ansible.builtin.service:
+    name: systemd-journald
+    state: restarted

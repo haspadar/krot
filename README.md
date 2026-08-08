@@ -55,7 +55,7 @@ ansible-playbook bootstrap.yml -u root -k
 | Роль | Что делает |
 |------|-----------|
 | `bootstrap` | Операторский юзер + sudo, `authorized_keys`, `PermitRootLogin no`, `PasswordAuthentication no` |
-| `common` | hostname, timezone, базовые пакеты (включая `btop`, `ncdu`, `ripgrep`, `fd-find`, `jq`), unattended security-upgrades |
+| `common` | hostname, timezone, базовые пакеты (включая `btop`, `ncdu`, `ripgrep`, `fd-find`, `jq`), unattended security-upgrades, лимит журнала systemd |
 | `firewall` | ufw; при `firewall_cloudflare_only` пускает 80/443 только с диапазонов Cloudflare и обновляет их weekly-таймером |
 | `fail2ban` | fail2ban с джейлом `sshd` |
 | `php` | PHP-FPM из ondrej PPA; slowlog, access-log с таймингами |
@@ -162,6 +162,20 @@ Cloudflare, — origin-адрес перестаёт отвечать напря
   `pg_stat_statements` (см. ниже).
 
 nginx и php ротируются через logrotate, PostgreSQL ротирует себя сам.
+
+**Журнал systemd ограничен 500 МБ** (`common_journal_max_use`, drop-in
+`/etc/systemd/journald.conf.d/krot-journal.conf`). Без лимита journald берёт 10% раздела — на
+диске 77 ГБ это 7.7 ГБ — и держит всё: на busel журнал дорос до 1 ГБ, храня каждое сообщение
+с установки машины полутора месяцами ранее.
+
+Ограничен именно размер, а не срок хранения: потолок держит цену журнала при любой болтливости
+машины, тогда как срок ограничивает возраст и позволяет одному плохому дню занять диск. На
+темпе busel 500 МБ — примерно три недели.
+
+**Роль ужимает только будущие записи, но не уже разросшийся журнал.** Смена лимита применяется
+рестартом journald, а он не трогает накопленное — старое уйдёт при следующей ротации. Урезать
+сразу — `sudo journalctl --vacuum-size=500M`; роль этого не делает сама, потому что удаление
+истории на машине, где место ещё есть, — решение оператора, а не побочный эффект прогона.
 
 ## Мажорная версия PostgreSQL
 
