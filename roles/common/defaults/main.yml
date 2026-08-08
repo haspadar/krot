@@ -35,7 +35,8 @@ common_base_packages:
 common_unattended_upgrades: true
 
 # How much disk the systemd journal may hold. Unset, journald helps itself to
-# 10% of the filesystem — 7.7 GB on a 77 GB disk — and simply keeps everything:
+# 10% of the filesystem capped at 4 GB — the cap is what busel's 77 GB disk
+# actually hits, since 10% there would be 7.6 GB — and simply keeps everything:
 # busel's journal reached 1 GB holding every message since the machine was
 # installed six weeks earlier, none of which anyone had read.
 #
@@ -46,5 +47,12 @@ common_unattended_upgrades: true
 # from last week, which is as far back as anyone has ever needed to go.
 #
 # Lowering this on a machine whose journal already exceeds it does not take
-# effect until journald next rotates; `journalctl --vacuum-size` applies it now.
+# effect until journald next rotates. To apply it at once:
+#
+#   journalctl --rotate --vacuum-size=500M
+#
+# The rotate is not decoration: vacuuming only ever deletes archived files, and
+# without it the file currently being written stays put however large it has
+# grown. Rotating closes it into an archive first, which is what puts it within
+# reach of the same command.
 common_journal_max_use: 500M

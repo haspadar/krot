@@ -6,8 +6,9 @@
 # socket is back.
 #
 # This applies the cap to new writes; it does not shrink a journal that already
-# exceeds it. Trimming that one is `journalctl --vacuum-size`, an operator
-# decision, because it destroys history the machine still has room for.
+# exceeds it. Trimming that one is `journalctl --rotate --vacuum-size=<limit>`,
+# an operator decision, because it destroys history the machine still has room
+# for.
 - name: Restart journald
   ansible.builtin.service:
     name: systemd-journald
