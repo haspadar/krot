@@ -3,6 +3,37 @@
 Версии — по [semver](https://semver.org/lang/ru/). Ломающие изменения ролей (переименование
 переменной, смена дефолта, влияющая на прод) поднимают major.
 
+## 4.0.0
+
+### Ломающее
+
+- **Роли `goaccess` и `geoip` удалены.** Отчётами не пользовались, а держать их стоило: свой
+  apt-репозиторий, ключ подписи, таймер сборки, ключ MaxMind в inventory и 64 МБ базы, которую
+  качали дважды в неделю ради панели, на которую никто не смотрел.
+
+  Плейбук, где эти роли перечислены, теперь падает на неизвестной роли — убрать их из `site.yml`
+  и из `group_vars` переменные `goaccess_*` и `geoip_*`.
+
+  **Уборка на уже развёрнутой машине — ручная**, роли за собой ничего не снимают: их больше нет,
+  и удалять оставленное некому. Что смотреть (на busel из всего списка нашёлся только
+  последний пункт — роли там до конца не отрабатывали):
+
+  ```bash
+  sudo systemctl disable --now krot-goaccess.timer krot-geoipupdate.timer
+  sudo rm -f /etc/systemd/system/krot-goaccess.{timer,service} \
+             /etc/systemd/system/krot-geoipupdate.{timer,service}
+  sudo systemctl daemon-reload
+  sudo apt-get purge goaccess geoipupdate
+  sudo rm -rf /var/www/goaccess /etc/goaccess /var/lib/GeoIP /etc/GeoIP.conf
+  sudo rm -f /etc/apt/sources.list.d/goaccess.sources /etc/apt/keyrings/goaccess.asc
+  ```
+
+  Репозиторий GoAccess стоит снять даже там, где сам пакет не ставился: иначе каждый
+  `apt update` продолжает ходить за индексом ради пакета, который больше никто не просит.
+
+  Роль `nginx` не затронута: `log_format` она и раньше не писала — им владеет генератор
+  vhost'ов проекта.
+
 ## 3.0.0
 
 ### Ломающее
