@@ -1,7 +1,0 @@
-{{ ansible_managed | comment }}
-# Credentials for geoipupdate. Kept 0600 root: this file holds a license key.
-
-AccountID {{ geoip_account_id }}
-LicenseKey {{ geoip_license_key }}
-EditionIDs {{ geoip_editions | join(' ') }}
-DatabaseDirectory {{ geoip_database_dir }}

@@ -1,5 +1,0 @@
-{{ ansible_managed | comment }}
-# One line per site: <domain>|<log path>. Read by krot-goaccess-reports.
-{% for site in goaccess_effective_sites %}
-{{ site.domain }}|{{ site.log | default('/var/log/nginx/' ~ site.domain ~ '-access.log') }}
-{% endfor %}
