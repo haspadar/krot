@@ -59,7 +59,7 @@ collections:
 | Роль | Что делает | Кому |
 |------|-----------|------|
 | `bootstrap` | Юзер + sudo, `authorized_keys`, `PermitRootLogin no`, выключение парольного входа | все |
-| `common` | hostname, timezone, базовые пакеты, unattended security-upgrades | все |
+| `common` | hostname, timezone, базовые пакеты, unattended security-upgrades, лимит журнала systemd | все |
 | `firewall` | ufw; Cloudflare-замок и еженедельное обновление диапазонов | все |
 | `fail2ban` | fail2ban с джейлом `sshd` | все |
 | `php` | PHP-FPM из ondrej PPA; slowlog, access-log с таймингами | busel |

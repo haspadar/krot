@@ -33,3 +33,26 @@ common_base_packages:
 # Security updates only. Unattended feature upgrades on a machine serving live
 # sites buy nothing and can restart services at random.
 common_unattended_upgrades: true
+
+# How much disk the systemd journal may hold. Unset, journald helps itself to
+# 10% of the filesystem capped at 4 GB — the cap is what busel's 77 GB disk
+# actually hits, since 10% there would be 7.6 GB — and simply keeps everything:
+# busel's journal reached 1 GB holding every message since the machine was
+# installed six weeks earlier, none of which anyone had read.
+#
+# A cap is not the same as a retention period, and the cap is the useful one
+# here: it bounds what the journal costs regardless of how noisy the machine
+# gets, whereas a period bounds the age and lets a bad day fill the disk. At
+# busel's rate 500M is roughly three weeks — enough to look into an incident
+# from last week, which is as far back as anyone has ever needed to go.
+#
+# Lowering this on a machine whose journal already exceeds it does not take
+# effect until journald next rotates. To apply it at once:
+#
+#   journalctl --rotate --vacuum-size=500M
+#
+# The rotate is not decoration: vacuuming only ever deletes archived files, and
+# without it the file currently being written stays put however large it has
+# grown. Rotating closes it into an archive first, which is what puts it within
+# reach of the same command.
+common_journal_max_use: 500M

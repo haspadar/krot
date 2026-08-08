@@ -40,3 +40,22 @@
     group: root
     mode: "0644"
   when: common_unattended_upgrades
+
+# A drop-in rather than an edit of journald.conf: the distro file is a list of
+# commented-out defaults, and a package upgrade is free to rewrite it.
+- name: Create the journald drop-in directory
+  ansible.builtin.file:
+    path: /etc/systemd/journald.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Cap the size of the systemd journal
+  ansible.builtin.template:
+    src: krot-journal.conf.j2
+    dest: /etc/systemd/journald.conf.d/krot-journal.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart journald
