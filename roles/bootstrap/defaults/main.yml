@@ -3,9 +3,10 @@
 # cross-role krot_* values from group_vars onto these, so a machine still
 # declares its operator account in exactly one place.
 bootstrap_user: km
-# bash, а не fish: по этим машинам почти всегда ходят агенты, а не человек, и
-# каждая непереносимая мелочь fish стоит отдельной отладки. Пакет bash есть
-# всегда, ставить его роли не нужно.
+# bash rather than fish: these machines are driven by agents over SSH far more
+# often than by a human, and every place fish departs from POSIX costs a
+# debugging round. bash is Essential on Ubuntu, so the role never installs it —
+# point this at another shell and installing it is the caller's job.
 bootstrap_user_shell: /bin/bash
 
 # Public keys placed in the operator's authorized_keys. The playbook fills this
