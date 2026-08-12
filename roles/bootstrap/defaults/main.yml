@@ -3,7 +3,10 @@
 # cross-role krot_* values from group_vars onto these, so a machine still
 # declares its operator account in exactly one place.
 bootstrap_user: km
-bootstrap_user_shell: /usr/bin/fish
+# bash, а не fish: по этим машинам почти всегда ходят агенты, а не человек, и
+# каждая непереносимая мелочь fish стоит отдельной отладки. Пакет bash есть
+# всегда, ставить его роли не нужно.
+bootstrap_user_shell: /bin/bash
 
 # Public keys placed in the operator's authorized_keys. The playbook fills this
 # from Bitwarden; the role itself takes plain strings so it stays testable and
