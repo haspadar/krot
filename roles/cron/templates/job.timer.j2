@@ -1,0 +1,19 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description={{ item.description | default('Krot job: ' ~ item.name) }} (timer)
+
+[Timer]
+OnCalendar={{ item.schedule }}
+# Spread starts instead of hand-picking a minute per job. Picking minutes by
+# hand works until the second job, whose author has to rediscover which ones are
+# already taken — and that knowledge lives nowhere.
+RandomizedDelaySec={{ item.randomized_delay | default(cron_randomized_delay) }}
+{% if item.persistent | default(cron_persistent) %}
+# A machine that was off at the scheduled time catches up on boot instead of
+# dropping the run without a word.
+Persistent=true
+{% endif %}
+Unit=krot-{{ item.name }}.service
+
+[Install]
+WantedBy=timers.target

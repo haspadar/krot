@@ -1,0 +1,32 @@
+---
+# krot-cf-ranges.timer belongs to the firewall role and matches the same glob,
+# so ownership is decided by a marker this role writes into its own services,
+# never by the file name. Removing another role's timer would take the
+# Cloudflare range refresh down without a word.
+- name: Look for this role's marker in the paired service
+  ansible.builtin.slurp:
+    src: "/etc/systemd/system/{{ cron_timer_file | regex_replace('\\.timer$', '.service') }}"
+  register: cron_retire_service
+  # A timer whose service is missing proves nothing about ownership, so it is
+  # left alone: the safe error here is an extra unit, not a deleted one.
+  failed_when: false
+
+- name: Retire the job
+  when:
+    - cron_retire_service.content is defined
+    - cron_job_marker in (cron_retire_service.content | b64decode)
+  block:
+    - name: Stop and disable the retired timer
+      ansible.builtin.systemd_service:
+        name: "{{ cron_timer_file }}"
+        state: stopped
+        enabled: false
+
+    - name: Remove the retired unit files
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ item }}"
+        state: absent
+      loop:
+        - "{{ cron_timer_file }}"
+        - "{{ cron_timer_file | regex_replace('\\.timer$', '.service') }}"
+      notify: Reload systemd

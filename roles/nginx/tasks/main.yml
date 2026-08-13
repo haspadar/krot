@@ -65,13 +65,36 @@
 - name: Include the vhost permission tasks
   ansible.builtin.include_tasks: vhosts.yml
 
-- name: Rotate the nginx logs
-  ansible.builtin.template:
-    src: logrotate.j2
-    dest: /etc/logrotate.d/krot-nginx
-    owner: root
-    group: root
-    mode: "0644"
+# The nginx package already rotates /var/log/nginx/*.log, and logrotate refuses
+# to run at all when two files claim the same log: it reports "duplicate log
+# entry", exits 1 and rotates NOTHING on the machine — including postgresql and
+# krot-php, which are blameless. Measured on busel 2026-08-13: three days of a
+# failed logrotate.service and no rotation anywhere.
+#
+# The duplicate is detected on the resolved path, not on the glob text, so no
+# rewording of the pattern avoids it. This role therefore stops shipping a
+# second file and adjusts retention inside the package's own.
+- name: Drop the rotation config this role used to ship
+  ansible.builtin.file:
+    path: /etc/logrotate.d/krot-nginx
+    state: absent
+
+- name: Check for the packaged rotation config
+  ansible.builtin.stat:
+    path: /etc/logrotate.d/nginx
+  register: nginx_packaged_logrotate
+
+# Editing the package's file rather than shipping our own, because logrotate
+# allows exactly one entry per log. lineinfile without create: the file is the
+# package's, and conjuring it here would put this role back to owning a second
+# config under a different name.
+- name: Set the nginx log retention
+  ansible.builtin.lineinfile:
+    path: /etc/logrotate.d/nginx
+    regexp: '^\s*rotate\s+\d+\s*$'
+    line: "\trotate {{ nginx_log_retention_days }}"
+    create: false
+  when: nginx_packaged_logrotate.stat.exists
 
 - name: Enable nginx
   ansible.builtin.service:

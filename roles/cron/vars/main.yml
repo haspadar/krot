@@ -1,0 +1,5 @@
+---
+# Written into every service this role installs and read back when deciding
+# whether a krot-*.timer is ours to remove. Not in defaults: changing it would
+# orphan every unit already on the machine.
+cron_job_marker: "# krot-cron-job"

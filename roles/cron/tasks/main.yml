@@ -1,0 +1,135 @@
+---
+# A malformed job must stop the run, not install a unit that fails at 3am. The
+# checks are cheap and the alternative is the failure mode this role exists to
+# remove: something that looks scheduled and never runs.
+- name: Assert the declared jobs are usable
+  ansible.builtin.assert:
+    that:
+      - item.name is defined
+      - item.name is match('^[a-z0-9][a-z0-9-]*$')
+      - item.command is defined
+      - item.command | length > 0
+      - item.schedule is defined
+      - item.schedule | length > 0
+    fail_msg: >-
+      Job {{ item.name | default('<unnamed>') }} needs a lowercase name, a
+      command and a schedule. The name becomes a unit file name, so it may only
+      hold [a-z0-9-].
+    quiet: true
+  loop: "{{ cron_jobs }}"
+  loop_control:
+    label: "{{ item.name | default('<unnamed>') }}"
+
+# Two jobs sharing a name would silently overwrite one another's unit: the
+# second one wins and the first disappears without a message anywhere.
+- name: Assert job names are unique
+  ansible.builtin.assert:
+    that:
+      - cron_jobs | map(attribute='name') | list | length ==
+        cron_jobs | map(attribute='name') | unique | list | length
+    fail_msg: >-
+      Two jobs share a name. Unit files are named after it, so one would
+      overwrite the other.
+    quiet: true
+
+- name: Create the job log directory
+  ansible.builtin.file:
+    path: "{{ cron_log_dir }}"
+    state: directory
+    owner: "{{ cron_user }}"
+    group: adm
+    mode: "0750"
+  when: cron_jobs | selectattr('log_file', 'defined') | list | length > 0
+
+# A job that writes to a file needs the file to exist with the right owner
+# before it first runs. Creating it lazily on first write is what put the
+# original crontab line into a directory it could not write to.
+- name: Create the job log files
+  ansible.builtin.file:
+    path: "{{ item.log_file }}"
+    state: touch
+    owner: "{{ item.user | default(cron_user) }}"
+    group: adm
+    mode: "0640"
+    access_time: preserve
+    modification_time: preserve
+  loop: "{{ cron_jobs | selectattr('log_file', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+# Half of the original defect was a log file with nobody to rotate it. A file
+# without a rotation entry grows until the disk is full, which is a second
+# silent failure sitting behind the first.
+- name: Rotate the job log files
+  ansible.builtin.template:
+    src: logrotate.j2
+    dest: /etc/logrotate.d/krot-cron
+    owner: root
+    group: root
+    mode: "0644"
+  when: cron_jobs | selectattr('log_file', 'defined') | list | length > 0
+
+- name: Remove the rotation entry when no job writes to a file
+  ansible.builtin.file:
+    path: /etc/logrotate.d/krot-cron
+    state: absent
+  when: cron_jobs | selectattr('log_file', 'defined') | list | length == 0
+
+- name: Install the job services
+  ansible.builtin.template:
+    src: job.service.j2
+    dest: "/etc/systemd/system/krot-{{ item.name }}.service"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ cron_jobs }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload systemd
+
+- name: Install the job timers
+  ansible.builtin.template:
+    src: job.timer.j2
+    dest: "/etc/systemd/system/krot-{{ item.name }}.timer"
+    owner: root
+    group: root
+    mode: "0644"
+  loop: "{{ cron_jobs }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Reload systemd
+
+# systemd has to see the new files before the timers below are enabled,
+# otherwise enabling refers to a unit it does not know yet.
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the job timers
+  ansible.builtin.systemd_service:
+    name: "krot-{{ item.name }}.timer"
+    state: started
+    enabled: true
+  loop: "{{ cron_jobs }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Find previously installed job timers
+  ansible.builtin.find:
+    paths: /etc/systemd/system
+    patterns: "krot-*.timer"
+  register: cron_installed_timers
+
+# A job dropped from the inventory has to stop running. Left behind, it keeps
+# firing against a release that may no longer expect it — and it is invisible in
+# the inventory that is supposed to be the record of what this machine does.
+#
+# Only timers with a matching .service carrying this role's marker are removed:
+# krot-cf-ranges.timer belongs to the firewall role and shares the prefix.
+- name: Retire timers no longer declared
+  ansible.builtin.include_tasks: retire.yml
+  loop: "{{ cron_installed_timers.files | map(attribute='path') | map('basename') | list }}"
+  loop_control:
+    loop_var: cron_timer_file
+    label: "{{ cron_timer_file }}"
+  when: cron_timer_file | regex_replace('^krot-(.*)\\.timer$', '\\1')
+        not in (cron_jobs | map(attribute='name') | list)
