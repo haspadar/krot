@@ -1,0 +1,16 @@
+{{ ansible_managed | comment }}
+
+{% for job in cron_file_jobs %}
+{{ job.log_file }} {
+    daily
+    rotate {{ cron_log_retention_days }}
+    missingok
+    notifempty
+    compress
+    delaycompress
+    # The job appends and never holds the file open between runs, so there is
+    # no signal to send and nothing to reopen — copytruncate would be a way to
+    # lose the lines written between copy and truncate for no gain.
+    create 0640 {{ job.user | default(cron_user) }} adm
+}
+{% endfor %}

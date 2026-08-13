@@ -1,0 +1,53 @@
+{{ ansible_managed | comment }}
+{{ cron_job_marker }}
+[Unit]
+Description={{ item.description | default('Krot job: ' ~ item.name) | replace('\n', ' ') }}
+{% if item.working_directory is defined %}
+# Fail loudly if the directory is gone rather than running from / and blaming
+# the command: a release symlink pointing nowhere is a real state after a
+# botched deploy.
+AssertPathIsDirectory={{ item.working_directory }}
+{% endif %}
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User={{ item.user | default(cron_user) }}
+{% if item.working_directory is defined %}
+# Resolved at every start, so a release symlink always points at the current
+# release rather than the one installed when this unit was written.
+WorkingDirectory={{ item.working_directory }}
+{% endif %}
+{% for key, value in (item.environment | default({})).items() %}
+# systemd starts units with an empty environment; nothing is inherited from a
+# login shell, so every variable the command needs is named here.
+Environment={{ (key ~ '=' ~ value) | quote | replace('%', '%%') }}
+{% endfor %}
+# A hung job would otherwise block every later start of this unit while the
+# timer keeps firing — the job stops running and the timer still looks healthy.
+TimeoutStartSec={{ item.timeout | default(cron_job_timeout) }}
+{#
+  Two escapes, both for silent corruption rather than for crashes:
+
+  * quote handles an apostrophe inside the command. systemd only treats a quote
+    as opening at the start of a word, so a naive wrapper turns
+    --msg='hi there' into argv that hands everything after -c to $0 and $1 —
+    exit 0, half the work done.
+  * %% is needed because % is a unit specifier. Measured: `date +%Y-%m-%d`
+    printed /etc/systemd/system-<machine-id>-/run/credentials/<unit>, exited 0
+    and looked healthy. Doubling makes systemd emit a literal %.
+#}
+{% if item.log_file is defined %}
+# Recorded as its own line so retirement can find it: once a job leaves the
+# inventory, the unit is the only remaining record of where it wrote. Parsing it
+# back out of ExecStart would break the moment that line is quoted differently.
+# krot-cron-log={{ item.log_file }}
+# Opted into a file. The unit still records the exit status, so a failure is
+# visible in systemctl even when the file says nothing.
+ExecStart=/bin/sh -c {{ ('exec ' ~ item.command ~ ' >> ' ~ item.log_file ~ ' 2>&1') | quote | replace('%', '%%') }}
+{% else %}
+# stdout and stderr land in the journal under this unit's name, so the output is
+# found by asking about the job rather than by knowing a path.
+ExecStart=/bin/sh -c {{ item.command | quote | replace('%', '%%') }}
+{% endif %}

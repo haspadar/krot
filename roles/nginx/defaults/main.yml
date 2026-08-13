@@ -10,6 +10,10 @@ nginx_client_max_body_size: 16M
 # belong to whatever generates the vhosts, which knows the format name they
 # reference and refreshes the CF ranges every time it regenerates. This role only
 # guarantees conf.d is included before the vhosts that depend on it.
+#
+# Applied by editing the nginx package's own logrotate config, not by shipping a
+# second one: logrotate accepts exactly one entry per log file and aborts the
+# entire run — every service on the machine — when it finds two.
 nginx_log_retention_days: 14
 
 nginx_server_tokens: "off"
