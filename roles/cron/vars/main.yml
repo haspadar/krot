@@ -3,3 +3,9 @@
 # whether a krot-*.timer is ours to remove. Not in defaults: changing it would
 # orphan every unit already on the machine.
 cron_job_marker: "# krot-cron-job"
+
+# Jobs that opted into a file instead of the journal, and the paths they write
+# to. Both are asked for repeatedly below; deriving them once keeps the filter
+# from drifting between the assert, the file tasks and the rotation template.
+cron_file_jobs: "{{ cron_jobs | selectattr('log_file', 'defined') | list }}"
+cron_log_files: "{{ cron_file_jobs | map(attribute='log_file') | list }}"

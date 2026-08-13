@@ -18,6 +18,7 @@
 #                      environment, so anything the command needs goes here.
 #   timeout:           optional, defaults to cron_job_timeout.
 #   randomized_delay:  optional, defaults to cron_randomized_delay.
+#   fixed_random_delay: optional, defaults to cron_fixed_random_delay.
 #   persistent:        optional, defaults to cron_persistent.
 #   log_file:          optional. Absent means the journal, which is the point of
 #                      this role — see below.
@@ -36,6 +37,13 @@ cron_user: km
 # 15m against an hourly job: far enough to unstack, short enough that "the
 # hourly job" still means what it says.
 cron_randomized_delay: 15m
+
+# The offset above is re-rolled on every elapse, so an hourly job ends up 45 to
+# 75 minutes from its predecessor. Fixed derives it from the machine and unit
+# name instead: still spread against the other jobs, but the same minute every
+# time. On by default, because a job declared "hourly" should run hourly — the
+# point of the offset is to miss the crowd, not to wander.
+cron_fixed_random_delay: true
 
 # A machine that was off at the scheduled time catches up on boot rather than
 # silently dropping the run. This is the difference between a missed hour and a

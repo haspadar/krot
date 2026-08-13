@@ -22,6 +22,31 @@
         state: stopped
         enabled: false
 
+    # The rotation entry for this job is already gone — the template only lists
+    # jobs still declared. A log file left behind therefore has nobody to rotate
+    # it and grows until the disk is full: the same second-order failure this
+    # role exists to avoid. The path is read back out of the unit, because the
+    # inventory no longer says anything about a job it has dropped.
+    # default() before first(): a job that logged to the journal carries no
+    # marker at all, and regex_search returns None there rather than an empty
+    # list — first() on that raises and takes the whole retirement down.
+    - name: Find the log file the retired job wrote to
+      ansible.builtin.set_fact:
+        cron_retired_log: >-
+          {{ (cron_retire_service.content | b64decode
+              | regex_search('^# krot-cron-log=(.+)$', '\1', multiline=True)
+              | default([], true) | first | default('', true)) | trim }}
+
+    - name: Remove the log file of the retired job
+      ansible.builtin.file:
+        path: "{{ cron_retired_log }}"
+        state: absent
+      when:
+        - cron_retired_log | length > 0
+        # Only inside the directory this role owns. A job pointed at
+        # /var/log/syslog by a typo must not take that file with it on retirement.
+        - cron_retired_log.startswith(cron_log_dir ~ '/')
+
     - name: Remove the retired unit files
       ansible.builtin.file:
         path: "/etc/systemd/system/{{ item }}"

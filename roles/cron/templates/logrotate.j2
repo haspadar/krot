@@ -1,6 +1,6 @@
 {{ ansible_managed | comment }}
 
-{% for job in cron_jobs | selectattr('log_file', 'defined') | list %}
+{% for job in cron_file_jobs %}
 {{ job.log_file }} {
     daily
     rotate {{ cron_log_retention_days }}

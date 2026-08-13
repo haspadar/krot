@@ -32,6 +32,19 @@
       overwrite the other.
     quiet: true
 
+# Sharing a log file between two jobs reads as harmless and is not: logrotate
+# allows exactly one entry per log, and on a duplicate it exits 1 having rotated
+# NOTHING on the machine. That is the same failure this role's nginx fix removes,
+# and it would have been reintroduced here by a plausible inventory.
+- name: Assert no two jobs share a log file
+  ansible.builtin.assert:
+    that:
+      - cron_log_files | length == cron_log_files | unique | length
+    fail_msg: >-
+      Two jobs write to the same log file. logrotate refuses a duplicate entry
+      and stops rotating every log on the machine, not just this one.
+    quiet: true
+
 - name: Create the job log directory
   ansible.builtin.file:
     path: "{{ cron_log_dir }}"
@@ -39,7 +52,7 @@
     owner: "{{ cron_user }}"
     group: adm
     mode: "0750"
-  when: cron_jobs | selectattr('log_file', 'defined') | list | length > 0
+  when: cron_file_jobs | length > 0
 
 # A job that writes to a file needs the file to exist with the right owner
 # before it first runs. Creating it lazily on first write is what put the
@@ -53,7 +66,7 @@
     mode: "0640"
     access_time: preserve
     modification_time: preserve
-  loop: "{{ cron_jobs | selectattr('log_file', 'defined') | list }}"
+  loop: "{{ cron_file_jobs }}"
   loop_control:
     label: "{{ item.name }}"
 
@@ -67,13 +80,13 @@
     owner: root
     group: root
     mode: "0644"
-  when: cron_jobs | selectattr('log_file', 'defined') | list | length > 0
+  when: cron_file_jobs | length > 0
 
 - name: Remove the rotation entry when no job writes to a file
   ansible.builtin.file:
     path: /etc/logrotate.d/krot-cron
     state: absent
-  when: cron_jobs | selectattr('log_file', 'defined') | list | length == 0
+  when: cron_file_jobs | length == 0
 
 - name: Install the job services
   ansible.builtin.template:

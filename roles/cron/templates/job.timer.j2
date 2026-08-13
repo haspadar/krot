@@ -8,6 +8,13 @@ OnCalendar={{ item.schedule }}
 # hand works until the second job, whose author has to rediscover which ones are
 # already taken — and that knowledge lives nowhere.
 RandomizedDelaySec={{ item.randomized_delay | default(cron_randomized_delay) }}
+{% if item.fixed_random_delay | default(cron_fixed_random_delay) %}
+# The offset is otherwise re-rolled on every elapse, so an hourly job runs
+# anywhere from 45 to 75 minutes apart. Fixed keeps the spread between jobs
+# while making the interval itself steady — a minute that is not 0, but always
+# the same one.
+FixedRandomDelay=true
+{% endif %}
 {% if item.persistent | default(cron_persistent) %}
 # A machine that was off at the scheduled time catches up on boot instead of
 # dropping the run without a word.

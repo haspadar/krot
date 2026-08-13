@@ -79,22 +79,42 @@
     path: /etc/logrotate.d/krot-nginx
     state: absent
 
-- name: Check for the packaged rotation config
-  ansible.builtin.stat:
-    path: /etc/logrotate.d/nginx
+- name: Read the packaged rotation config
+  ansible.builtin.slurp:
+    src: /etc/logrotate.d/nginx
   register: nginx_packaged_logrotate
+  # A machine without the package file has nothing to edit; the assert below
+  # turns that into a stated fact rather than a silently skipped task.
+  failed_when: false
 
 # Editing the package's file rather than shipping our own, because logrotate
-# allows exactly one entry per log. lineinfile without create: the file is the
-# package's, and conjuring it here would put this role back to owning a second
-# config under a different name.
+# allows exactly one entry per log.
+#
+# `replace`, not `lineinfile`: the latter appends its line when the pattern is
+# absent, and a `rotate` landing after the closing brace is not an error
+# logrotate reports — measured, it simply drops the directive and rotates with
+# no retention at all, deleting yesterday's log instead of keeping fourteen.
+# `lineinfile` also edits only the last match, so a file with a block per log
+# would get one block updated and the rest silently left behind.
 - name: Set the nginx log retention
-  ansible.builtin.lineinfile:
+  ansible.builtin.replace:
     path: /etc/logrotate.d/nginx
-    regexp: '^\s*rotate\s+\d+\s*$'
-    line: "\trotate {{ nginx_log_retention_days }}"
-    create: false
-  when: nginx_packaged_logrotate.stat.exists
+    regexp: '^(\s*)rotate\s+\d+\s*$'
+    replace: '\g<1>rotate {{ nginx_log_retention_days }}'
+  when: nginx_rotate_anchor_present
+
+# Saying so beats leaving it out: retention that quietly does not apply is the
+# class of defect this file is being changed to remove.
+- name: Assert the retention setting could be applied
+  ansible.builtin.assert:
+    that: nginx_rotate_anchor_present
+    fail_msg: >-
+      /etc/logrotate.d/nginx has no `rotate N` line to adjust
+      (missing file, or a package that words it differently), so
+      nginx_log_retention_days cannot be honoured. Krot will not add a second
+      rotation config: logrotate stops rotating every log on the machine when
+      two configs claim one file.
+    quiet: true
 
 - name: Enable nginx
   ansible.builtin.service:

@@ -1,0 +1,8 @@
+---
+# Whether the packaged logrotate config has a `rotate N` line to adjust. Both
+# the edit and the assert that follows it ask this, and computing it twice is
+# how the two would drift apart.
+nginx_rotate_anchor_present: >-
+  {{ nginx_packaged_logrotate.content is defined
+     and (nginx_packaged_logrotate.content | b64decode)
+         is search('(?m)^\s*rotate\s+\d+\s*$') }}
