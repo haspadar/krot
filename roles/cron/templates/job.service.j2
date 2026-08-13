@@ -12,14 +12,22 @@ User={{ item.user | default(cron_user) }}
 # Resolved at every start, so a release symlink always points at the current
 # release rather than the one installed when this unit was written.
 #
-# This line is also what makes a missing directory audible, and it has to be
-# this one rather than an AssertPathIsDirectory= above: a failed assert does not
-# fail the unit. Measured on busel (systemd 255), both by hand and through a
-# timer — with the assert, Result=success, ExecMainStatus=0 and systemctl
-# --failed stays empty while the job silently stops running; with only
-# WorkingDirectory=, Result=exit-code, status 200 (CHDIR) and the unit shows up
-# in --failed. A release symlink pointing nowhere after a botched deploy is a
-# real state, and it is the exact failure this role exists to make visible.
+# This line is also what makes a broken directory audible, and it has to be this
+# one rather than an AssertPathIsDirectory= above. Two reasons, both measured on
+# busel (systemd 255), by hand and through a timer:
+#
+#  * A failed assert does not fail the unit. With the assert the job is skipped
+#    while Result=success, ExecMainStatus=0 and systemctl --failed stays empty;
+#    with only WorkingDirectory=, Result=exit-code, status 200 (CHDIR) and the
+#    unit shows up in --failed.
+#  * The assert is evaluated by PID 1 as root, the chdir as User=. On a
+#    directory root can enter and this user cannot, the assert therefore passed
+#    and the command RAN — from the wrong directory, having silently lost the
+#    one it was given. WorkingDirectory= fails it, because systemd chdirs after
+#    setresuid.
+#
+# A release symlink pointing nowhere after a botched deploy is a real state, and
+# it is the exact failure this role exists to make visible.
 WorkingDirectory={{ item.working_directory }}
 {% endif %}
 {% for key, value in (item.environment | default({})).items() %}
