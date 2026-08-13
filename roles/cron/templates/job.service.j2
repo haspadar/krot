@@ -2,12 +2,6 @@
 {{ cron_job_marker }}
 [Unit]
 Description={{ item.description | default('Krot job: ' ~ item.name) | replace('\n', ' ') }}
-{% if item.working_directory is defined %}
-# Fail loudly if the directory is gone rather than running from / and blaming
-# the command: a release symlink pointing nowhere is a real state after a
-# botched deploy.
-AssertPathIsDirectory={{ item.working_directory }}
-{% endif %}
 After=network-online.target
 Wants=network-online.target
 
@@ -17,6 +11,15 @@ User={{ item.user | default(cron_user) }}
 {% if item.working_directory is defined %}
 # Resolved at every start, so a release symlink always points at the current
 # release rather than the one installed when this unit was written.
+#
+# This line is also what makes a missing directory audible, and it has to be
+# this one rather than an AssertPathIsDirectory= above: a failed assert does not
+# fail the unit. Measured on busel (systemd 255), both by hand and through a
+# timer — with the assert, Result=success, ExecMainStatus=0 and systemctl
+# --failed stays empty while the job silently stops running; with only
+# WorkingDirectory=, Result=exit-code, status 200 (CHDIR) and the unit shows up
+# in --failed. A release symlink pointing nowhere after a botched deploy is a
+# real state, and it is the exact failure this role exists to make visible.
 WorkingDirectory={{ item.working_directory }}
 {% endif %}
 {% for key, value in (item.environment | default({})).items() %}

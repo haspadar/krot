@@ -13,7 +13,9 @@
 #   description:       optional, shown by systemctl status and list-timers.
 #   user:              optional, defaults to cron_user.
 #   working_directory: optional. A release symlink is fine — systemd resolves it
-#                      at every start, not once at install.
+#                      at every start, not once at install, and a symlink
+#                      pointing nowhere fails the job loudly instead of running
+#                      it from /.
 #   environment:       optional dict. systemd starts units with an empty
 #                      environment, so anything the command needs goes here.
 #   timeout:           optional, defaults to cron_job_timeout.
