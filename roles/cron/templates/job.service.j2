@@ -2,12 +2,6 @@
 {{ cron_job_marker }}
 [Unit]
 Description={{ item.description | default('Krot job: ' ~ item.name) | replace('\n', ' ') }}
-{% if item.working_directory is defined %}
-# Fail loudly if the directory is gone rather than running from / and blaming
-# the command: a release symlink pointing nowhere is a real state after a
-# botched deploy.
-AssertPathIsDirectory={{ item.working_directory }}
-{% endif %}
 After=network-online.target
 Wants=network-online.target
 
@@ -17,6 +11,23 @@ User={{ item.user | default(cron_user) }}
 {% if item.working_directory is defined %}
 # Resolved at every start, so a release symlink always points at the current
 # release rather than the one installed when this unit was written.
+#
+# This line is also what makes a broken directory audible, and it has to be this
+# one rather than an AssertPathIsDirectory= above. Two reasons, both measured on
+# busel (systemd 255), by hand and through a timer:
+#
+#  * A failed assert does not fail the unit. With the assert the job is skipped
+#    while Result=success, ExecMainStatus=0 and systemctl --failed stays empty;
+#    with only WorkingDirectory=, Result=exit-code, status 200 (CHDIR) and the
+#    unit shows up in --failed.
+#  * The assert is evaluated by PID 1 as root, the chdir as User=. On a
+#    directory root can enter and this user cannot, the assert therefore passed
+#    and the command RAN — from the wrong directory, having silently lost the
+#    one it was given. WorkingDirectory= fails it, because systemd chdirs after
+#    setresuid.
+#
+# A release symlink pointing nowhere after a botched deploy is a real state, and
+# it is the exact failure this role exists to make visible.
 WorkingDirectory={{ item.working_directory }}
 {% endif %}
 {% for key, value in (item.environment | default({})).items() %}
