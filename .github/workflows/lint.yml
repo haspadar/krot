@@ -40,8 +40,18 @@ jobs:
 
       # wiki/index/ is generated from roles/, openspec/ and git. A stale index is
       # worse than none: it states a role is explained when nothing explains it.
-      # Regenerating in CI turns that into a diff instead of a quiet lie.
+      # Regenerating in CI turns that into a failure instead of a quiet lie.
+      #
+      # `git status --porcelain`, not `git diff --exit-code`: a deleted index file
+      # comes back as untracked, which `git diff` does not report at all — the check
+      # would pass on the one case where the index is missing outright.
       - name: wiki-index is up to date
         run: |
           python3 scripts/wiki-index.py
-          git diff --exit-code -- wiki/index/
+          if [ -n "$(git status --porcelain -- wiki/index/)" ]; then
+            echo "wiki/index/ разошёлся с источниками — пересобери:"
+            echo "  python3 scripts/wiki-index.py"
+            git status --porcelain -- wiki/index/
+            git diff -- wiki/index/
+            exit 1
+          fi
