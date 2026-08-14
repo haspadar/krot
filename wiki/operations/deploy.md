@@ -18,8 +18,11 @@ ansible-playbook deploy.yml -e deploy_branch=some-branch
 ```
 
 Роль намеренно не переизобретает релизы, symlink и rollback — этим уже занимается `deploy.php`
-проекта. Пересечение Ansible и Deployer ровно одно: Ansible создаёт юзера `km` и каталог
-`/var/www/<project>` с правами, куда Deployer кладёт релизы.
+проекта. Пересечение Ansible и Deployer ровно одно: Ansible создаёт операторского юзера
+(`bootstrap_user`, по умолчанию `km`) и каталог под релизы с правами.
+
+Путь каталога задаёт проект через `nginx_deploy_root`; по умолчанию переменная пуста и каталог не
+создаётся вовсе. `/var/www/<project>` — соглашение проектов, а не константа роли.
 
 ## Один deploy key нельзя использовать в двух репозиториях GitHub
 

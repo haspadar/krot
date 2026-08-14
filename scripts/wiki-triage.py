@@ -63,7 +63,7 @@ def candidates(words: list[str]) -> list[tuple[str, int]]:
         if relative.startswith("index/") or relative.startswith("raw/"):
             continue
 
-        haystack = file.read_text(encoding="utf-8").lower()
+        haystack = file.read_text(encoding="utf-8", errors="replace").lower()
         lowered_path = relative.lower()
 
         score = 0

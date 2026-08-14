@@ -33,7 +33,7 @@ ROLE_PATH_RE = re.compile(r"^roles/([^/]+)/")
 
 
 def frontmatter_of(file: Path) -> dict[str, object]:
-    contents = file.read_text(encoding="utf-8")
+    contents = file.read_text(encoding="utf-8", errors="replace")
     if not contents.startswith("---\n"):
         return {}
 
@@ -61,37 +61,41 @@ def frontmatter_of(file: Path) -> dict[str, object]:
 def roles_touched_by(change_directory: str, bare: str) -> list[str]:
     """Роли, которые change правил на самом деле.
 
-    Ищем коммиты, упоминающие change: сперва по его папке в openspec (она заводится и
-    правится в том же PR), затем по имени в теме коммита. Из найденных коммитов берём
-    пути вида `roles/<role>/`.
+    Ищем коммиты по ПАПКЕ change в openspec: она заводится и правится тем же PR, который
+    правит роли. Из найденных коммитов берём пути вида `roles/<role>/`.
+
+    ⚠️ Поиск по имени change в тексте коммита (`git log --grep`) отсюда убран намеренно.
+    `--grep` — незаякоренная регулярка по всему телу сообщения, поэтому любое упоминание
+    вскользь тянет чужой коммит вместе со всеми его ролями. Замерено на `2026-08-02-goaccess`:
+    к верным 11 коммитам добавлялось 9 лишних, а список ролей разрастался с `goaccess` до
+    `bootstrap, geoip, goaccess, nginx` — из-за коммита «Оболочка оператора — bash вместо
+    fish», который лишь упоминает goaccess в разборе причин.
+
+    Цена ошибки здесь несимметрична: лишняя роль в списке заставляет открыть непричастную
+    страницу и поставить ей свежий `verified` — то есть объявить проверенным то, что никто не
+    сверял. Пропущенная роль всего лишь оставляет страницу на прежней дате.
     """
     roles: set[str] = set()
 
-    revisions = ["--all", f"--grep={bare}"]
-    commands = [
-        # Коммиты, тронувшие папку change — самый надёжный след: PR ведёт и proposal, и роли.
-        [
-            "git",
-            "log",
-            "--all",
-            "--format=%H",
-            "--",
-            f"openspec/changes/archive/{change_directory}",
-            f"openspec/changes/{bare}",
-            f"openspec/changes/{change_directory}",
-        ],
-        ["git", "log", *revisions, "--format=%H"],
+    command = [
+        "git",
+        "log",
+        "--all",
+        "--format=%H",
+        "--",
+        f"openspec/changes/archive/{change_directory}",
+        f"openspec/changes/{bare}",
+        f"openspec/changes/{change_directory}",
     ]
 
-    commits: list[str] = []
-    for command in commands:
-        try:
-            output = subprocess.run(
-                command, cwd=ROOT, capture_output=True, text=True, check=True
-            ).stdout
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            continue
-        commits.extend(line for line in output.split("\n") if line)
+    try:
+        output = subprocess.run(
+            command, cwd=ROOT, capture_output=True, text=True, check=True
+        ).stdout
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return []
+
+    commits = [line for line in output.split("\n") if line]
 
     for commit in dict.fromkeys(commits):
         try:
@@ -149,8 +153,11 @@ def main() -> int:
     print(f"Change `{bare}`, заархивирован {archived_on}")
 
     if not roles:
-        print("\nНи одной роли этот change не тронул — сверять в вики нечего.")
-        print("Так бывает у изменений в CI, документации или структуре репозитория.")
+        print("\nВ коммитах, тронувших папку этого change, правок ролей нет.")
+        print("Так бывает у изменений в CI, документации или структуре репозитория —")
+        print("а ещё у change, заведённого задним числом, когда работа по ролям уже")
+        print("уехала отдельным коммитом. Во втором случае сверять всё же есть что:")
+        print("посмотри `git log -- roles/` за даты change и реши сам.")
 
         return 0
 

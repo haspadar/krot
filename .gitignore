@@ -7,3 +7,4 @@ roles/*/files/*.key
 inventory/host_vars/*.local.yml
 CLAUDE.md
 docs/
+__pycache__/

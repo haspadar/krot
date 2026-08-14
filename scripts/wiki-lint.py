@@ -147,6 +147,24 @@ def wiki_files() -> list[Path]:
     return sorted(WIKI.rglob("*.md"))
 
 
+def read_page(file: Path) -> tuple[str, str | None]:
+    """Содержимое страницы и жалоба, если её пришлось читать с потерями.
+
+    Не-UTF-8 в markdown — это почти всегда сломанная кодировка при копировании из
+    терминала, и линтер обязан о ней СКАЗАТЬ, а не упасть трейсбеком: упавший линтер не
+    проверит ни секреты, ни ссылки в остальных файлах. Читаем с заменой негодных байтов,
+    чтобы проверки на секреты всё же отработали — утечка не должна пережить кривой байт.
+    """
+    raw = file.read_bytes()
+    try:
+        return raw.decode("utf-8"), None
+    except UnicodeDecodeError as error:
+        return (
+            raw.decode("utf-8", errors="replace"),
+            f"{file.relative_to(ROOT)}: не UTF-8 ({error.reason} на байте {error.start})",
+        )
+
+
 def main() -> int:
     if not WIKI.is_dir():
         print("Папки wiki/ нет.", file=sys.stderr)
@@ -161,7 +179,9 @@ def main() -> int:
     today = date.today()
 
     for file in files:
-        contents = file.read_text(encoding="utf-8")
+        contents, encoding_error = read_page(file)
+        if encoding_error is not None:
+            errors.append(encoding_error)
         shown = file.relative_to(ROOT)
         relative_to_wiki = file.relative_to(WIKI).as_posix()
         is_generated = relative_to_wiki.startswith("index/")
@@ -287,7 +307,7 @@ def main() -> int:
     # по ней строится обратная связь «какая страница это объясняет».
     covered: set[str] = set()
     for file in files:
-        declared = parse_frontmatter(file.read_text(encoding="utf-8")).get("roles", [])
+        declared = parse_frontmatter(read_page(file)[0]).get("roles", [])
         if isinstance(declared, list):
             covered.update(declared)
 

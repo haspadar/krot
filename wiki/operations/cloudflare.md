@@ -51,10 +51,13 @@ Krot ставит только механизм: файл паролей `/etc/n
 [секретницы](secrets.md) в рантайме) и сниппет:
 
 ```nginx
-# /etc/nginx/snippets/krot-auth.conf
+# /etc/nginx/snippets/krot-auth.conf — как он выглядит на машине с умолчаниями
 auth_basic "Preview";
 auth_basic_user_file /etc/nginx/.htpasswd;
 ```
+
+Строка `auth_basic` собирается из `nginx_auth_realm` (по умолчанию `Preview`) — в шаблоне там
+переменная, а не литерал.
 
 **Какие сайты закрыты — решает не Krot, а генератор vhost'ов проекта.** Он добавляет в шаблон одну
 строку, пока сайт не помечен опубликованным: условие вокруг `include` сниппета внутри блока

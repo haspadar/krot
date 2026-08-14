@@ -57,7 +57,7 @@ def list_directories(path: Path) -> list[str]:
 
 
 def read_frontmatter(file: Path) -> dict[str, object]:
-    contents = file.read_text(encoding="utf-8")
+    contents = file.read_text(encoding="utf-8", errors="replace")
     if not contents.startswith("---\n"):
         return {}
 
@@ -87,7 +87,7 @@ def title_of(file: Path) -> str | None:
     if not file.is_file():
         return None
 
-    for line in file.read_text(encoding="utf-8").split("\n"):
+    for line in file.read_text(encoding="utf-8", errors="replace").split("\n"):
         match = HEADING_RE.match(line)
         if match:
             return match.group(1).strip()
@@ -152,7 +152,7 @@ def role_variables(role: str) -> int:
     if not defaults.is_file():
         return 0
 
-    contents = defaults.read_text(encoding="utf-8")
+    contents = defaults.read_text(encoding="utf-8", errors="replace")
     return len(set(VARIABLE_RE.findall(contents)))
 
 
