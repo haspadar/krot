@@ -60,7 +60,7 @@ def candidates(words: list[str]) -> list[tuple[str, int]]:
     for file in sorted(WIKI.rglob("*.md")):
         relative = file.relative_to(WIKI).as_posix()
         # index/ генерируется, raw/ — источник; ни туда, ни туда класть нельзя.
-        if relative.startswith("index/") or relative.startswith("raw/"):
+        if relative.startswith(("index/", "raw/")):
             continue
 
         haystack = file.read_text(encoding="utf-8", errors="replace").lower()
