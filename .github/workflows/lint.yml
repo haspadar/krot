@@ -10,7 +10,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
+      # Full history, not the default shallow clone: wiki-index.py restores PR numbers
+      # from merge commits, and at depth=1 every one of them silently becomes a dash.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v6
         with:
