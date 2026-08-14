@@ -367,6 +367,22 @@ Lookup-плагин запускает `bw` сам и про кеш сессии
 Роль, которой нужен пароль, падает на `assert`, а не ставит пустой: пустой `htpasswd` пустил бы
 на закрытый сайт кого угодно.
 
+## Вики
+
+Знание о том, **как с этим работать и что кусается**, живёт в [`wiki/`](wiki/README.md): почему
+сделано именно так, что отказывает тихо и по какому признаку это заметить. Роль сама себя
+описывает задачами и `defaults/main.yml` — вики отвечает на другое.
+
+```bash
+python3 scripts/wiki-lint.py                    # ссылки, frontmatter, секреты
+python3 scripts/wiki-index.py                   # пересобрать wiki/index/
+python3 scripts/wiki-triage.py                  # разобрать wiki/raw/
+python3 scripts/wiki-after-archive.py <change>  # после архивации — что устарело
+```
+
+Зависимостей нет: только python3. Первые две команды гоняются в CI. Правила ведения —
+[`wiki/CONVENTIONS.md`](wiki/CONVENTIONS.md).
+
 ## Разработка
 
 Архитектура и принятые решения — `openspec/ARCHITECTURE.md`. Изменения ведутся как в busel и

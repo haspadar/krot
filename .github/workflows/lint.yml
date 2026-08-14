@@ -34,3 +34,14 @@ jobs:
       # neither shows up in linting, but both break every consumer's install.
       - name: Build the collection
         run: ansible-galaxy collection build --output-path /tmp/krot-build
+
+      - name: wiki-lint
+        run: python3 scripts/wiki-lint.py
+
+      # wiki/index/ is generated from roles/, openspec/ and git. A stale index is
+      # worse than none: it states a role is explained when nothing explains it.
+      # Regenerating in CI turns that into a diff instead of a quiet lie.
+      - name: wiki-index is up to date
+        run: |
+          python3 scripts/wiki-index.py
+          git diff --exit-code -- wiki/index/
