@@ -1,0 +1,59 @@
+---
+# systemd is the whole point of this role, so the container has to run it for
+# real: privileged, host cgroup namespace and the cgroup filesystem mounted.
+# Measured on Docker 29.7.2 — `systemctl is-system-running` answers `running`
+# and the version is 255, the same one every measurement in wiki/ was taken on.
+driver:
+  name: docker
+
+# community.docker drives the container itself, so a missing one fails `create`
+# before any role code runs — an error that reads like a broken scenario rather
+# than a missing collection. Declaring it here makes Molecule install it.
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-cron
+    # Ships systemd and python3, which a bare ubuntu:24.04 does not: without
+    # them the first task fails on a missing interpreter rather than on anything
+    # about the role.
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      # The role is consumed as haspadar.krot.cron by busel and matilda, and the
+      # collection root is three levels up from this scenario.
+      roles_path: ../../roles
+  inventory:
+    host_vars:
+      krot-cron:
+        # The default cron_user is km, which exists on a provisioned machine but
+        # not in a bare container. Creating it is the bootstrap role's job, not
+        # this one's, so the scenario runs jobs as root instead of pulling in a
+        # dependency the role does not declare.
+        cron_user: root
+
+scenario:
+  # `idempotence` is the reason this scenario exists: CLAUDE.md promises every
+  # role yields changed=0 on a second run, and until now nothing checked it.
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible

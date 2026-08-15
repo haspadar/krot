@@ -1,0 +1,59 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    # Three jobs rather than one, because the defaults make this role a no-op:
+    # cron_jobs is empty, so a scenario run on defaults would converge happily
+    # having installed nothing. Each job here exercises a branch that failed
+    # silently in production at least once.
+    - name: Run the cron role
+      ansible.builtin.include_role:
+        name: cron
+      vars:
+        cron_jobs:
+          # The plain case: output to the journal, no file, no permissions to
+          # get wrong. This is what the role exists to make the default.
+          - name: journal-job
+            description: Writes to the journal only
+            command: /bin/echo hello from the journal
+            schedule: hourly
+
+          # A working_directory that exists. The interesting half is the one
+          # that does not, and verify.yml covers it: a release symlink pointing
+          # nowhere has to fail the unit rather than run it from /.
+          - name: workdir-job
+            description: Runs from a directory
+            command: /bin/pwd
+            schedule: daily
+            working_directory: /tmp
+
+          # A command carrying a %, which the role has to double. Measured on
+          # busel: `date +%Y-%m-%d` left undoubled printed the unit's credentials
+          # path and exited 0 — the failure this role exists to stop, hiding
+          # inside the mechanism meant to prevent it. No other job here contains
+          # a %, so without this one that escaping is never exercised.
+          - name: percent-job
+            description: Carries a % the role must double
+            command: /bin/date +%Y-%m-%d
+            schedule: daily
+
+          # A command that fails, because the role's whole point is that failure
+          # is visible. Every other job here proves success works; this one
+          # proves an exit code other than 0 reaches systemctl --failed instead
+          # of being swallowed.
+          - name: failing-job
+            description: Exits non-zero on purpose
+            command: /bin/false
+            schedule: daily
+
+          # The file-output branch, which pulls in the logrotate entry. Two jobs
+          # sharing one log_file is what the role rejects at run time — the same
+          # duplicate that stopped rotation for every log on busel for three
+          # days.
+          - name: file-job
+            description: Writes to a file, so logrotate gets involved
+            command: /bin/echo hello from a file
+            schedule: daily
+            log_file: /var/log/krot/file-job.log
+            environment:
+              APP_ENV: prod

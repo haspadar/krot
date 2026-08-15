@@ -59,3 +59,39 @@ jobs:
             git diff -- wiki/index/
             exit 1
           fi
+
+      # Prints the reach figure on every run, and fails only when a role appears
+      # in no list at all — a role nobody named reads as checked while nothing
+      # checks it.
+      - name: Every role is named as covered, planned or excluded
+        run: python3 scripts/coverage.py
+
+  # A separate job, so a red role run stays distinguishable from a red linter at
+  # a glance. Note this does NOT gate merges on its own: main's protection names
+  # the required check by job name, and only "lint" is in that list — adding
+  # "molecule" there is a deliberate, separate step.
+  molecule:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Install Molecule
+        run: pip install molecule 'molecule-plugins[docker]' ansible-core
+
+      # community.docker drives the container itself, so a missing one fails
+      # `create` before any role code runs — an error that reads like a broken
+      # scenario rather than a missing collection.
+      - name: Install the scenarios' collections
+        run: ansible-galaxy collection install -r molecule/requirements.yml
+
+      - name: The collection's own dependencies
+        run: ansible-galaxy collection install -r requirements.yml
+
+      # `test` rather than `converge`: the sequence includes idempotence, which
+      # is the promise this whole job exists to keep honest.
+      - name: molecule test
+        run: molecule test --all
