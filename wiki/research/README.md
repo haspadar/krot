@@ -21,6 +21,7 @@ roles: []
 | Что мерили | Страница |
 |---|---|
 | `systemd_service` отдаёт `ActiveState=inactive` про юнит, который сам же запустил | [status — снимок до действия](systemd-service-status-is-stale.md) |
+| Файл с бо́льшим номером в `apt.conf.d` дополнил список origins вместо замены — машина брала обновления всего релиза | [Allowed-Origins дополняется](apt-allowed-origins-appends.md) |
 
 ## Замеры внутри описаний
 
