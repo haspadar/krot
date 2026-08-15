@@ -60,6 +60,14 @@ jobs:
       - name: wiki-lint
         run: python3 scripts/wiki-lint.py
 
+      # wiki-lint has carried secret patterns since the wiki was set up, but it
+      # only walks wiki/. This runs the same patterns over everything git
+      # tracks — the blind spot was found the hard way, by a hardcoded test
+      # password landing in molecule/ and matching wiki-lint's own regex while
+      # no linter was looking at that directory.
+      - name: secret-lint
+        run: python3 scripts/secret-lint.py
+
       # wiki/index/ is generated from roles/, openspec/ and git. A stale index is
       # worse than none: it states a role is explained when nothing explains it.
       # Regenerating in CI turns that into a failure instead of a quiet lie.

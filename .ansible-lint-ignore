@@ -20,3 +20,6 @@
 molecule/cron/verify.yml command-instead-of-module
 molecule/firewall/verify.yml command-instead-of-module
 molecule/firewall_cloudflare/verify.yml command-instead-of-module
+molecule/nginx/verify.yml command-instead-of-module
+molecule/nginx_auth/verify.yml command-instead-of-module
+molecule/postgresql/verify.yml command-instead-of-module

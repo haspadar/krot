@@ -35,5 +35,16 @@ build_ignore:
   # throwaway HTTP-server unit and a playbook that opens 80/443 — inert on a
   # consumer's machine, but with no business being there.
   - molecule
+  # These are in .gitignore, which ansible-galaxy does not read — measured, the
+  # tarball carried 5282 entries from them. `collections/` is a vendored copy of
+  # other people's collections, which a consumer resolves for themselves;
+  # CLAUDE.md is instructions for an agent working ON this repository and has no
+  # meaning inside an installed copy of it; .ruff_cache is a linter's scratch
+  # directory. The CI build step does not catch any of this — it only checks
+  # that the build succeeds, not what ends up inside.
+  - collections
+  - CLAUDE.md
+  - .ruff_cache
+  - .gitignore
   - .idea
   - .ansible

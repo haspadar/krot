@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    # nginx_auth_enabled and the credentials come from the scenario's
+    # host_vars, so auth.yml runs exactly as it would on a machine serving
+    # unpublished sites.
+    - name: Run the nginx role with basic auth on
+      ansible.builtin.include_role:
+        name: nginx

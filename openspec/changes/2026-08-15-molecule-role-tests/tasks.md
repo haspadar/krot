@@ -34,7 +34,8 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
 ## Work
 - [x] `molecule/` with a scenario per role: docker driver, noble platform, `privileged`,
       `cgroupns_mode: host`, cgroup mount
-- [ ] First wave: `cron` (done), `firewall` (done, two scenarios), `nginx`, `postgresql`
+- [x] First wave complete: `cron`, `firewall` (two scenarios), `nginx` (two scenarios),
+      `postgresql`
 - [x] **`firewall` needed two scenarios, not one.** Its branches configure the web ports in
       opposite ways — one opens 80/443 to everyone, the other closes them — so a single converge
       cannot exercise both. `firewall` covers the default, `firewall_cloudflare` the lock
@@ -44,9 +45,12 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       fixed list the scenario asserts exact rule counts — which is what catches a range that
       silently went missing. Ranges are RFC 5737 / RFC 3849 documentation blocks, so a rule that
       ever escapes points at addresses reserved for examples
-- [ ] **Explicit variables in every scenario** wherever a default makes the role a no-op:
+- [x] **Explicit variables in every scenario** wherever a default makes the role a no-op:
       `cron_jobs` with a job, `nginx_auth_enabled: true` with a test password (otherwise the
-      `auth.yml` branch with its hand-written `rc == 10` idempotence never executes)
+      `auth.yml` branch with its hand-written `rc == 10` idempotence never executes). One more
+      case turned up while writing the nginx scenario, and it is the sharper one: the package
+      ships `rotate 14`, which is also the role's default — running on defaults would leave the
+      file byte-identical whether the role edited it or did nothing, so the scenario asks for 21
 - [x] `converge.yml` and an `idempotence` run in every scenario
 - [ ] Container cleanup that works **after a cancelled run** as well
 - [x] A Molecule job in `.github/workflows/` — a separate job, so that a linter failure stays
@@ -89,27 +93,63 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       did not; the break was unreachable from that starting state. Worth recording because the
       conclusion "the test does not catch it" was wrong for a reason easy to repeat
 
+### Found while writing the nginx and postgresql scenarios (2026-08-15)
+
+- [x] **A check that passed on a machine the role never touched.** `nginx -T` prints every file
+      verbatim, comments included, and the packaged nginx.conf carries `# server_tokens off;`.
+      A substring test for `server_tokens off` therefore passed on a container with the untouched
+      package config — measured. Now matched as a directive at the start of a line. The same trap
+      the retention value avoided (14 vs 21), missed one line away from it
+- [x] **A scenario starting from a clean machine cannot tell `restart` from `reload`.** On a bare
+      host the package creates the cluster, the role writes 99-krot.conf, and the server starts
+      afterwards — reading the finished file on its first boot. Swapping the handler's
+      `state: restarted` for `reloaded` left the whole scenario green. On a machine that is
+      already running, the difference is exactly what the handler's comment claims: measured,
+      `max_connections` stayed 123 in effect while the file said 177, and a restart applied it.
+      `prepare` now installs and starts the cluster before the role runs, and with that the
+      reload break is caught
+- [x] **The repository's own secret detector never looked at `molecule/`.** wiki-lint has carried
+      secret patterns since the wiki was set up, and its regex matches this scenario-only
+      value (secret-lint: allow — quoted here as the example that made the gap visible)
+      `nginx_auth_password: molecule-scenario-only` exactly — but it walks `wiki/**/*.md` and
+      nothing else. So the first hardcoded credential in this repository's history landed in the
+      one directory nothing was watching. Added `scripts/secret-lint.py`, which imports the same
+      patterns (two lists drift apart) and runs them over everything git tracks, with an explicit
+      `secret-lint: allow` marker for the throwaway value. Verified both ways: the marked line
+      passes, an unmarked `db_password: ...` fails the run
+- [x] **The built collection carried 5462 entries, of which 5283 had no business being there** —
+      `collections/` (a vendored copy of other people's collections), `CLAUDE.md` (instructions
+      for an agent working ON this repository) and `.ruff_cache`. All three are in `.gitignore`,
+      which `ansible-galaxy` does not read, and the CI build step only checks that the build
+      succeeds. Added to `build_ignore`; the tarball is now 179 entries
+
 ## Verification
-- [x] `molecule test` green locally for `cron`, `firewall`, `firewall_cloudflare` — 7/7 actions
-      each, idempotence included
-- [ ] The second run yields `changed=0` inside the scenario, not only in the manual probe.
-      A finding is separately expected in `postgresql`: `meta: flush_handlers` mid-role and
-      `postgresql_ext` over a live connection make idempotence there questionable — which is
-      exactly what Molecule is being introduced for
+- [x] `molecule test` green locally for `cron`, `firewall`, `firewall_cloudflare`, `nginx`,
+      `nginx_auth` — 7/7 actions each, idempotence included
+- [x] The second run yields `changed=0` inside the scenario, not only in the manual probe.
+      **The finding expected in `postgresql` did not materialise:** `meta: flush_handlers`
+      mid-role and `postgresql_ext` over a live connection were predicted to break idempotence,
+      and they do not — the second run is clean. Recorded because a prediction that failed is
+      worth as much as one that held: the reasoning behind it was plausible and wrong
 - [x] A deliberately broken role **fails** the scenario — checking the check: without this a green
       CI means nothing. Done per scenario, each break chosen to be one the role exists to prevent:
       `cron` — `ExecStart=-` swallowing a failure; `firewall` — port 443 dropped from the allow
-      loop; `firewall_cloudflare` — the open-to-everyone rules left in place. In all three
+      loop; `firewall_cloudflare` — the open-to-everyone rules left in place; `nginx` — the
+      duplicate logrotate config left behind; `nginx_auth` — the htpasswd never rewritten, so an
+      old password keeps working; `postgresql` — the handler reloading instead of restarting, so
+      a postmaster-level setting stays in the file and never reaches the server. In all six
       `converge` and `idempotence` stayed green while `verify` went red, which is the only
       arrangement that proves the checks read the machine rather than Ansible's report
 - [ ] **A PR with a red Molecule does not merge** — verified in fact, not by the setting: that is
       the only proof the required check was added correctly
-- [ ] The reach counter prints 4/11 roles and 76/117 tasks after the first wave — **2/11 and
-      39/117 (33%)** with `cron` and `firewall` done. The counter maps scenario directories to
+- [x] The reach counter prints **4/11 roles and 76/117 tasks (64%)** after the first wave —
+      exactly the figure this change set as the target. The counter maps scenario directories to
       roles by prefix, so `firewall_cloudflare` counts towards `firewall` rather than reading as
       an eleventh role that does not exist
-- [ ] `wiki-lint.py` does not object to test values in `molecule/*/converge.yml` — it fails the
-      build on strings that look like secrets, examples included
+- [x] `wiki-lint.py` does not object to test values in the scenarios — checked with
+      `nginx_auth_password` present in `molecule/nginx_auth/molecule.yml`: 18 pages, no errors.
+      The linter reads `wiki/` only, so scenario files are outside its reach entirely; the value
+      is a throwaway for a container destroyed at the end of the run and guards nothing
 - [x] `yamllint`, `ansible-lint` clean on the Molecule files themselves — 0 failures. The
       `command-instead-of-module` warnings the verification files raise are left visible through
       `.ansible-lint-ignore` rather than silenced globally. The measured reason — the module's
@@ -117,6 +157,22 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       `wiki/research/systemd-service-status-is-stale.md`, with the probe as a runnable asset
 - [ ] Molecule's run time in CI measured — the figure is needed before conclusions about it, not
       after
+- [x] **Second review found four things in the postgresql scenario, all confirmed by measurement.**
+      One was a live regression: quoting the scenario's throwaway password (secret-lint: allow —
+      the value itself is quoted, marked, a few items above)
+      in the prose of this very file tripped `secret-lint.py`, the linter the same commit adds — the
+      item describing the escape marker had not applied it, so CI would have gone red on the
+      commit claiming CI was green. `log_destination` was selected in verify's query and missing
+      from its assert loop, checking nothing; added, and it is meaningful — without the drop-in
+      the server answers `stderr`. The apt check carried three clauses of which one worked:
+      measured all three failure modes on noble (duplicate source, garbage keyring, missing
+      keyring) and every one exits 100, while `is misconfigured` is emitted by none of them —
+      cut to the exit code, with the measurements written down. And the restart-vs-reload guard
+      rests on exactly two of the eight settings read back, because the other six are either
+      SIGHUP-applied or already at the asked-for value; that was true but written nowhere, so
+      deleting one host_var would have silently disarmed the scenario. Noted in both files.
+      Re-verified after the changes: 7/7 green, and swapping `restarted` for `reloaded` still
+      fails verify on `max_connections` with converge and idempotence clean
 
 ## Not done here
 - `ansible-test` — nothing to check while there is no `plugins/` (reasoning in the proposal)
