@@ -1,0 +1,41 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
+    # The extra jail points at nginx's error log, and fail2ban refuses to start
+    # a jail whose logpath does not exist. Creating it here rather than
+    # installing nginx keeps this scenario about fail2ban: what is being tested
+    # is that the role renders a working extra jail, not that nginx works.
+    - name: The log directory the extra jail watches
+      ansible.builtin.file:
+        path: /var/log/nginx
+        state: directory
+        owner: root
+        group: adm
+        mode: "0750"
+
+    - name: A log file with a line in it, so the jail has something to tail
+      ansible.builtin.copy:
+        dest: /var/log/nginx/error.log
+        content: |
+          2026/08/15 12:00:00 [error] 1#1: *1 open() failed, client: 10.0.0.1
+        owner: root
+        group: adm
+        mode: "0640"
+
+    # sshd is deliberately not installed. Its jail reads the systemd journal
+    # rather than a file, so fail2ban starts it regardless and simply matches
+    # nothing. What verify checks is that fail2ban parsed and activated the
+    # jail, not that it ever banned anyone.
