@@ -19,7 +19,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
-| [`2026-08-15-ci-once-per-change`](../../openspec/changes/2026-08-15-ci-once-per-change/proposal.md) | **в работе** | — | Proposal: CI платит за ответы, которые уже даны |
+| [`2026-08-15-ci-faster-feedback`](../../openspec/changes/2026-08-15-ci-faster-feedback/proposal.md) | **в работе** | — | Proposal: CI ждёт дольше, чем работает |
 | [`2026-08-15-molecule-role-tests`](../../openspec/changes/2026-08-15-molecule-role-tests/proposal.md) | **в работе** | — | Proposal: роль впервые встречает реальность на проде |
 | [`app-cron`](../../openspec/changes/archive/2026-08-13-app-cron/proposal.md) | 2026-08-13 | [#20](https://github.com/haspadar/krot/pull/20) | Proposal: периодические задачи приложения — свойство машины |
 | [`cron-assert-silent-skip`](../../openspec/changes/archive/2026-08-13-cron-assert-silent-skip/proposal.md) | 2026-08-13 | [#21](https://github.com/haspadar/krot/pull/21) | Proposal: провалившийся assert пропускал задачу молча |
