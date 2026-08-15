@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **2**, заархивировано — **8**.
+В работе — **0**, заархивировано — **10**.
 
 Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **4** из 10: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
@@ -19,8 +19,8 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
-| [`2026-08-13-app-cron`](../../openspec/changes/2026-08-13-app-cron/proposal.md) | **влит, не заархивирован** | [#20](https://github.com/haspadar/krot/pull/20) | Proposal: периодические задачи приложения — свойство машины |
-| [`2026-08-13-cron-assert-silent-skip`](../../openspec/changes/2026-08-13-cron-assert-silent-skip/proposal.md) | **влит, не заархивирован** | [#21](https://github.com/haspadar/krot/pull/21) | Proposal: провалившийся assert пропускал задачу молча |
+| [`app-cron`](../../openspec/changes/archive/2026-08-13-app-cron/proposal.md) | 2026-08-13 | [#20](https://github.com/haspadar/krot/pull/20) | Proposal: периодические задачи приложения — свойство машины |
+| [`cron-assert-silent-skip`](../../openspec/changes/archive/2026-08-13-cron-assert-silent-skip/proposal.md) | 2026-08-13 | [#21](https://github.com/haspadar/krot/pull/21) | Proposal: провалившийся assert пропускал задачу молча |
 | [`geoip`](../../openspec/changes/archive/2026-08-02-geoip/proposal.md) | 2026-08-02 | [#11](https://github.com/haspadar/krot/pull/11) | Proposal: география в отчётах посещаемости |
 | [`goaccess`](../../openspec/changes/archive/2026-08-02-goaccess/proposal.md) | 2026-08-02 | [#6](https://github.com/haspadar/krot/pull/6) | Proposal: посещаемость по логам nginx |
 | [`goaccess-111`](../../openspec/changes/archive/2026-08-02-goaccess-111/proposal.md) | 2026-08-02 | — | Proposal: GoAccess 1.11 и города в геолокации |
