@@ -113,8 +113,8 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
 - [x] `yamllint`, `ansible-lint` clean on the Molecule files themselves — 0 failures. The
       `command-instead-of-module` warnings the verification files raise are left visible through
       `.ansible-lint-ignore` rather than silenced globally. The measured reason — the module's
-      `status` is a snapshot taken before it acts — is written up on its own wiki page, which
-      lands in a separate PR; until that merges, the explanation lives in the ignore file itself
+      `status` is a snapshot taken before it acts — is in
+      `wiki/research/systemd-service-status-is-stale.md`, with the probe as a runnable asset
 - [ ] Molecule's run time in CI measured — the figure is needed before conclusions about it, not
       after
 
