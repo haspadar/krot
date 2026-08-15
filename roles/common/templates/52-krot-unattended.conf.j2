@@ -1,5 +1,13 @@
 {{ ansible_managed | comment('c') }}
-// Sorts after 50unattended-upgrades, so these origins replace the distro list.
+// Sorts after 50unattended-upgrades, so this file has the last word.
+//
+// #clear first, because a block like the one below APPENDS. Allowed-Origins is
+// an apt list and `::` adds to it — without the clear, 50unattended-upgrades'
+// own "${distro_id}:${distro_codename}" survives, and that origin is the whole
+// release pocket, not security. Measured: apt-config dump listed it alongside
+// these three, so the machine took ordinary release updates unattended, which
+// is exactly what this file exists to prevent.
+#clear Unattended-Upgrade::Allowed-Origins;
 
 Unattended-Upgrade::Allowed-Origins {
     "${distro_id}:${distro_codename}-security";

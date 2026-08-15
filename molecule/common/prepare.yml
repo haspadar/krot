@@ -1,0 +1,79 @@
+---
+# A machine that has been provisioned before, badly. Every one of these is a
+# state the role has to move away from — starting from a blank container would
+# let a task that does nothing look identical to one that works.
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
+    # Docker bind-mounts /etc/hostname and /etc/hosts from its own container
+    # directory, and a bind-mounted file cannot be replaced by rename. That
+    # breaks the role's first two tasks in a way that has nothing to do with the
+    # role: `hostnamectl` answers "Failed to set static hostname: Device or
+    # resource busy", and lineinfile — which writes to a temporary file and
+    # renames it into place — fails the same way. Both were measured here.
+    #
+    # Unmounting them hands the container the image's own files, and after that
+    # the role runs exactly as it does on a real machine, where these are
+    # ordinary files. Verified in a probe container: hostnamectl then sets both
+    # the kernel name and /etc/hostname, and an atomic replace of /etc/hosts
+    # succeeds and resolves.
+    #
+    # This prepares the environment rather than working around the role. The
+    # alternative — dropping the two tasks from the scenario — would leave the
+    # only part of this role that can strand a machine untested.
+    # Guarded on findmnt rather than run bare: `molecule prepare` is runnable on
+    # its own, and a second umount would either fail or start peeling back
+    # whatever is underneath.
+    - name: Give the container its own /etc/hostname and /etc/hosts
+      ansible.builtin.shell: |
+        findmnt -no TARGET {{ item }} >/dev/null || exit 10
+        umount {{ item }}
+      register: unmounted
+      changed_when: unmounted.rc == 0
+      failed_when: unmounted.rc not in [0, 10]
+      loop:
+        - /etc/hostname
+        - /etc/hosts
+
+    # The role rewrites the 127.0.1.1 line by regexp rather than appending, and
+    # an existing wrong entry is the only way to tell the two apart: appending
+    # to a file with no such line looks correct too, right up to the point where
+    # a second provisioning run leaves two entries and resolution picks the
+    # stale one.
+    - name: An old hostname already mapped, from a previous life of this machine
+      ansible.builtin.lineinfile:
+        path: /etc/hosts
+        line: "127.0.1.1 krot-before-the-rename"
+        create: true
+        owner: root
+        group: root
+        mode: "0644"
+
+    # community.general.timezone is idempotent against the value already set, so
+    # the starting zone has to differ from the target. Etc/UTC is what the image
+    # ships; pinning it here says so out loud rather than relying on it.
+    - name: A timezone that is not the one the role will set
+      community.general.timezone:
+        name: Etc/UTC
+
+    # Present before the role runs, so `state: present` is a no-op and the
+    # scenario cannot pass merely because apt installed something. What is being
+    # checked is the configuration the role drops next to it.
+    - name: The unattended-upgrades package already installed, as on any Ubuntu server
+      ansible.builtin.apt:
+        name: unattended-upgrades
+        state: present
+        update_cache: true
+        cache_valid_time: 3600

@@ -16,7 +16,7 @@ roles: []
 | Роль | Ручек в `defaults` | Объясняет страница |
 |---|---|---|
 | [`bootstrap`](../../roles/bootstrap/) | 6 | [operations/cloudflare.md](../operations/cloudflare.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
-| [`common`](../../roles/common/) | 4 | [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
+| [`common`](../../roles/common/) | 4 | [research/apt-allowed-origins-appends.md](../research/apt-allowed-origins-appends.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`cron`](../../roles/cron/) | 8 | [operations/cron-jobs.md](../operations/cron-jobs.md), [operations/logging.md](../operations/logging.md), [operations/silent-failures.md](../operations/silent-failures.md) |
 | [`deploy`](../../roles/deploy/) | 6 | [operations/deploy.md](../operations/deploy.md) |
 | [`deploy_keys`](../../roles/deploy_keys/) | 2 | [operations/deploy.md](../operations/deploy.md), [operations/secrets.md](../operations/secrets.md) |
