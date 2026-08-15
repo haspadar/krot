@@ -52,7 +52,11 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       ships `rotate 14`, which is also the role's default — running on defaults would leave the
       file byte-identical whether the role edited it or did nothing, so the scenario asks for 21
 - [x] `converge.yml` and an `idempotence` run in every scenario
-- [ ] Container cleanup that works **after a cancelled run** as well
+- [x] Container cleanup that works **after a cancelled run** as well — `molecule destroy -s <name>`,
+      verified against the actual case: a container left by an interrupted `create` is removed and
+      `docker ps -a` comes back empty. `docker rm -f krot-<name>` is the blunt fallback. Both are
+      in the README section, because the fast loop while writing a scenario is `converge` once and
+      `verify` repeatedly, and that deliberately leaves the machine up
 - [x] A Molecule job in `.github/workflows/` — a separate job, so that a linter failure stays
       distinguishable from a role failure. It runs `molecule test --all`, so a new scenario
       directory is picked up without touching the workflow
@@ -62,8 +66,15 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       `enforce_admins: true`
 - [x] A reach-counter script next to `wiki-index.py`: the share of roles with a scenario, the share
       of tasks, and a check that covered plus uncovered equals the contents of `roles/`
-- [ ] README: a section on running the tests locally
-- [ ] `.openspec.yaml` with `skip_specs: true` — so archiving does not need the flag
+- [x] README: a section on running the tests locally — install, `test --all`, the
+      `converge`/`verify` loop that leaves the container up, and cleanup after a cancelled run.
+      Says plainly that a scenario is worth only what it catches, and that every one here was
+      checked by breaking its role
+- [x] `.openspec.yaml` with `skip_specs: true` — so archiving does not need the flag. The format
+      was measured rather than guessed: `schema:` is required for the marker to be honoured, and
+      `spec-driven` is the only schema openspec 1.9.0 ships. With `schema: change` validation
+      fails with "unknown schema 'change'" and silently ignores skip_specs. `openspec validate`
+      now passes on this change with no `specs/` at all
 - [ ] `CHANGELOG.md` — decide how to version an infrastructure change: it alters no role, and role
       semver gives no answer for it
 
