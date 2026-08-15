@@ -7,9 +7,17 @@ This counts reach instead: which roles are exercised by a scenario, and what
 share of the collection's tasks live in them. A task is a `- name:` line under
 roles/<role>/tasks/.
 
-Also fails when a role is in neither the covered nor the uncovered list, because
-a role nobody named is the defect this whole effort is against: it reads as
-checked while nothing checks it.
+Fails on three things:
+
+  * a role in neither the covered nor the uncovered list — a role nobody named
+    is the defect this whole effort is against: it reads as checked while
+    nothing checks it;
+  * a role listed as planned or uncovered that has since gained a scenario, so
+    the lists stay honest;
+  * coverage going backwards, against the floor below.
+
+It does not fail on coverage being low. Nothing here demands a number be
+reached — only that what was reached is not quietly given up.
 """
 
 from __future__ import annotations
@@ -48,6 +56,21 @@ PLANNED = ["nginx", "postgresql", "common", "fail2ban", "php"]
 # coverage. A new scenario that is not listed simply does not count — visible,
 # and fixed by adding a line.
 EXTRA_SCENARIOS = {"firewall_cloudflare": "firewall"}
+
+# A ratchet: what has been covered stays covered. Raised by hand, in a commit,
+# when the run says it can be — never lowered to make a build pass.
+#
+# Absolute counts rather than the percentage, deliberately. The percentage has a
+# denominator nobody controls: measured on the current tree, adding two tasks to
+# a role that has no scenario yet drops it from 33% to 32% and fails the build.
+# That punishes writing code rather than skipping tests, and the predictable
+# response is to edit the threshold down until it means nothing — which is how a
+# gate becomes decorative.
+#
+# These two cannot be moved that way. Deleting a scenario, or gutting the roles
+# it covers, drops covered_tasks below the floor; adding tasks anywhere does not.
+MIN_COVERED_ROLES = 2
+MIN_COVERED_TASKS = 39
 
 
 def count_tasks(role: Path) -> int:
@@ -111,6 +134,32 @@ def main() -> int:
             file=sys.stderr,
         )
         return 1
+
+    # The ratchet. Phrased as "what was covered no longer is" rather than
+    # "coverage is too low": the only way to trip it is to take something away.
+    if covered_roles < MIN_COVERED_ROLES or covered_tasks < MIN_COVERED_TASKS:
+        print(
+            f"\nERROR: coverage went backwards. Floor is {MIN_COVERED_ROLES} role(s) "
+            f"and {MIN_COVERED_TASKS} task(s); this tree has {covered_roles} and "
+            f"{covered_tasks}.",
+            file=sys.stderr,
+        )
+        print(
+            "A scenario was removed, or the roles behind one lost tasks. Restore it "
+            "rather than lowering the floor — the floor exists to make that choice "
+            "deliberate.",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Raising it is a decision, so the script asks rather than edits itself. A
+    # counter that moved its own floor would ratchet on a fluke — a role
+    # temporarily gaining tasks — and then block the commit that undoes it.
+    if covered_roles > MIN_COVERED_ROLES or covered_tasks > MIN_COVERED_TASKS:
+        print(
+            f"\nCoverage is above the floor. Raise it in {Path(__file__).name}: "
+            f"MIN_COVERED_ROLES = {covered_roles}, MIN_COVERED_TASKS = {covered_tasks}"
+        )
 
     return 0
 
