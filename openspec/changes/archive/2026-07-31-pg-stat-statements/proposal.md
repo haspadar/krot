@@ -1,52 +1,51 @@
-# Proposal: статистика запросов PostgreSQL
+# Proposal: PostgreSQL query statistics
 
 ## Why
 
-В роли уже есть `log_min_duration_statement = 500`, `log_lock_waits`, `log_temp_files`,
-`log_checkpoints` и csvlog. Этого хватает, чтобы поймать **одиночный** тормозящий запрос.
+The role already has `log_min_duration_statement = 500`, `log_lock_waits`, `log_temp_files`,
+`log_checkpoints` and csvlog. That is enough to catch a **single** slow query.
 
-Чего не хватает: запрос, который выполняется 20 мс, но вызывается 100 000 раз за день. В
-медленный лог он не попадёт никогда (порог 500 мс), а по суммарному времени может быть первым
-в базе — и именно он просит индекс. Увидеть такую нагрузку можно только агрегацией по
-нормализованному тексту запроса.
+What is missing: a query that takes 20 ms but is called 100,000 times a day. It will never reach
+the slow log (the threshold is 500 ms), yet by total time it may be first in the database — and it
+is exactly the one asking for an index. Load like that can only be seen by aggregating over the
+normalized query text.
 
 ## What Changes
 
-### Включено по умолчанию
+### Enabled by default
 
-`pg_stat_statements` включён дефолтом: накладные расходы — фиксированный кусок разделяемой
-памяти (несколько МБ при `max = 5000`) и хеш-поиск на запрос. Серверной роли лучше измерять,
-чем гадать. Библиотека идёт в основном пакете `postgresql-<version>`, `postgresql-contrib`
-не нужен.
+`pg_stat_statements` is on by default: the overhead is a fixed chunk of shared memory (a few MB at
+`max = 5000`) and a hash lookup per query. A server role is better off measuring than guessing. The
+library ships in the main `postgresql-<version>` package, `postgresql-contrib` is not needed.
 
-### `shared_preload_libraries` пишется списком, а не одним именем
+### `shared_preload_libraries` is written as a list, not as a single name
 
-PostgreSQL берёт **последнее присваивание целиком** и не умеет дописывать. Значит будущий
-`auto_explain` или `pg_cron`, добавленный вторым конфигом, молча вытеснил бы
-`pg_stat_statements`. Роль пишет весь список разом из `postgresql_shared_preload_libraries`;
-`pg_stat_statements` дописывается шаблоном, когда включён.
+PostgreSQL takes **the last assignment whole** and cannot append. So a future `auto_explain` or
+`pg_cron`, added by a second config, would silently displace `pg_stat_statements`. The role writes
+the whole list at once from `postgresql_shared_preload_libraries`; `pg_stat_statements` is appended
+by the template when it is enabled.
 
-Если преднагружать нечего, **строка не пишется вовсе** — параметр остаётся `default`, а не
-фиксируется как `''`, который затёр бы чужое значение.
+If there is nothing to preload, **the line is not written at all** — the parameter stays `default`
+rather than being pinned to `''`, which would overwrite someone else's value.
 
-### Расширение ставится в базу `postgres`
+### The extension is created in the `postgres` database
 
-`CREATE EXTENSION` выполняется в конкретной базе, а роль по своему принципу не знает про базы
-сайтов. Представление `pg_stat_statements` показывает статистику **всего кластера** независимо
-от того, из какой базы смотреть, поэтому служебная база решает конфликт: принцип роли не
-нарушен, а данные видны все.
+`CREATE EXTENSION` runs in a specific database, and by its own principle the role knows nothing
+about site databases. The `pg_stat_statements` view shows statistics for **the whole cluster**
+regardless of which database you look from, so the service database resolves the conflict: the
+principle of the role is not broken, and all the data is visible.
 
-### Хендлеры сбрасываются до создания расширения
+### Handlers are flushed before the extension is created
 
-Библиотека появляется в памяти только после рестарта, поэтому `CREATE EXTENSION` до него
-падает. `meta: flush_handlers` держит оба шага в одном прогоне вместо второго прогона «чтобы
-догнать».
+The library appears in memory only after a restart, so `CREATE EXTENSION` fails before it.
+`meta: flush_handlers` keeps both steps in one run instead of a second run "to catch up".
 
 ## Impact
 
-- **Требуется рестарт PostgreSQL** — `shared_preload_libraries` postmaster-level, `reload`
-  принимает его молча, не применяя. На машине с сайтами это простой; замерен: 3.7 с.
-- Рестарт происходит при любом изменении `99-krot.conf`, не только этой строки: хендлер
-  привязан к шаблону целиком. Разделять reload и restart по типу параметра роль не пытается —
-  цена ошибки в том, что настройка выглядит применённой, не будучи ею.
-- Прогон без изменений конфига базу не трогает.
+- **A PostgreSQL restart is required** — `shared_preload_libraries` is postmaster-level, `reload`
+  accepts it silently without applying it. On a machine with sites that is downtime; measured:
+  3.7 s.
+- The restart happens on any change to `99-krot.conf`, not only to this line: the handler is bound
+  to the template as a whole. The role does not try to split reload and restart by parameter
+  type — the cost of an error is that a setting looks applied while it is not.
+- A run with no config changes does not touch the database.

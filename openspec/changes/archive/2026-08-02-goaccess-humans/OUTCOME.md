@@ -1,38 +1,42 @@
-# Итог: отчёт «только люди» выключен
+# Outcome: the "humans only" report is switched off
 
-Это изменение отработало и было **отменено в тот же день** — 2026-08-02, коллекция 3.0.0,
-`goaccess_humans_report: false`. Дописано сюда, потому что `proposal.md` выше обосновывает
-«оба отчёта нужны», и без этой пометки читается как действующее решение.
+This change was delivered and then **reverted the same day** — 2026-08-02, collection 3.0.0,
+`goaccess_humans_report: false`. Written down here because the `proposal.md` above argues that
+"both reports are needed", and without this note it reads as a standing decision.
 
-## Что оказалось не так
+## What turned out to be wrong
 
-Не реализация: отчёт строился и фильтровал ровно так, как задумано. Не так оказалась **цифра**.
+Not the implementation: the report was built and filtered exactly as intended. What turned out to
+be wrong was the **figure**.
 
-Три захода, каждый фильтр по-своему разумный:
+Three attempts, each filter reasonable in its own way:
 
-| фильтр | «посетителей» на berlindame.de |
-|--------|-------------------------------|
-| `--ignore-crawlers` (это изменение) | 41 |
-| \+ список имён (`goaccess_extra_crawlers`) | 36 |
-| \+ поведение: внутренний referer, порог 2 | 6 из 103 адресов |
+| filter | "visitors" on berlindame.de |
+|--------|-----------------------------|
+| `--ignore-crawlers` (this change) | 41 |
+| \+ a name list (`goaccess_extra_crawlers`) | 36 |
+| \+ behaviour: internal referer, threshold 2 | 6 out of 103 addresses |
 
-Из последних шести трое грузили `/media/` с referer'ами ровно как браузер — по логу от людей
-не отличаются в принципе. Честный ответ — **двое**: владелец через VPN и его брат.
+Of those last six, three loaded `/media/` with referers exactly like a browser — from the log they
+are in principle indistinguishable from people. The honest answer is **two**: the owner over VPN
+and his brother.
 
-Число, уходящее с 41 на 6 под одинаково обоснованными фильтрами, — не измерение. Читается оно
-при этом как измерение, и в этом вред: отсутствующая цифра честнее выдуманной. Исходный
-proposal называл 37 «сколько пришло людей» — расхождение с двумя в двадцать раз.
+A number that goes from 41 to 6 under equally well-founded filters is not a measurement. Yet it
+reads as one, and that is the harm: a missing figure is more honest than an invented one. The
+original proposal called 37 "how many people came" — a twentyfold discrepancy with two.
 
-## Что из этого следует
+## What follows from this
 
-Отличать людей от машин по одному лишь рисунку запросов можно до предела, и предел достигнут.
-Дальше нужна метка, которую исполняет браузер, — лог её дать не может.
+Telling people from machines by the pattern of requests alone can be taken to a limit, and the
+limit has been reached. Beyond it you need a mark that the browser executes — the log cannot
+provide it.
 
-Полный отчёт не тронут и остаётся смыслом роли: он отвечает на вопрос «обходят ли сайт, кто и
-что индексирует», и на этот вопрос его данные полны.
+The full report is untouched and remains the point of the role: it answers the question "is the
+site being crawled, by whom, and what is being indexed", and for that question its data is
+complete.
 
-## Что осталось в роли
+## What is left in the role
 
-Код фильтров и `goaccess_extra_crawlers` **не вырезаны**: список выверен на живом трафике и
-заново добывался бы с нуля. `goaccess_humans_report: true` возвращает отчёт, и он
-пересобирается в том же прогоне, не дожидаясь таймера.
+The filter code and `goaccess_extra_crawlers` have **not been cut out**: the list was calibrated
+on live traffic and would have to be obtained again from scratch. `goaccess_humans_report: true`
+brings the report back, and it is rebuilt within the same run, without waiting for the timer.

@@ -1,62 +1,62 @@
-# Proposal: второй отчёт GoAccess — «только люди»
+# Proposal: a second GoAccess report — "humans only"
 
 ## Why
 
-Полный отчёт не отвечает на вопрос, ради которого статистику открывают: **сколько пришло
-людей**. Замер на живом berlindame.de (2026-08-02):
+The full report does not answer the question the statistics are opened for: **how many people
+came**. Measurement on the live berlindame.de (2026-08-02):
 
-| режим | Unique Visitors |
-|-------|-----------------|
-| как сейчас (`ignore-crawlers false`) | **94** |
+| mode | Unique Visitors |
+|------|-----------------|
+| as it stands (`ignore-crawlers false`) | **94** |
 | `--ignore-crawlers` | **37** |
 | `--ignore-crawlers --unknowns-as-crawlers` | 36 |
 
-57 из 94 «посетителей» — краулеры. На stadtdame.de та же картина: 47 против 25.
+57 of the 94 "visitors" are crawlers. On stadtdame.de the picture is the same: 47 against 25.
 
-При этом `ignore-crawlers false` в основном отчёте остаётся: на сайте за Cloudflare бо́льшая
-часть раннего трафика — боты, и отчёт без них выглядит как отсутствие трафика, а не как тот
-трафик, который есть. Для молодого сайта «ходит ли Googlebot и что индексирует» ценнее числа
-людей.
+At the same time `ignore-crawlers false` stays in the main report: on a site behind Cloudflare
+most of the early traffic is bots, and a report without them looks like an absence of traffic
+rather than the traffic that is actually there. For a young site "does Googlebot come and what is
+it indexing" is worth more than the number of people.
 
-Значит нужны оба, а не замена одного другим.
+So both are needed, not one replacing the other.
 
 ## What Changes
 
-### Второй файл, тот же конфиг парсера
+### A second file, the same parser config
 
-`--ignore-crawlers` фильтрует **строки лога**, а не выбирает панели. Рефереры, география,
-страницы — одни и те же разделы в обоих отчётах, посчитанные по разному кругу посетителей.
-Второго конфига парсера нет намеренно: два конфига разъезжаются.
+`--ignore-crawlers` filters **log lines**, it does not select panels. Referrers, geography, pages
+— the same sections in both reports, computed over a different set of visitors. There is
+deliberately no second parser config: two configs drift apart.
 
-### Подкаталог, а не суффикс в имени
+### A subdirectory, not a suffix in the name
 
-`humans/<домен>.html`, не `<домен>-humans.html`. Busel отдаёт отчёты роутом `/traffic` и
-разбирает имена файлов глобом `*.html`, считая результат доменом. При суффиксе второй файл
-попал бы в список отдельной строкой-«сайтом», и busel пришлось бы вычитать подстроку — а домен,
-который сам оканчивается на `-humans`, сломал бы разбор. Подкаталог в `*.html` не попадает
-вовсе, поэтому существующий код busel продолжает работать без правок.
+`humans/<domain>.html`, not `<domain>-humans.html`. Busel serves the reports at the route
+`/traffic` and parses the file names with the glob `*.html`, treating the result as a domain. With
+a suffix the second file would appear in the list as a separate "site" row, and busel would have
+to strip a substring — and a domain that itself ends in `-humans` would break the parsing. A
+subdirectory does not match `*.html` at all, so the existing busel code keeps working unchanged.
 
-Права наследуются тем же механизмом, что у `.build/`: setgid на каталоге отчётов даёт группу
-читателя, потому что пишущий аккаунт в неё намеренно не входит.
+Permissions are inherited by the same mechanism as for `.build/`: setgid on the reports directory
+supplies the reader group, because the writing account is deliberately not a member of it.
 
-### Логи читаются один раз
+### The logs are read once
 
-Разобранные строки складываются во временный файл и подаются обоим прогонам GoAccess.
-Распаковывать две недели ротированных `.gz` второй раз незачем.
+The parsed lines are collected into a temporary file and fed to both GoAccess runs. There is no
+point unpacking two weeks of rotated `.gz` files a second time.
 
-### `--unknowns-as-crawlers` не берём
+### `--unknowns-as-crawlers` is not taken
 
-На замере он сдвинул счёт на один визит из 37. Это не стоит переменной, значение которой
-читателю придётся выяснять.
+In the measurement it shifted the count by one visit out of 37. That is not worth a variable whose
+meaning the reader would have to work out.
 
 ## Impact
 
-- Отчётов на диске вдвое больше. Место: ~640 КБ на второй файл при 1082 строках лога.
-- Сборка занимает вдвое больше времени по GoAccess (чтение логов не удваивается) — на текущем
-  объёме по-прежнему меньше секунды на все сайты.
-- **Удаление отчётов теперь обходит оба каталога.** Отчёт снятого домена в `humans/` иначе
-  остался бы лежать навсегда, продолжая называть домен и его трафик, — ровно то, от чего цикл
-  очистки и защищает. Так же и при `parseable = 0` или неудачной сборке: пара удаляется целиком,
-  чтобы рядом со свежей страницей не висела половина, замершая на прошлом прогоне.
-- Выключение `goaccess_humans_report` удаляет каталог: страницы в нём иначе перестали бы
-  обновляться, но продолжали отдаваться.
+- Twice as many reports on disk. Space: ~640 KB for the second file at 1082 log lines.
+- The build takes twice as long in GoAccess (log reading does not double) — at the current volume
+  still under a second for all sites.
+- **Report deletion now walks both directories.** The report of a removed domain in `humans/`
+  would otherwise lie there forever, continuing to name the domain and its traffic — precisely
+  what the cleanup loop protects against. The same on `parseable = 0` or a failed build: the pair
+  is deleted as a whole, so that no half frozen at the previous run hangs next to a fresh page.
+- Switching off `goaccess_humans_report` removes the directory: the pages in it would otherwise
+  stop being updated but keep being served.

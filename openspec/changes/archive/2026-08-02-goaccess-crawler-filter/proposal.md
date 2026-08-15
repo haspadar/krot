@@ -1,50 +1,52 @@
-# Proposal: сканеры, которые не называют себя ботами
+# Proposal: scanners that do not call themselves bots
 
 ## Why
 
-`/traffic/humans/berlindame.de` показывал **41 уникального посетителя** при примерно десяти
-живых людях. `--ignore-crawlers` отсеивает только тех, кто **назвал себя** ботом — в User-Agent
-есть `bot`, `crawler` или `spider`. Половина сканеров так себя не называет.
+`/traffic/humans/berlindame.de` showed **41 unique visitors** against roughly ten live people.
+`--ignore-crawlers` filters out only those that **called themselves** a bot — the User-Agent
+contains `bot`, `crawler` or `spider`. Half of the scanners do not call themselves that.
 
-Замер на berlindame.de (1116 строк, 2026-08-02):
+Measurement on berlindame.de (1116 lines, 2026-08-02):
 
 ```
-UptimeRobot     462 запроса   ← собственный монитор, больше всех остальных вместе
+UptimeRobot     462 requests   ← our own monitor, more than all the rest combined
 curl            118
-GoogleOther      94           ← это Google, слова "bot" в строке нет
-Dataprovider     46           ← коммерческий сканер
-HeadlessChrome   25           ← браузер под управлением скрипта
+GoogleOther      94            ← this is Google, there is no word "bot" in the string
+Dataprovider     46            ← a commercial scanner
+HeadlessChrome   25            ← a browser driven by a script
 ```
 
-Завышенная вчетверо цифра хуже отсутствующей: она выглядит достоверной, и по ней принимают
-решения.
+A figure inflated fourfold is worse than a missing one: it looks trustworthy, and decisions are
+made on it.
 
 ## What Changes
 
-### Свой список поверх штатного
+### Our own list on top of the stock one
 
-GoAccess 1.8.1 принимает `-b <файл>` — строки вида `имя<TAB>Crawlers`. Список живёт в
-переменной `goaccess_extra_crawlers` и разворачивается в `/etc/goaccess/krot-crawlers.list`:
-он будет расти, и пополнение не должно требовать правки шаблона роли.
+GoAccess 1.8.1 accepts `-b <file>` — lines of the form `name<TAB>Crawlers`. The list lives in the
+variable `goaccess_extra_crawlers` and is expanded into `/etc/goaccess/krot-crawlers.list`: it
+will grow, and adding to it must not require editing the role's template.
 
-### Только человеческий отчёт
+### Only the human report
 
-Флаг передаётся второму прогону GoAccess, а не пишется в конфиг парсера: конфиг общий для обоих
-отчётов, а полный считает краулеров намеренно — он отвечает на вопрос «обходят ли сайт вообще».
+The flag is passed to the second GoAccess run rather than written into the parser config: the
+config is shared by both reports, and the full one counts crawlers deliberately — it answers the
+question "is the site being crawled at all".
 
-### Изменение списка пересобирает отчёты сразу
+### Changing the list rebuilds the reports immediately
 
-Иначе новый фильтр ждал бы таймера до часа, а до тех пор отчёт показывал бы старые цифры,
-выглядя свежим.
+Otherwise the new filter would wait for the timer for up to an hour, and until then the report
+would show the old figures while looking fresh.
 
 ## Impact
 
 - berlindame.de: 41 → **36**, stadtdame.de: 26 → **20**.
-- `GoogleOther`, `Dataprovider`, `UptimeRobot`, `HeadlessChrome`, `curl` исчезли из
-  человеческого отчёта; в списке браузеров остались Chrome, Safari, Firefox, Edge.
-- В полном отчёте все они по-прежнему видны.
-- **Задание ожидало ~30, вышло 36.** Разница не в списке: часть сканеров ходит под видом
-  обычного Chrome, и по User-Agent их не отличить в принципе. Это предел метода, а не недоделка;
-  дальше пришлось бы считать глубину просмотра, а это уже не фильтр агентов.
-- Файл подключается, только если он читаем. Нечитаемый заставил бы GoAccess выйти, и потеря
-  человеческого отчёта из-за отсутствующего списка хуже, чем отчёт с лишними ботами.
+- `GoogleOther`, `Dataprovider`, `UptimeRobot`, `HeadlessChrome`, `curl` disappeared from the
+  human report; the browser list is left with Chrome, Safari, Firefox, Edge.
+- In the full report they are all still visible.
+- **The task expected ~30, the result was 36.** The difference is not in the list: some scanners
+  travel disguised as an ordinary Chrome, and by User-Agent they cannot be told apart in
+  principle. This is the limit of the method, not an omission; going further would mean counting
+  browsing depth, and that is no longer an agent filter.
+- The file is included only if it is readable. An unreadable one would make GoAccess exit, and
+  losing the human report because of a missing list is worse than a report with extra bots.

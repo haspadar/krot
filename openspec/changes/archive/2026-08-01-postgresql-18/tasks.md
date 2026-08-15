@@ -1,51 +1,52 @@
 # Tasks: PostgreSQL 18
 
-## Переменные
+## Variables
 - [x] `postgresql_version` 16 → 18
-- [x] `postgresql_remove_other_versions` (дефолт `false`) с объяснением, почему не `true`
+- [x] `postgresql_remove_other_versions` (default `false`) with an explanation of why not `true`
 
-## Защита
-- [x] `pg_lsclusters --no-header` → `vars/main.yml` вычисляет `postgresql_other_versions`
-- [x] `check_mode: false` на задаче обнаружения — иначе `--check` пропускает её, список пуст,
-      и dry-run рапортует чистый апгрейд поверх кластера, которого не видел
-- [x] `assert` с сообщением, называющим найденную версию и пути вперёд
-- [x] Порядок: `postgresql-common` (несёт `pg_lsclusters`, но не сервер) → проверка → удаление
-      старого → `postgresql-<version>`. Иначе postinst версионного пакета успевал создать
-      кластер, и роль отказывалась делать то, что уже сделала
-- [x] Удаление старой версии — сервер **и** клиент, `purge`
-- [x] Удаление `/etc/postgresql/<old>` — собственный drop-in роли, purge его не трогает
-- [x] `pg_createcluster ... --start` с `creates:` как запасной путь: на чистой машине кластер
-      успевает создать пакет, и задача пропускается
+## Guard
+- [x] `pg_lsclusters --no-header` → `vars/main.yml` computes `postgresql_other_versions`
+- [x] `check_mode: false` on the detection task — otherwise `--check` skips it, the list is empty,
+      and the dry-run reports a clean upgrade on top of a cluster it never saw
+- [x] `assert` with a message naming the version found and the ways forward
+- [x] Order: `postgresql-common` (carries `pg_lsclusters`, but not the server) → check → removal
+      of the old one → `postgresql-<version>`. Otherwise the versioned package's postinst managed
+      to create a cluster, and the role refused to do what it had already done
+- [x] Removal of the old version — server **and** client, `purge`
+- [x] Removal of `/etc/postgresql/<old>` — the role's own drop-in, purge does not touch it
+- [x] `pg_createcluster ... --start` with `creates:` as a fallback path: on a clean machine the
+      package manages to create the cluster, and the task is skipped
 
-## Проверка на живой машине
-- [x] Прогон **без** флага отказался: `PostgreSQL 16 already has a cluster on this host...`
-- [x] Прогон с флагом: PG 16 удалён, кластер 18 создан на 5432
-- [x] `PostgreSQL 18.4 (Ubuntu 18.4-1.pgdg24.04+1)`, `shared_preload_libraries` на месте
-- [x] 9 миграций Doctrine накатились без ошибок, 7 таблиц на месте
-- [x] Три сайта отдают 200 по HTTPS
-- [x] Повторный прогон — `changed=0`, `skipped=2` (защита не мешает обычной работе)
-- [x] После уборки: ноль пакетов PG 16, только `/etc/postgresql/18`, один кластер
-- [x] `yamllint` и `ansible-lint` чистые
+## Verification on a live machine
+- [x] A run **without** the flag refused: `PostgreSQL 16 already has a cluster on this host...`
+- [x] A run with the flag: PG 16 removed, cluster 18 created on 5432
+- [x] `PostgreSQL 18.4 (Ubuntu 18.4-1.pgdg24.04+1)`, `shared_preload_libraries` in place
+- [x] 9 Doctrine migrations applied without errors, 7 tables in place
+- [x] Three sites serve 200 over HTTPS
+- [x] Repeat run — `changed=0`, `skipped=2` (the guard does not get in the way of normal work)
+- [x] After cleanup: zero PG 16 packages, only `/etc/postgresql/18`, one cluster
+- [x] `yamllint` and `ansible-lint` clean
 
-## Данные
-- [x] Дамп снят и проверен: все таблицы пусты, кроме журнала миграций Doctrine
-- [x] Удаление подтверждено владельцем
-- [x] Роль и база `busel` пересозданы, пароль из Bitwarden (`busel-postgres-app`)
-- [x] Дамп удалён с машины после проверки
+## Data
+- [x] Dump taken and verified: all tables empty except the Doctrine migration log
+- [x] Removal confirmed by the owner
+- [x] The `busel` role and database recreated, password from Bitwarden (`busel-postgres-app`)
+- [x] Dump deleted from the machine after verification
 
-## Отдельно замечено
-- [x] `-e postgresql_remove_other_versions=true` передаёт **строку**, Ansible отклоняет её как
-      не-булево. Нужен JSON: `-e '{"postgresql_remove_other_versions": true}'`
-- [x] Флага нет в inventory busel — он передавался разово, постоянного разрешения удалять базы
-      на машине не осталось
+## Noted separately
+- [x] `-e postgresql_remove_other_versions=true` passes **a string**, Ansible rejects it as
+      non-boolean. JSON is required: `-e '{"postgresql_remove_other_versions": true}'`
+- [x] The flag is not in the busel inventory — it was passed one time, no standing permission to
+      delete databases was left on the machine
 
-## Исправлено по ревью
-- [x] **Защита не работала в `--check`.** Голый `command` без `creates`/`removes` пропускается
-      в check mode, список кластеров оставался пустым. Проверено: запрос PG 16 на машине с 18
-      давал `changed=5` и молчал, теперь отказывается
-- [x] **Пакет ставился до проверки.** postinst создаёт кластер, когда порт свободен, — на такой
-      машине роль отказывалась делать то, что уже сделала. Сервер ставится после проверки
-- [ ] «Занятый порт не даёт создать кластер, а не сдвигает его» — **отклонено**, проверено
-      экспериментом: рядом с кластером на 5432 новый создался и получил 5433. `man` говорит
-      «первый порт, не занятый **существующим кластером**», то есть по реестру, а не по TCP.
-      Формулировку в коде уточнил на эту
+## Fixed after review
+- [x] **The guard did not work in `--check`.** A bare `command` without `creates`/`removes` is
+      skipped in check mode, the cluster list stayed empty. Verified: requesting PG 16 on a
+      machine with 18 gave `changed=5` and stayed silent, now it refuses
+- [x] **The package was installed before the check.** postinst creates a cluster when the port is
+      free — on such a machine the role refused to do what it had already done. The server is now
+      installed after the check
+- [ ] "A taken port prevents creating a cluster rather than shifting it" — **rejected**, verified
+      by experiment: next to a cluster on 5432 a new one was created and got 5433. `man` says
+      "the first port not used by **an existing cluster**", that is, by the registry, not by TCP.
+      The wording in the code was refined to this

@@ -1,41 +1,42 @@
-# Tasks: фильтр сканеров для человеческого отчёта
+# Tasks: a scanner filter for the human report
 
-## Роль
-- [x] `goaccess_extra_crawlers` — список в переменной, не в шаблоне: он будет расти
-- [x] Шаблон `crawlers.j2` → `/etc/goaccess/krot-crawlers.list`
-- [x] Флаг `-b` только у человеческого прогона; конфиг парсера не тронут — он общий для обоих
-      отчётов
-- [x] Файл подключается, только если читаем: нечитаемый роняет GoAccess, а отчёт с лишними
-      ботами лучше отсутствующего
-- [x] Изменение списка запускает пересборку в том же прогоне
+## Role
+- [x] `goaccess_extra_crawlers` — the list in a variable, not in the template: it will grow
+- [x] Template `crawlers.j2` → `/etc/goaccess/krot-crawlers.list`
+- [x] The `-b` flag only on the human run; the parser config untouched — it is shared by both
+      reports
+- [x] The file is included only if readable: an unreadable one takes GoAccess down, and a report
+      with extra bots is better than no report at all
+- [x] Changing the list triggers a rebuild within the same run
 
-## Проверка на живой машине
+## Verification on a live machine
 - [x] berlindame.de **41 → 36**, stadtdame.de **26 → 20**
-- [x] Проверено по самим отчётам, а не по конфигу: `GoogleOther`, `Dataprovider`,
-      `UptimeRobot`, `HeadlessChrome`, `curl` в человеческом отчёте отсутствуют
-- [x] В полном отчёте `GoogleOther` и `UptimeRobot` на месте — `ignore-crawlers false` не тронут
-- [x] Повторный прогон роли — `changed=0`
-- [x] `shellcheck`, `yamllint`, `ansible-lint` (profile production) чистые
+- [x] Verified against the reports themselves, not against the config: `GoogleOther`,
+      `Dataprovider`, `UptimeRobot`, `HeadlessChrome`, `curl` are absent from the human report
+- [x] In the full report `GoogleOther` and `UptimeRobot` are in place — `ignore-crawlers false`
+      untouched
+- [x] Repeat run of the role — `changed=0`
+- [x] `shellcheck`, `yamllint`, `ansible-lint` (profile production) clean
 
-## Найдено проверкой, а не вычиткой
-- [x] **Тип пишется `Crawlers`, а не `crawler`.** Задание предлагало нижний регистр в
-      единственном числе; в штатном `/etc/goaccess/browsers.list` — `Crawlers`. При неверном
-      написании GoAccess заводит новую категорию браузеров, и счётчик **растёт**: измерено, 41
-      превращалось в 78. Список из задания в буквальном виде дал бы обратный эффект
-- [x] **`-b` дополняет штатный список, а не заменяет.** Проверено слиянием: штатный + свой даёт
-      те же 36, что и один свой файл. Склеивать не нужно
-- [x] **Двое, которых не было в задании.** `UptimeRobot` — 462 запроса из 1116, больше всех
-      прочих вместе, это собственный монитор; `HeadlessChrome` — браузер под скриптом,
-      маскирующийся под обычный
+## Found by testing, not by reading
+- [x] **The type is written `Crawlers`, not `crawler`.** The task suggested lowercase in the
+      singular; in the stock `/etc/goaccess/browsers.list` it is `Crawlers`. With the wrong
+      spelling GoAccess creates a new browser category, and the counter **grows**: measured, 41
+      turned into 78. The list from the task taken literally would have had the opposite effect
+- [x] **`-b` supplements the stock list rather than replacing it.** Verified by merging: stock +
+      ours gives the same 36 as our file alone. There is no need to concatenate
+- [x] **Two that were not in the task.** `UptimeRobot` — 462 requests out of 1116, more than all
+      the rest combined, this is our own monitor; `HeadlessChrome` — a browser under a script,
+      masquerading as an ordinary one
 
-## Решения
-- [x] `UptimeRobot` в списке: свой монитор — не читатель, а его доля выше, чем у всех
-      настоящих ботов
-- [ ] Догнать до ~30, как ожидало задание — **невозможно этим способом**: остаток ходит под
-      видом обычного Chrome. Потребовалась бы фильтрация по глубине просмотра, а это уже не
-      фильтр агентов
-- [ ] `--unknowns-as-crawlers` — по-прежнему отклонено, решение из прошлой задачи в силе
-- [ ] Обновление до GoAccess 1.11 — **отдельным заходом**. По changelog 1.9–1.11 краулеров не
-      касаются вовсе (geolocation, персистентность, переводы, падения), зато памяти на 20%
-      меньше и разбор на 35% быстрее. Требует подключения официального репозитория GoAccess,
-      как ondrej для PHP, — самостоятельное изменение со своим риском
+## Decisions
+- [x] `UptimeRobot` on the list: our own monitor is not a reader, and its share is higher than
+      that of all the real bots
+- [ ] Getting down to ~30, as the task expected — **impossible by this means**: the remainder
+      travels disguised as an ordinary Chrome. It would require filtering by browsing depth, and
+      that is no longer an agent filter
+- [ ] `--unknowns-as-crawlers` — still rejected, the decision from the previous task stands
+- [ ] Upgrading to GoAccess 1.11 — **as a separate pass**. Per the changelog 1.9–1.11 do not
+      touch crawlers at all (geolocation, persistence, translations, crashes), but memory is 20%
+      lower and parsing 35% faster. It requires wiring in the official GoAccess repository, like
+      ondrej for PHP — a change of its own with its own risk

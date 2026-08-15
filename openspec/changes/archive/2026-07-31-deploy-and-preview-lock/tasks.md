@@ -1,38 +1,40 @@
-# Tasks: деплой, ключи, замок на сайты
+# Tasks: deploy, keys, lock on sites
 
-## Роль `deploy`
-- [x] `delegate_to: localhost` — Deployer живёт на control-машине, не на сервере
-- [x] Позиционный селектор хоста (у Deployer 8 нет `--hosts`)
-- [x] Переменные `deploy_task` / `deploy_branch`
+## The `deploy` role
+- [x] `delegate_to: localhost` — Deployer lives on the control machine, not on the server
+- [x] Positional host selector (Deployer 8 has no `--hosts`)
+- [x] Variables `deploy_task` / `deploy_branch`
 
-## Роль `deploy_keys`
-- [x] Ключ на каждый репозиторий, `~/.ssh/config` с host-алиасами
-- [x] Проверено на живой машине: клон busel по `git@busel.github.com:haspadar/busel.git`
+## The `deploy_keys` role
+- [x] A key per repository, `~/.ssh/config` with host aliases
+- [x] Verified on a live machine: busel cloned via `git@busel.github.com:haspadar/busel.git`
 
 ## Basic auth
-- [x] `htpasswd` из Bitwarden в рантайме, `assert` падает, если пароля нет (пустой не ставим)
-- [x] Сниппет `krot-auth.conf`; включение — на стороне генератора vhost'ов
-- [x] `files/htpasswd-sync.sh` вместо инлайн-shell: exit 0 без изменений, 10 при перезаписи
-- [x] Идемпотентность: файл не переписывается на каждом прогоне
+- [x] `htpasswd` from Bitwarden at run time, `assert` fails if there is no password (we do not
+      install an empty one)
+- [x] The `krot-auth.conf` snippet; enabling it is on the vhost generator's side
+- [x] `files/htpasswd-sync.sh` instead of inline shell: exit 0 when unchanged, 10 on rewrite
+- [x] Idempotency: the file is not rewritten on every run
 
-## Отдать `log_format` и real-IP проекту
-- [x] Удалены `log-format.conf.j2`, `real-ip.conf.j2`, `real-ip.yml`, `vars/main.yml`
-- [x] Роль убирает свои прежние файлы с машины
-- [x] `access_log off` на уровне `http` с объяснением в шаблоне
+## Hand `log_format` and real-IP to the project
+- [x] Removed `log-format.conf.j2`, `real-ip.conf.j2`, `real-ip.yml`, `vars/main.yml`
+- [x] The role removes its own former files from the machine
+- [x] `access_log off` at the `http` level, with an explanation in the template
 
-## Проверка на живой машине
-- [x] Полный плейбук `ok=66 changed=0`
-- [x] Три сайта отдают 200 с настоящим контентом
-- [x] `yamllint` и `ansible-lint` (profile production) чистые
+## Verification on a live machine
+- [x] Full playbook `ok=66 changed=0`
+- [x] Three sites return 200 with real content
+- [x] `yamllint` and `ansible-lint` (profile production) clean
 
-## Попутно вскрылось и починено
-- [x] hostname был `matilda` на машине busel
-- [x] Origin светился: `Nginx Full ALLOW Anywhere` в ufw → CF-замок (44 правила), проверено
-      снаружи: порт 80 не отвечает с не-CF адреса, SSH жив
-- [x] `PermitRootLogin yes` → `no`, убран cloud-init drop-in, включавший его обратно
-- [x] Права vhost'ов 0666 → 0644
-- [x] Легаси-имя `felix` выпилено; `/var/www/felix` (206 МБ) удалён, vhost'ы уже указывали на
-      `/var/www/busel`, которого не существовало — сайты были сломаны до вмешательства
-- [x] `.env.local` 600 → 640 с группой `www-data` (php-fpm не мог прочитать)
-- [x] ACL на `shared/var` для `www-data` — приложение не могло писать логи
-- [x] Не было ни роли, ни базы в PostgreSQL: созданы, 9 миграций накатились
+## Uncovered and fixed along the way
+- [x] hostname was `matilda` on the busel machine
+- [x] The origin was exposed: `Nginx Full ALLOW Anywhere` in ufw → CF lock (44 rules), verified
+      from outside: port 80 does not answer from a non-CF address, SSH alive
+- [x] `PermitRootLogin yes` → `no`, removed the cloud-init drop-in that turned it back on
+- [x] vhost permissions 0666 → 0644
+- [x] The legacy name `felix` ripped out; `/var/www/felix` (206 MB) deleted, the vhosts already
+      pointed at `/var/www/busel`, which did not exist — the sites were broken before the
+      intervention
+- [x] `.env.local` 600 → 640 with group `www-data` (php-fpm could not read it)
+- [x] ACL on `shared/var` for `www-data` — the application could not write logs
+- [x] There was neither a role nor a database in PostgreSQL: created, 9 migrations applied
