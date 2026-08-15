@@ -1,44 +1,45 @@
 # Changelog
 
-Версии — по [semver](https://semver.org/lang/ru/). Ломающие изменения ролей (переименование
-переменной, смена дефолта, влияющая на прод) поднимают major.
+Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
+changing a default that affects production) bump major.
 
 ## 5.1.1
 
-### Исправлено
+### Fixed
 
-- **Роль `cron`: задача с битым `working_directory` пропускалась молча.** В `.service` стоял
-  `AssertPathIsDirectory=`, и комментарий рядом обещал громкое падение. `Assert*=` его не даёт:
-  провалившийся assert **не роняет unit** — запуск пропускается, состояние остаётся успешным,
-  `systemctl --failed` пуст. Замерено на busel (systemd 255), в том числе на запуске по таймеру:
+- **Role `cron`: a job with a broken `working_directory` was skipped silently.** The `.service`
+  carried `AssertPathIsDirectory=`, and the comment beside it promised a loud failure. `Assert*=`
+  does not deliver one: a failed assert **does not fail the unit** — the run is skipped, the state
+  stays successful, `systemctl --failed` is empty. Measured on busel (systemd 255), including a
+  timer-driven run:
 
-  | | с `AssertPathIsDirectory` | только `WorkingDirectory` |
+  | | with `AssertPathIsDirectory` | `WorkingDirectory` only |
   |---|---|---|
   | `Result` | **success** | `exit-code` |
   | `ExecMainStatus` | **0** | 200 (CHDIR) |
-  | строк в `systemctl --failed` | **0** | **1** |
+  | lines in `systemctl --failed` | **0** | **1** |
 
-  Стреляет ровно там, где и было обещано: `working_directory` — релизный симлинк `current`, и
-  после неудачного деплоя он указывает в никуда. Задача переставала отрабатывать, а машина
-  рапортовала здоровье — тот самый класс отказа, ради которого роль и написана.
+  It fires exactly where it was promised to: `working_directory` is the `current` release symlink,
+  and after a botched deploy it points nowhere. The job stopped running while the machine reported
+  health — the very class of failure the role was written for.
 
-  Вторая половина, найденная на ревью и тоже замеренная: **assert проверял путь от имени root**
-  (его считает PID 1), а работать в каталоге будет `User=`. На каталоге, куда root войти может,
-  а `km` — нет, assert проходил и команда **выполнялась из чужого каталога**, молча потеряв
-  тот, что ей назначили. `WorkingDirectory=` этот случай ловит: systemd делает `chdir` уже
-  после смены пользователя.
+  The second half, found during review and measured there too: **the assert checked the path as
+  root** (PID 1 evaluates it), while the work in that directory is done by `User=`. On a directory
+  root can enter but `km` cannot, the assert passed and the command **ran from someone else's
+  directory**, having silently lost the one assigned to it. `WorkingDirectory=` catches this case:
+  systemd performs `chdir` after switching users.
 
-  Assert снят, юнит роняет `WorkingDirectory=`. **Юниты на уже развёрнутых машинах
-  перезаписываются** (из `.service` уходит строка) — прогон покажет `changed`, перезапуска
-  задачи это не требует.
+  The assert is gone; `WorkingDirectory=` fails the unit. **Units on already-provisioned machines
+  are rewritten** (a line leaves the `.service`) — the run will report `changed`, and no job
+  restart is required.
 
 ## 5.1.0
 
-### Добавлено
+### Added
 
-- **Роль `cron` — периодические задачи приложения как systemd-таймеры.** Задача объявляется в
-  инвентаре (`cron_jobs`) и разворачивается в пару `krot-<name>.service` + `.timer`. Krot не
-  знает ни одного имени задачи: список принадлежит проекту.
+- **Role `cron` — periodic application jobs as systemd timers.** A job is declared in the inventory
+  (`cron_jobs`) and expanded into a `krot-<name>.service` + `.timer` pair. Krot knows no job name at
+  all: the list belongs to the project.
 
   ```yaml
   cron_jobs:
@@ -50,98 +51,102 @@
         APP_ENV: prod
   ```
 
-  Причина появления: на busel почасовая задача **пять суток не отрабатывала ни разу**, и узнать
-  об этом было неоткуда. Вывод перенаправляли в `/var/log/`, куда у `km` нет записи, — оно
-  падало до запуска PHP, поэтому и ошибке было некуда лечь. `journalctl -u cron` при этом
-  исправно печатал `(km) CMD (...)`: cron сообщает о запуске строки и не знает, чем она
-  кончилась.
+  Why it appeared: on busel an hourly job **did not run once in five days**, and there was nowhere
+  to learn this from. Its output was redirected into `/var/log/`, where `km` has no write
+  permission — that failed before PHP started, so the error had nowhere to land either. Meanwhile
+  `journalctl -u cron` dutifully printed `(km) CMD (...)`: cron reports that a line was started and
+  does not know how it ended.
 
-  Что даёт таймер: вывод в journal под именем юнита (права на файл не нужны), код возврата в
-  `systemctl status`, неуспех в `systemctl --failed`. Всё читается оператором **без sudo** —
-  проверено на busel, хотя `km` не состоит ни в `adm`, ни в `systemd-journal`.
+  What a timer gives: output in the journal under the unit's name (no file permissions needed), the
+  exit code in `systemctl status`, failure in `systemctl --failed`. All of it readable by the
+  operator **without sudo** — verified on busel, even though `km` belongs to neither `adm` nor
+  `systemd-journal`.
 
-  Минуту выбирать не нужно, задачи разводит `RandomizedDelaySec` — плюс `FixedRandomDelay`
-  (`cron_fixed_random_delay`, по умолчанию включено), чтобы сдвиг был постоянным: без него
-  почасовая задача гуляет между 45 и 75 минутами от предыдущего запуска. `APP_ENV` и прочие
-  переменные объявляются явно: юнит, как и cron, стартует с пустым окружением.
+  No need to pick a minute; `RandomizedDelaySec` spreads jobs apart — plus `FixedRandomDelay`
+  (`cron_fixed_random_delay`, on by default) to keep the offset constant: without it an hourly job
+  drifts between 45 and 75 minutes from the previous run. `APP_ENV` and other variables are declared
+  explicitly: a unit, like cron, starts with an empty environment.
 
-  Команду роль экранирует сама. Оба случая отказывают тихо: `%` в unit-файле — спецификатор
-  (`date +%Y-%m-%d` печатал путь к каталогу юнита и выходил с кодом 0), а одинарная кавычка
-  рвёт argv так же, как склейка в `ssh`, — половина работы при нулевом коде возврата.
+  The role escapes the command itself. Both cases fail silently: a `%` in a unit file is a specifier
+  (`date +%Y-%m-%d` printed the path to the unit's directory and exited with code 0), and a single
+  quote tears argv apart the same way string joining does in `ssh` — half the work done, exit code
+  zero.
 
-  Два задания с одним `log_file` роль отвергает на прогоне: это тот же `duplicate log entry`,
-  что описан ниже, и он останавливает ротацию всех логов машины.
+  Two jobs sharing one `log_file` are rejected during the run: that is the same `duplicate log
+  entry` described below, and it stops rotation of every log on the machine.
 
-  Задача, убранная из `cron_jobs`, снимается с машины. Владение определяется маркером внутри
-  `.service`, а не именем файла, — `krot-cf-ranges.timer` роли `firewall` попадает под тот же
-  glob и не трогается.
+  A job removed from `cron_jobs` is retired from the machine. Ownership is determined by a marker
+  inside the `.service` rather than by file name — `krot-cf-ranges.timer` from the `firewall` role
+  matches the same glob and is left alone.
 
-### Исправлено — с изменением состояния уже развёрнутых машин
+### Fixed — changes state on already-provisioned machines
 
-Имена переменных и их смысл не менялись, поэтому версия не major. Но на прогоне роль **удаляет
-файл и правит чужой конфиг**, так что обновление с 5.0.0 не бесшумное — читать до прогона.
+Variable names and their meanings did not change, hence not a major version. But during a run the
+role **deletes a file and edits a foreign config**, so upgrading from 5.0.0 is not silent — read
+this before running.
 
-- **Роль `nginx` больше не ставит `/etc/logrotate.d/krot-nginx`.** Её glob совпадал с пакетным
-  `/etc/logrotate.d/nginx`, а logrotate на дубликат не выбирает победителя: печатает
-  `duplicate log entry`, выходит с кодом 1 и **не ротирует на машине ничего** — включая php и
-  postgresql. На busel это продержалось трое суток.
+- **Role `nginx` no longer installs `/etc/logrotate.d/krot-nginx`.** Its glob collided with the
+  packaged `/etc/logrotate.d/nginx`, and logrotate picks no winner on a duplicate: it prints
+  `duplicate log entry`, exits with code 1 and **rotates nothing on the machine** — php and
+  postgresql included. On busel this lasted three days.
 
-  `nginx_log_retention_days` теперь применяется правкой строки `rotate` в пакетном конфиге —
-  это `conffile`, dpkg при обновлении пакета локальную правку молча не затирает, а если она
-  всё же откатится, её вернёт следующий прогон.
+  `nginx_log_retention_days` is now applied by editing the `rotate` line in the packaged config —
+  it is a `conffile`, dpkg does not silently discard a local edit on package upgrade, and if the
+  edit is reverted anyway, the next run restores it.
 
-  **Прогон падает, если строки `rotate` в пакетном файле нет**, вместо того чтобы дописать её.
-  Директива за закрывающей скобкой ошибки не вызывает — logrotate её отбрасывает и ротирует
-  **вообще без ретенции**, удаляя вчерашний лог вместо хранения четырнадцати.
+  **The run fails if the packaged file has no `rotate` line**, instead of appending one. A directive
+  past the closing brace causes no error — logrotate discards it and rotates **with no retention at
+  all**, deleting yesterday's log instead of keeping fourteen.
 
-  **Уборка на уже развёрнутой машине — прогоном роли**, она снимает свой файл сама. Проверить,
-  что ротация вернулась:
+  **Cleanup on an already-provisioned machine happens by running the role**, which removes its own
+  file. To verify rotation is back:
 
   ```bash
-  systemctl --failed              # logrotate.service не должен быть в списке
+  systemctl --failed              # logrotate.service must not be listed
   sudo systemctl start logrotate.service
   ```
 
 ## 5.0.0
 
-### Ломающее
+### Breaking
 
-- **Оболочка оператора — `/bin/bash` вместо fish** (`bootstrap_user_shell`). Роль больше не
-  ставит пакет `fish`; на уже развёрнутой машине следующий прогон `bootstrap` переключит
-  существующего `km` на bash. Активная SSH-сессия дорабатывает в старом шелле, каждая следующая
-  получает bash.
+- **The operator shell is `/bin/bash` instead of fish** (`bootstrap_user_shell`). The role no longer
+  installs the `fish` package; on an already-provisioned machine the next `bootstrap` run switches
+  the existing `km` to bash. An active SSH session finishes in the old shell, every subsequent one
+  gets bash.
 
-  По этим машинам почти всегда ходят агенты, а руками — редко. Каждое место, где fish расходится
-  с POSIX, у агента стоит отдельной отладки: команда доезжает разобранной не так, ошибка выглядит
-  проблемой команды, а команда верна. Ради удобства одного человека, заходящего изредка, это
-  дорого; bash есть на машине всегда и ничего не просит.
+  These machines are almost always driven by agents and rarely by hand. Every place where fish
+  diverges from POSIX costs an agent a separate debugging session: the command arrives parsed
+  differently, the error looks like a problem with the command, and the command is correct. That is
+  expensive for the convenience of one person logging in occasionally; bash is always on the machine
+  and asks for nothing.
 
-  **Пакет `fish` роль не снимает.** Если он не нужен — убрать вручную, но **только после того,
-  как роль отработала** и `getent passwd km` показывает `/bin/bash`. Снести пакет раньше значит
-  оставить в `/etc/passwd` путь к несуществующему шеллу и потерять вход под `km`:
+  **The role does not remove the `fish` package.** If it is not needed, remove it manually — but
+  **only after the role has run** and `getent passwd km` shows `/bin/bash`. Purging the package
+  earlier means leaving a path to a non-existent shell in `/etc/passwd` and losing `km` login:
 
   ```bash
-  getent passwd km   # убедиться, что здесь /bin/bash
+  getent passwd km   # make sure this says /bin/bash
   sudo apt-get purge fish
   ```
 
-  Кому fish нужен, оболочка возвращается переменной, но пакет тогда ставить самому:
-  `bootstrap_user_shell: /usr/bin/fish`.
+  For anyone who wants fish, the shell comes back through the variable, but the package is then
+  yours to install: `bootstrap_user_shell: /usr/bin/fish`.
 
 ## 4.0.0
 
-### Ломающее
+### Breaking
 
-- **Роли `goaccess` и `geoip` удалены.** Отчётами не пользовались, а держать их стоило: свой
-  apt-репозиторий, ключ подписи, таймер сборки, ключ MaxMind в inventory и 64 МБ базы, которую
-  качали дважды в неделю ради панели, на которую никто не смотрел.
+- **Roles `goaccess` and `geoip` removed.** The reports went unused while costing plenty to keep: a
+  private apt repository, a signing key, a build timer, a MaxMind key in the inventory and a 64 MB
+  database downloaded twice a week for a dashboard nobody looked at.
 
-  Плейбук, где эти роли перечислены, теперь падает на неизвестной роли — убрать их из `site.yml`
-  и из `group_vars` переменные `goaccess_*` и `geoip_*`.
+  A playbook listing these roles now fails on an unknown role — remove them from `site.yml` and drop
+  the `goaccess_*` and `geoip_*` variables from `group_vars`.
 
-  **Уборка на уже развёрнутой машине — ручная**, роли за собой ничего не снимают: их больше нет,
-  и удалять оставленное некому. Что смотреть (на busel из всего списка нашёлся только
-  последний пункт — роли там до конца не отрабатывали):
+  **Cleanup on an already-provisioned machine is manual**; the roles remove nothing after themselves
+  because they no longer exist and there is nobody left to delete what they left. What to look at (on
+  busel only the last item turned out to be present — the roles never ran to completion there):
 
   ```bash
   sudo systemctl disable --now krot-goaccess.timer krot-geoipupdate.timer
@@ -153,165 +158,170 @@
   sudo rm -f /etc/apt/sources.list.d/goaccess.sources /etc/apt/keyrings/goaccess.asc
   ```
 
-  Репозиторий GoAccess стоит снять даже там, где сам пакет не ставился: иначе каждый
-  `apt update` продолжает ходить за индексом ради пакета, который больше никто не просит.
+  The GoAccess repository is worth removing even where the package was never installed: otherwise
+  every `apt update` keeps fetching an index for a package nobody asks for any more.
 
-  Роль `nginx` не затронута: `log_format` она и раньше не писала — им владеет генератор
-  vhost'ов проекта.
+  The `nginx` role is unaffected: it never wrote `log_format` anyway — the project's vhost generator
+  owns it.
 
 ## 3.0.0
 
-### Ломающее
+### Breaking
 
-- **Человеческий отчёт выключен по умолчанию** (`goaccess_humans_report: false`). На уже
-  развёрнутой машине роль **удалит** каталог `humans/` и `/etc/goaccess/krot-crawlers.list`;
-  чтобы оставить как было, задать `goaccess_humans_report: true` явно. Полный отчёт не тронут.
+- **The human report is off by default** (`goaccess_humans_report: false`). On an already-provisioned
+  machine the role **deletes** the `humans/` directory and `/etc/goaccess/krot-crawlers.list`; to
+  keep things as they were, set `goaccess_humans_report: true` explicitly. The full report is
+  untouched.
 
-  Причина не в поломке — в том, что цифре нельзя было верить. Три захода на berlindame.de:
-  `--ignore-crawlers` дал 41 «посетителя», список имён — 36, добавленная проверка поведения —
-  6 адресов из 103. Из этих шести трое грузили `/media/` с referer'ами как настоящий браузер и
-  по логу от людей не отличаются вовсе; честный ответ — двое. Число, уходящее с 41 на 6 под
-  фильтрами, каждый из которых выглядит разумным, — не измерение, но читается как измерение.
-  Отсутствующая цифра честнее выдуманной.
+  The reason is not a breakage but that the number could not be trusted. Three passes over
+  berlindame.de: `--ignore-crawlers` gave 41 "visitors", a list of names gave 36, an added behavioural
+  check gave 6 addresses out of 103. Of those six, three fetched `/media/` with referers like a real
+  browser and are indistinguishable from humans in the log at all; the honest answer is two. A number
+  that walks from 41 down to 6 under filters each of which looks reasonable is not a measurement, yet
+  it reads like one. A missing number is more honest than an invented one.
 
-  Отличать людей от машин по рисунку запросов можно до предела, и он достигнут: дальше нужна
-  метка, которую исполняет браузер, а лог её не даёт. Код фильтров и выверенный на живом
-  трафике `goaccess_extra_crawlers` в роли остаются — переменная возвращает отчёт, и он
-  пересобирается в том же прогоне.
+  Telling humans from machines by request pattern is possible up to a limit, and that limit has been
+  reached: beyond it you need a marker the browser executes, and the log does not provide one. The
+  filter code and the `goaccess_extra_crawlers` list, tuned against live traffic, stay in the role —
+  the variable brings the report back, and it is rebuilt in the same run.
 
 ## 2.5.0
 
-- **GoAccess 1.11** из официального репозитория проекта вместо 1.8.1 из Ubuntu
-  (`goaccess_upstream_repository`, включено по умолчанию). Ключ подписи вшит в роль
-  (`C03B48887D5E56B046715D3297BD1A0133449C3D`, автор GoAccess), а не качается в рантайме.
-  Ради городов в геолокации; заявленное ускорение разбора на 35% не проверялось — цифр для
-  сравнения не сохранилось.
-- Пока репозиторий включён, пакет ставится с `state: latest`. С `present` машина с уже
-  установленной 1.8.1 сохранила бы её, и роль отчиталась бы успехом, не сделав ничего.
-- **Выключение репозитория не понижает версию** — apt не понижает сам, а роль не делает этого
-  намеренно. Понижение вручную: `apt install goaccess=<версия>`.
-- `geoip` качает `GeoLite2-City` вместо `GeoLite2-Country`: издание несёт оба уровня, и 1.11
-  показывает города. 64 МБ против 8.4.
-- `geoip` **удаляет базы, которых нет в `geoip_editions`**: переставшая обновляться копия
-  файла, на который кто-то смотрит, отвечает неверно и не сообщает, насколько устарела.
+- **GoAccess 1.11** from the project's official repository instead of 1.8.1 from Ubuntu
+  (`goaccess_upstream_repository`, on by default). The signing key is baked into the role
+  (`C03B48887D5E56B046715D3297BD1A0133449C3D`, the GoAccess author) rather than fetched at runtime.
+  Done for cities in geolocation; the claimed 35% parsing speed-up was not verified — no comparable
+  figures were kept.
+- While the repository is enabled, the package is installed with `state: latest`. With `present`, a
+  machine already carrying 1.8.1 would have kept it, and the role would have reported success
+  without doing anything.
+- **Disabling the repository does not downgrade** — apt does not downgrade on its own, and the role
+  deliberately does not either. To downgrade by hand: `apt install goaccess=<version>`.
+- `geoip` downloads `GeoLite2-City` instead of `GeoLite2-Country`: the edition carries both levels,
+  and 1.11 shows cities. 64 MB against 8.4.
+- `geoip` **deletes databases absent from `geoip_editions`**: a copy of a file someone looks at that
+  has stopped updating answers wrongly and does not say how stale it is.
 
 ## 2.4.0
 
-- **Роль `geoip`**: базы MaxMind GeoLite2 и systemd-таймер, который держит их свежими.
-  Отдельная роль, а не часть `goaccess`: база нужна не только отчётам, и машина может хотеть
-  одно без другого. Конфиг с лицензионным ключом — `0600 root`. Штатный таймер пакета
-  выключается: два расписания на одни и те же файлы — лишний повод гадать, почему база устарела.
-- **Панель геолокации в отчётах `goaccess`** — `goaccess_geoip_database`. Пустая по умолчанию:
-  без базы панели просто нет. Роль **отказывается** настраивать базу, которой нет на диске —
-  GoAccess в таком случае не запускается, и встали бы разом все отчёты, а построенные остались
-  бы лежать, выглядя свежими.
-- Страна берётся из базы по адресу, а не из заголовка `CF-IPCountry`: у GoAccess нет поля,
-  куда принять готовый код страны. Верно это лишь потому, что проект настраивает real-IP —
-  иначе панель показывала бы датацентры Cloudflare.
+- **Role `geoip`**: MaxMind GeoLite2 databases and a systemd timer keeping them fresh. A separate
+  role rather than part of `goaccess`: the database is needed by more than the reports, and a machine
+  may want one without the other. The config with the licence key is `0600 root`. The package's own
+  timer is disabled: two schedules over the same files is one more reason to wonder why a database is
+  stale.
+- **A geolocation panel in `goaccess` reports** — `goaccess_geoip_database`. Empty by default:
+  without a database there is simply no panel. The role **refuses** to configure a database that is
+  not on disk — GoAccess would not start at all in that case, every report would stop at once, and
+  the already-built ones would sit there looking fresh.
+- The country comes from the database by address rather than from the `CF-IPCountry` header: GoAccess
+  has no field to accept a ready-made country code. This is only correct because the project
+  configures real-IP — otherwise the panel would show Cloudflare data centres.
 
 ## 2.3.0
 
-- **Человеческий отчёт `goaccess` фильтрует сканеров, которые не называют себя ботами.**
-  `--ignore-crawlers` ловит только тех, у кого в User-Agent есть `bot`, `crawler` или `spider`;
-  `GoogleOther`, `Dataprovider`, `InternetMeasurement`, `UptimeRobot`, `HeadlessChrome` и
-  HTTP-библиотеки проходили как посетители. Список в `goaccess_extra_crawlers`, подключается
-  флагом `-b` только к человеческому отчёту — полный по-прежнему считает всех.
-  Замер: berlindame.de 41 → 36, stadtdame.de 26 → 20.
-- Тип в файле пишется `Crawlers` (заглавная, множественное число). При другом написании
-  GoAccess заводит новую категорию браузеров, и счётчик посетителей **растёт** вместо падения —
-  измерено, 41 превращалось в 78.
+- **The human `goaccess` report filters scanners that do not call themselves bots.**
+  `--ignore-crawlers` only catches those with `bot`, `crawler` or `spider` in the User-Agent;
+  `GoogleOther`, `Dataprovider`, `InternetMeasurement`, `UptimeRobot`, `HeadlessChrome` and HTTP
+  libraries passed as visitors. The list is in `goaccess_extra_crawlers`, attached with the `-b` flag
+  to the human report only — the full one still counts everyone. Measured: berlindame.de 41 → 36,
+  stadtdame.de 26 → 20.
+- The type in the file is written `Crawlers` (capitalised, plural). Spelled otherwise, GoAccess
+  creates a new browser category and the visitor counter **grows** instead of falling — measured, 41
+  turned into 78.
 
 ## 2.2.0
 
-- `common` ставит `btop`, `ncdu`, `ripgrep`, `jq` и `fd-find`. Все нужны ровно в тот момент,
-  когда машина ведёт себя странно, — то есть когда меньше всего хочется сперва их доставлять.
-  `btop` показывает процессор, память, диски и сеть на одном экране; `ncdu` отвечает, куда
-  делось место, чего `htop` не умеет; `ripgrep` ищет по гигабайтному access-логу за время,
-  которое `grep -r` тратит на раскачку; `jq` разбирает JSON, который отдают сервисы. Все из
-  штатного репозитория Ubuntu 24.04, без сторонних PPA.
-- **`fd-find` ставит бинарь как `fdfind`**, а не `fd` — имя занято другим пакетом Debian.
-  Алиас роль не заводит: что предлагает login-шелл, дело оператора, а не машины.
+- `common` installs `btop`, `ncdu`, `ripgrep`, `jq` and `fd-find`. All of them are needed exactly
+  when the machine behaves strangely — that is, when you least want to fetch them first. `btop` shows
+  CPU, memory, disks and network on one screen; `ncdu` answers where the space went, which `htop`
+  cannot; `ripgrep` searches a gigabyte access log in the time `grep -r` spends warming up; `jq`
+  parses the JSON services return. All from the stock Ubuntu 24.04 repository, no third-party PPAs.
+- **`fd-find` installs the binary as `fdfind`**, not `fd` — the name is taken by another Debian
+  package. The role adds no alias: what a login shell offers is the operator's business, not the
+  machine's.
 
 ## 2.1.0
 
-- **Второй отчёт `goaccess` на каждый сайт — `humans/<домен>.html`, без краулеров.** Оба
-  отчёта нужны: на berlindame.de 94 уникальных посетителя в полном против 37 в человеческом,
-  57 из них боты. Полный не говорит, сколько пришло людей; отчёт без ботов не показывает,
-  ходит ли Googlebot, а на молодом сайте это важнее. Выключается `goaccess_humans_report`,
-  и тогда роль удаляет каталог, чтобы замершие страницы не остались отдаваться.
-- Подкаталог вместо суффикса `-humans` в имени: всё, что перечисляет отчёты глобом `*.html`,
-  по-прежнему видит ровно один файл на домен. Удаление отчётов снятых сайтов теперь обходит оба
-  каталога — иначе вторая страница осталась бы лежать навсегда, называя снятый домен.
+- **A second `goaccess` report per site — `humans/<domain>.html`, without crawlers.** Both reports
+  are needed: on berlindame.de there were 94 unique visitors in the full report against 37 in the
+  human one, 57 of them bots. The full one does not say how many people came; the bot-free one does
+  not show whether Googlebot visits, which matters more on a young site. Turned off with
+  `goaccess_humans_report`, and the role then deletes the directory so frozen pages are not left
+  being served.
+- A subdirectory rather than a `-humans` suffix in the name: anything enumerating reports with a
+  `*.html` glob still sees exactly one file per domain. Deleting reports for retired sites now walks
+  both directories — otherwise the second page would lie there forever, naming a retired domain.
 
 ## 2.0.0
 
-### Ломающее
+### Breaking
 
-- **`goaccess` больше не отдаёт отчёты сам.** Сняты `goaccess_listen_address`,
-  `goaccess_listen_port` и `goaccess_auth_enabled` вместе с vhost на `127.0.0.1:8443` и basic
-  auth; роль **удаляет** `/etc/nginx/conf.d/krot-goaccess.conf`, иначе на уже развёрнутых
-  машинах nginx продолжал бы его отдавать. Причина не техническая: через SSH-туннель отчёт не
-  открыть с телефона, а это основной сценарий. Отдаёт их проект — busel роутом `/traffic` под
-  логином своей админки, без второго пароля и без поддомена в публичном DNS. То же разделение,
-  что у `postgresql`: роль ставит сервер, per-site вещи делает проект.
+- **`goaccess` no longer serves reports itself.** `goaccess_listen_address`, `goaccess_listen_port`
+  and `goaccess_auth_enabled` are gone along with the vhost on `127.0.0.1:8443` and basic auth; the
+  role **deletes** `/etc/nginx/conf.d/krot-goaccess.conf`, otherwise nginx would keep serving it on
+  already-provisioned machines. The reason is not technical: a report cannot be opened from a phone
+  through an SSH tunnel, and that is the main scenario. The project serves them — busel on a
+  `/traffic` route behind its own admin login, with no second password and no subdomain in public
+  DNS. The same split as with `postgresql`: the role installs the server, the project does the
+  per-site things.
 
-### Новое
+### New
 
-- Отчёты пишутся `0640` (было `0644`) с группой `goaccess_reader_group` (по умолчанию
-  `www-data`), каталог — `2750`. Группу назначает setgid-бит: пишущий аккаунт намеренно не
-  состоит в группе читателя, а `chgrp` в чужую группу запрещён всем, кроме root. Существующие
-  отчёты роль приводит к новому режиму сразу, не дожидаясь пересборки по таймеру.
+- Reports are written `0640` (was `0644`) with the `goaccess_reader_group` group (`www-data` by
+  default), the directory `2750`. The group is assigned by the setgid bit: the writing account is
+  deliberately not a member of the reader's group, and `chgrp` into a foreign group is forbidden to
+  everyone but root. The role brings existing reports to the new mode immediately, without waiting
+  for a timed rebuild.
 
 ## 1.1.0
 
-- Роль `goaccess`: отчёты посещаемости по логам nginx, по одному на сайт. Ни строки JS на
-  сайтах — счётчик третьей стороны на сети доменов был бы уликой связи между ними. Общего
-  отчёта нет намеренно: одна страница со всеми доменами и есть тот список, ради которого сеть
-  прячут.
-- Роль требует `log_format`, начинающегося с `[$time_local]`: GoAccess без времени не
-  запускается вовсе. Формат принадлежит проекту, роль его только читает.
-- Отчёт пересобирается из логов на диске, а не накапливается в базе GoAccess: `--persist`
-  не помнит уже прочитанные строки и считает нератированный лог повторно на каждом прогоне.
+- Role `goaccess`: traffic reports from nginx logs, one per site. Not a line of JS on the sites — a
+  third-party counter across a network of domains would be evidence of the link between them. There
+  is deliberately no combined report: a single page listing every domain is exactly the list the
+  network is hidden for.
+- The role requires a `log_format` starting with `[$time_local]`: without the time GoAccess does not
+  start at all. The format belongs to the project; the role only reads it.
+- The report is rebuilt from the logs on disk rather than accumulated in a GoAccess database:
+  `--persist` does not remember the lines it has already read and counts an unrotated log again on
+  every run.
 
 ## 1.0.0
 
-Первая версия, проверенная на живой машине целиком. Две ломающие правки — отсюда major.
+The first version verified end to end on a live machine. Two breaking edits — hence major.
 
-### Ломающее
+### Breaking
 
-- **`nginx` больше не пишет `log_format` и `set_real_ip_from`** и удаляет то, что писал раньше
-  (`krot-real-ip.conf`, `*-log-format.conf`). Владелец — генератор vhost'ов проекта: он знает
-  имя формата, которое называют его конфиги, и обновляет CF-диапазоны при каждой генерации, а
-  не раз в прогон Ansible. Два писателя на одну настройку разъезжаются, а устаревший
-  `set_real_ip_from` молча пишет в логи адрес CDN вместо посетителя. Проекту нужно определять
-  формат самому.
-- **`postgresql_version` по умолчанию `18`** (был `16`). Это не апгрейд: PostgreSQL не читает
-  каталог данных предыдущей мажорной версии, поэтому роль **отказывается** прогоняться рядом с
-  кластером чужой версии. Переход — через `pg_upgrade`/dump-restore, затем разовый
-  `postgresql_remove_other_versions=true`, который **уничтожает** старые базы.
+- **`nginx` no longer writes `log_format` and `set_real_ip_from`** and deletes what it used to write
+  (`krot-real-ip.conf`, `*-log-format.conf`). The owner is the project's vhost generator: it knows
+  the format name its configs refer to, and refreshes the CF ranges on every generation rather than
+  once per Ansible run. Two writers on one setting drift apart, and a stale `set_real_ip_from`
+  silently logs the CDN's address instead of the visitor's. The project needs to define the format
+  itself.
+- **`postgresql_version` defaults to `18`** (was `16`). This is not an upgrade: PostgreSQL does not
+  read the data directory of a previous major version, so the role **refuses** to run alongside a
+  cluster of a different version. The transition goes through `pg_upgrade`/dump-restore, then a
+  one-off `postgresql_remove_other_versions=true`, which **destroys** the old databases.
 
-### Новое
+### New
 
-- Роли `deploy` и `deploy_keys`. Первая запускает Deployer проекта с control-машины, не
-  переизобретая релизы и rollback. Вторая раздаёт по SSH-ключу на каждое приватное репо плюс
-  host-алиасы: один deploy key нельзя использовать в двух репозиториях GitHub, а без алиаса ssh
-  предъявляет первый подошедший ключ.
-- `nginx` умеет basic auth для неопубликованных сайтов: файл паролей из секретницы в рантайме и
-  сниппет `krot-auth.conf`. Какие сайты закрыты — решает генератор vhost'ов проекта, поэтому они
-  открываются по одному.
-- `postgresql` собирает `pg_stat_statements`. Медленный лог ловит запрос, который тормозит
-  однажды; запрос на 20 мс, вызываемый 100 000 раз в сутки, не пересекает порог никогда, хотя
-  может быть первым по суммарному времени. `shared_preload_libraries` пишется целым списком:
-  PostgreSQL берёт последнее присваивание дословно, и второй потребитель, добавленный отдельным
-  конфигом, вытеснил бы первого.
+- Roles `deploy` and `deploy_keys`. The first runs the project's Deployer from the control machine
+  without reinventing releases and rollback. The second hands out an SSH key per private repo plus
+  host aliases: one deploy key cannot be used in two GitHub repositories, and without an alias ssh
+  presents the first key that fits.
+- `nginx` can do basic auth for unpublished sites: a password file from the secret store at runtime
+  and the `krot-auth.conf` snippet. Which sites are locked is decided by the project's vhost
+  generator, so they open one at a time.
+- `postgresql` collects `pg_stat_statements`. The slow log catches a query that is slow once; a 20 ms
+  query called 100,000 times a day never crosses the threshold, though it may be the top one by total
+  time. `shared_preload_libraries` is written as a whole list: PostgreSQL takes the last assignment
+  literally, and a second consumer added through a separate config would have evicted the first.
 
-### Прежнее, уточнённое
+### Existing, clarified
 
-- `firewall` умеет Cloudflare-замок: 80/443 только с диапазонов CF, обновление еженедельным
-  systemd-таймером. Список читает только firewall — `nginx` его больше не трогает.
-- `bootstrap` не выключает парольный вход, пока не убедится, что валидный SSH-ключ на месте,
-  и убирает cloud-init drop-in, который иначе включил бы его обратно.
-- Логи php-fpm, nginx и PostgreSQL настроены под сбор внешним агентом.
+- `firewall` can do the Cloudflare lock: 80/443 from CF ranges only, refreshed by a weekly systemd
+  timer. Only firewall reads the list — `nginx` no longer touches it.
+- `bootstrap` does not disable password login until it has confirmed a valid SSH key is in place, and
+  removes the cloud-init drop-in that would otherwise turn it back on.
+- php-fpm, nginx and PostgreSQL logs are configured for collection by an external agent.
 
-Проверено прогоном на живой Ubuntu 24.04: все роли применяются, повторный прогон даёт
-`changed=0`.
+Verified by a run against live Ubuntu 24.04: every role applies, and a repeat run yields `changed=0`.
