@@ -1,0 +1,75 @@
+---
+# The largest role in the collection: repository, packages, log directory,
+# rotation, two ini files and a pool.
+#
+# php_version is pinned to what the role defaults to. Overriding it would test
+# a version nothing in the network runs, and the ondrej repository is the part
+# most likely to break — pointing it somewhere else would hide that.
+driver:
+  name: docker
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-php
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      roles_path: ../../roles
+  inventory:
+    host_vars:
+      krot-php:
+        # Trimmed to what the checks below actually exercise. The full default
+        # list is eight packages and this scenario is not testing apt; cli and
+        # fpm are the two the role cannot work without, and pgsql is here
+        # because loading an extension from the repository is a different thing
+        # from installing the interpreter.
+        php_extensions:
+          - cli
+          - fpm
+          - pgsql
+
+        # Every value differs from both PHP's own default and the role's, so a
+        # setting read back from a running interpreter proves the template put
+        # it there. memory_limit at the role's 256M would be indistinguishable
+        # from a machine where the ini never landed if the distro happened to
+        # agree.
+        php_memory_limit: 192M
+        php_max_execution_time: 45
+        php_post_max_size: 24M
+        php_upload_max_filesize: 20M
+        php_opcache_memory: 96
+        php_opcache_max_files: 15000
+        php_log_retention_days: 21
+
+        php_fpm_pool: krot-test
+        php_fpm_max_children: 12
+        php_fpm_start_servers: 3
+        php_fpm_min_spare_servers: 2
+        php_fpm_max_spare_servers: 5
+        php_slowlog_timeout: 3s
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible

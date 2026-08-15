@@ -52,7 +52,11 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       ships `rotate 14`, which is also the role's default — running on defaults would leave the
       file byte-identical whether the role edited it or did nothing, so the scenario asks for 21
 - [x] `converge.yml` and an `idempotence` run in every scenario
-- [ ] Container cleanup that works **after a cancelled run** as well
+- [x] Container cleanup that works **after a cancelled run** as well — `molecule destroy -s <name>`,
+      verified against the actual case: a container left by an interrupted `create` is removed and
+      `docker ps -a` comes back empty. `docker rm -f krot-<name>` is the blunt fallback. Both are
+      in the README section, because the fast loop while writing a scenario is `converge` once and
+      `verify` repeatedly, and that deliberately leaves the machine up
 - [x] A Molecule job in `.github/workflows/` — a separate job, so that a linter failure stays
       distinguishable from a role failure. It runs `molecule test --all`, so a new scenario
       directory is picked up without touching the workflow
@@ -62,10 +66,22 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       `enforce_admins: true`
 - [x] A reach-counter script next to `wiki-index.py`: the share of roles with a scenario, the share
       of tasks, and a check that covered plus uncovered equals the contents of `roles/`
-- [ ] README: a section on running the tests locally
-- [ ] `.openspec.yaml` with `skip_specs: true` — so archiving does not need the flag
-- [ ] `CHANGELOG.md` — decide how to version an infrastructure change: it alters no role, and role
-      semver gives no answer for it
+- [x] README: a section on running the tests locally — install, `test --all`, the
+      `converge`/`verify` loop that leaves the container up, and cleanup after a cancelled run.
+      Says plainly that a scenario is worth only what it catches, and that every one here was
+      checked by breaking its role
+- [x] `.openspec.yaml` with `skip_specs: true` — so archiving does not need the flag. The format
+      was measured rather than guessed: `schema:` is required for the marker to be honoured, and
+      `spec-driven` is the only schema openspec 1.9.0 ships. With `schema: change` validation
+      fails with "unknown schema 'change'" and silently ignores skip_specs. `openspec validate`
+      now passes on this change with no `specs/` at all
+- [x] `CHANGELOG.md` — **5.2.0**, decided with the user. The premise the question was written on
+      turned out to be wrong: the change does not "alter no role". The scenarios found two real
+      defects, and fixing them changed `common` and `php` in ways a provisioned machine notices —
+      so semver had something to answer after all. Minor rather than patch because the php fix
+      deletes a file on the machine, and rather than major because no variable was renamed and no
+      default changed, which is the line the changelog's own preamble draws. The php entry carries
+      an explicit warning about the deleted `www.conf`
 
 ## Found by the scenarios (2026-08-15)
 
@@ -140,8 +156,16 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       a postmaster-level setting stays in the file and never reaches the server. In all six
       `converge` and `idempotence` stayed green while `verify` went red, which is the only
       arrangement that proves the checks read the machine rather than Ansible's report
-- [ ] **A PR with a red Molecule does not merge** — verified in fact, not by the setting: that is
-      the only proof the required check was added correctly
+- [x] **A PR with a red Molecule does not merge** — verified in fact, not by the setting. A
+      throwaway branch broke one assert in `molecule/fail2ban/verify.yml` and opened PR #36 against
+      `main`. `lint` passed, `molecule` failed, and GitHub answered `mergeStateStatus=BLOCKED` with
+      **"the base branch policy prohibits the merge"** while `mergeable=MERGEABLE` — no conflict,
+      branch up to date, the red check the only thing in the way. Closed unmerged, branch deleted.
+
+      Getting to that proof took two attempts, and the failed one is the point: the first PR was
+      refused for being `BEHIND`, and the second for a conflict. Both are refusals, neither says
+      anything about the required check — a run that stopped at either would have recorded a
+      conclusion the evidence did not support
 - [x] The reach counter prints **4/11 roles and 76/117 tasks (64%)** after the first wave —
       exactly the figure this change set as the target. The counter maps scenario directories to
       roles by prefix, so `firewall_cloudflare` counts towards `firewall` rather than reading as
@@ -155,8 +179,15 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       `.ansible-lint-ignore` rather than silenced globally. The measured reason — the module's
       `status` is a snapshot taken before it acts — is in
       `wiki/research/systemd-service-status-is-stale.md`, with the probe as a runnable asset
-- [ ] Molecule's run time in CI measured — the figure is needed before conclusions about it, not
-      after
+- [x] Molecule's run time in CI measured — **8 to 13 minutes, median 12**, across eight successful
+      runs on `ubuntu-latest` with the scenario count growing from six to eight. `lint` alongside
+      it is one minute. The two are separate jobs and run in parallel, so a PR waits on the
+      molecule figure.
+
+      Measured rather than predicted, which was the point of leaving this until last. Worth noting
+      what it does NOT support: the runs span different scenario counts, and no attempt was made to
+      attribute time per scenario — the eight-scenario runs are 12 and 13 minutes while a
+      six-scenario run took 8, but a single measurement of each proves nothing about the slope
 - [x] **Second review found four things in the postgresql scenario, all confirmed by measurement.**
       One was a live regression: quoting the scenario's throwaway password (secret-lint: allow —
       the value itself is quoted, marked, a few items above)
@@ -173,6 +204,37 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       deleting one host_var would have silently disarmed the scenario. Noted in both files.
       Re-verified after the changes: 7/7 green, and swapping `restarted` for `reloaded` still
       fails verify on `max_connections` with converge and idempotence clean
+
+### Found by the second wave and its review (2026-08-15/16)
+
+- [x] **Two defects in roles, both of the same shape: the default path is healthy and the
+      configured one is not.** `common` believed its drop-in replaced the distro's
+      `Allowed-Origins` because the file sorts later; apt appends to lists, so the release pocket
+      survived and machines took ordinary updates unattended. `php` wrote its FPM pool on the
+      socket the packaged `www.conf` already used, and FPM rejects the whole configuration rather
+      than choosing — invisible at `php_fpm_pool: www`, broken at any other value, which is the
+      only reason the variable exists. Both are in `wiki/research/`, and both were found by
+      scenarios that deliberately do not run on defaults
+- [x] **The first fix for the php collision was itself a defect, and review measured it.** Keying
+      on `php_fpm_pool != "www"` answered the wrong question: a hand-written `www.conf` on a
+      different socket coexists fine, and that condition deleted it — a 502 with nothing to
+      restore. Now the role greps for the socket its own pool claims, and renames rather than
+      deletes. The lesson is narrow and worth keeping: a cleanup task's condition has to describe
+      the conflict, not the configuration that usually accompanies it
+- [x] **The `Enable` task of two roles was untestable, and neither scenario noticed.** Deleting it
+      left both green. Two causes, each measured: the package enables the unit itself (after
+      `apt-get install` alone, is-enabled says `enabled`), and `ansible.builtin.service:
+      state=reloaded` starts a stopped service, unlike `systemctl reload` which refuses. So the
+      handler covered for the missing task. Fixed with a systemd preset of `disable` in prepare,
+      which makes dpkg leave the unit alone
+- [x] **Comparisons with `in` are not assertions.** `fail2ban` checked settings with
+      `value not in stdout`, so `maxretry = 30` satisfied a check for `3`. The scenario's own claim
+      — that every value differs from the default, therefore a match proves the template — was
+      undermined by the operator used to check it
+- [x] **A comment that explained a check was false while the check was sound.** `fail2ban` was said
+      to skip a jail whose logpath does not exist; measured, the jail stays listed with the service
+      active. A bad filter name does cause the silent skip, so `fail2ban-client status` earns its
+      place — the reasoning printed beside it did not
 
 ## Not done here
 - `ansible-test` — nothing to check while there is no `plugins/` (reasoning in the proposal)

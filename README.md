@@ -405,6 +405,40 @@ ansible-lint      # the production profile — the strictest one
 
 CI (`.github/workflows/lint.yml`) runs both on every PR.
 
+### Running the role tests
+
+Roles are tested with Molecule, one scenario per role under `molecule/<name>/`. Each brings up a
+systemd container, runs the role, runs it again to check idempotence, then verifies the machine.
+
+```bash
+pip install molecule 'molecule-plugins[docker]' ansible-core
+ansible-galaxy collection install -r molecule/requirements.yml
+ansible-galaxy collection install -r requirements.yml
+
+molecule test --all          # everything, as CI runs it
+molecule test -s php         # one scenario
+molecule converge -s php     # run the role and leave the container up
+molecule verify -s php       # re-run just the checks against it
+molecule destroy -s php      # clean up afterwards
+```
+
+`converge` leaves the container running, which is the fast loop while writing a scenario:
+`converge` once, then `verify` as many times as needed. `test` always destroys at the end — a
+cancelled run does not, so `molecule destroy -s <name>` (or `docker rm -f krot-<name>`) is worth
+knowing.
+
+Docker must be running: on macOS these were developed against Colima, and `colima start` is the
+usual fix when `create` fails complaining about the socket.
+
+**A scenario is only worth what it catches.** Every one here was checked by deliberately breaking
+the role it covers — a correct scenario keeps `converge` and `idempotence` green while `verify`
+goes red. Three defects in the roles were found this way (the wiki has the measurements); so were
+several checks of mine that passed against a machine the role had never touched.
+
+`scripts/coverage.py` prints which roles have a scenario and fails if a role appears in no list at
+all, or if coverage drops below the floor recorded in it. Raising that floor is a manual edit, on
+purpose.
+
 All roles are idempotent: a repeat run yields `changed=0`. This is not a declaration — it is
 verified by running against a live machine.
 

@@ -3,6 +3,60 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 5.2.0
+
+### Fixed
+
+- **Role `common`: unattended upgrades installed the whole release, not only security.** The
+  drop-in claimed its origins "replace the distro list" because the file sorts after
+  `50unattended-upgrades`. They did not — `Allowed-Origins` is an apt list and the block syntax
+  expands to `::`, which **appends**. Measured with `apt-config dump`: eight origins in effect
+  instead of three, among them `${distro_id}:${distro_codename}` — the entire release pocket.
+  Confirmed at the level that decides, not only the config: `unattended-upgrade --dry-run --debug`
+  reported `Allowed origins are: o=Ubuntu,a=noble, o=Ubuntu,a=noble-security, ...`.
+
+  Fixed with `#clear Unattended-Upgrade::Allowed-Origins;` before the block, after which apt
+  reports the three security origins and nothing else. Checked that the cure is not worse: with
+  `50unattended-upgrades` deleted outright, the three still apply and packages still upgrade —
+  the list never ends up empty. `#clear` is a real directive, not a comment; with a space
+  (`# clear`) the release pocket comes straight back.
+
+  **Already-provisioned machines take the new file on the next run** and stop installing
+  non-security updates unattended. Nothing else changes.
+
+- **Role `php`: PHP-FPM did not start at all when the pool was renamed.** The package ships
+  `pool.d/www.conf` on `/run/php/php<ver>-fpm.sock` and the role writes its own pool on the same
+  socket. FPM does not choose between them — it rejects the whole configuration with `unable to
+  set listen address as it's already used in another pool`, exits `78/CONFIG`, and systemd gives
+  up after five restarts.
+
+  Invisible at the default `php_fpm_pool: www`, where the role overwrites that same file. It
+  appeared the moment a project named its pool anything else — which is the only reason the
+  variable exists, so the broken case was the configured one.
+
+  The role now moves the packaged pool aside — to `www.conf.disabled`, since FPM includes
+  `pool.d/*.conf` — but **only when that file actually listens on the socket the role's own pool
+  claims**. Both conditions are needed, and the second was learned the hard way: the first version
+  keyed on the pool's name alone, and review measured that a hand-written `www.conf` on a
+  *different* socket coexists perfectly (`--test` passes, both sockets are served) while that
+  condition deleted it anyway, taking the site behind it to 502.
+
+  So on an already-provisioned machine: a `www.conf` that conflicts is renamed, one that does not
+  is left alone, and nothing is deleted outright.
+
+### Added
+
+- **Molecule scenarios for 7 of the 11 roles** (`cron`, `firewall` ×2, `nginx` ×2, `postgresql`,
+  `common`, `fail2ban`, `php`) — 94 of 118 tasks. Each brings up a systemd container, runs the
+  role, runs it again for idempotence, then reads the machine back.
+
+  Every scenario was checked by deliberately breaking the role it covers: a correct one keeps
+  `converge` and `idempotence` green while `verify` goes red. Both defects above were found this
+  way, as were several checks of ours that passed against a machine the role had never touched.
+
+  The remaining four roles are recorded with the reason they have none rather than left unnamed —
+  `scripts/coverage.py` fails if a role appears in no list, and holds the floor already reached.
+
 ## 5.1.1
 
 ### Fixed

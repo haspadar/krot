@@ -67,6 +67,49 @@
     mode: "0644"
   notify: Reload php-fpm
 
+# The package ships pool.d/www.conf listening on the same socket this role's
+# pool uses. Two pools cannot share a listen address: FPM refuses the whole
+# configuration with "unable to set listen address as it's already used in
+# another pool" and exits 78/CONFIG, so the service does not start at all.
+#
+# Invisible at the default php_fpm_pool: www, where the role simply overwrites
+# that file. It appears the moment a project names its pool anything else —
+# which is what naming the variable is for. Measured: with both files present
+# on the same socket `php-fpm --test` fails and systemd gives up after five
+# restarts; with only one, it starts.
+#
+# The condition is the actual collision, not the pool's name. `php_fpm_pool !=
+# "www"` was the first attempt and it was wrong: review measured that a
+# hand-written www.conf listening on a DIFFERENT socket coexists perfectly —
+# `--test` passes, both sockets are served — and that condition deleted it
+# anyway, taking the site behind it to 502 with nothing to restore from.
+# Renaming rather than deleting, so a file this role did not write survives.
+# FPM includes pool.d/*.conf, so the suffix is enough to take it out of the
+# configuration; measured, `--test` passes with the .disabled file present.
+- name: Look for a packaged pool on the socket this role's pool claims
+  ansible.builtin.shell: |
+    set -o pipefail
+    conf=/etc/php/{{ php_version }}/fpm/pool.d/www.conf
+    [ -f "$conf" ] || exit 10
+    grep -qE '^\s*listen\s*=\s*/run/php/php{{ php_version }}-fpm\.sock\s*$' "$conf" || exit 10
+  args:
+    executable: /bin/bash
+  register: php_pool_clash
+  changed_when: false
+  failed_when: php_pool_clash.rc not in [0, 10]
+  when: php_fpm_pool != "www"
+
+- name: Move it aside, since two pools cannot share one socket
+  ansible.builtin.command:
+    cmd: >-
+      mv /etc/php/{{ php_version }}/fpm/pool.d/www.conf
+      /etc/php/{{ php_version }}/fpm/pool.d/www.conf.disabled
+    removes: "/etc/php/{{ php_version }}/fpm/pool.d/www.conf"
+  when:
+    - php_fpm_pool != "www"
+    - php_pool_clash.rc | default(10) == 0
+  notify: Reload php-fpm
+
 - name: Enable PHP-FPM
   ansible.builtin.service:
     name: "php{{ php_version }}-fpm"
