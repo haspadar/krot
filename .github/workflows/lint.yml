@@ -6,6 +6,13 @@ name: lint
     branches: [main]
   pull_request:
 
+# Nothing here writes anything back: these jobs read the tree, run linters and a
+# container. Stated explicitly because the default token is far broader, and a
+# workflow that never declares its permissions silently keeps whatever the
+# repository setting hands out.
+permissions:
+  contents: read
+
 # Actions are pinned by commit SHA with the version in a comment, matching busel.
 # A tag like v5 is movable: whoever owns the action can repoint it, and CI would
 # then run someone else's code holding this repository's token. The comment is
@@ -13,12 +20,19 @@ name: lint
 jobs:
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       # Full history, not the default shallow clone: wiki-index.py restores PR numbers
       # from merge commits, and at depth=1 every one of them silently becomes a dash.
+      #
+      # persist-credentials: false — checkout otherwise leaves the token in
+      # .git/config, where any later step, or anything that packages the
+      # directory, can read it. Nothing here pushes, so it is never needed.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
@@ -76,8 +90,12 @@ jobs:
   # "molecule" there is a deliberate, separate step.
   molecule:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
