@@ -1,0 +1,95 @@
+---
+# Проба к замеру wiki/research/systemd-service-status-is-stale.md
+#
+# Готовый плейбук, а не фрагмент: кладётся на место molecule/cron/verify.yml и
+# запускается через molecule, чтобы работать в том же контейнере и с тем же
+# инвентарём, что и сценарий. Порядок команд — в разделе «Как перепроверить».
+#
+# Юниты krot-* создаёт роль, поэтому перед пробой нужен `molecule converge -s cron`.
+#
+# ВАЖНО: здесь намеренно НЕТ `failed_when: false`. Первая версия этой пробы его
+# содержала, и он скрыл падение модуля — из чего родился ложный вывод, будто
+# `status` не возвращается вовсе. Проба, изучающая поведение инструмента, должна
+# падать громко.
+- name: Probe when systemd_service captures its status
+  hosts: all
+  tasks:
+    # ── Часть 1. Снимок берётся до действия ──────────────────────────────────
+    #
+    # Юнит долгоживущий намеренно: на Type=oneshot состояние inactive после
+    # успешной отработки законно, и расхождение было бы неотличимо от нормы.
+    - name: A long-running unit, so ActiveState is observable
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/probe-sleep.service
+        content: |
+          [Unit]
+          Description=Sleeps, so ActiveState can be watched
+          [Service]
+          ExecStart=/bin/sleep 3600
+        mode: "0644"
+
+    - name: Reload systemd
+      ansible.builtin.systemd_service:
+        daemon_reload: true
+
+    - name: Make sure it is stopped before we start
+      ansible.builtin.systemd_service:
+        name: probe-sleep.service
+        state: stopped
+
+    - name: Start it — the module both acts and reports
+      ansible.builtin.systemd_service:
+        name: probe-sleep.service
+        state: started
+      register: started
+
+    - name: Ask the machine at the same moment
+      ansible.builtin.command: systemctl show probe-sleep.service -p ActiveState
+      register: truth
+      changed_when: false
+
+    # Ожидаемое: changed=true, модуль сообщает inactive, машина — active.
+    - name: The gap between what the module reports and what is true
+      ansible.builtin.debug:
+        msg:
+          module_changed: "{{ started.changed }}"
+          module_reports_activestate: "{{ started.status.ActiveState | default('ABSENT') }}"
+          machine_says: "{{ truth.stdout }}"
+
+    - name: Stop the probe unit
+      ansible.builtin.systemd_service:
+        name: probe-sleep.service
+        state: stopped
+
+    # ── Часть 2. Контроль: на успешном юните status есть ─────────────────────
+    #
+    # Опровергает первоначальный ложный вывод «status не возвращается».
+    - name: A job that exits 0, so the module has no reason to fail
+      ansible.builtin.systemd_service:
+        name: krot-journal-job.service
+        state: started
+      register: ok_run
+
+    - name: The status key is present, with Result and ExecMainStatus in it
+      ansible.builtin.debug:
+        msg:
+          has_status: "{{ 'status' in ok_run }}"
+          result: "{{ ok_run.status.Result | default('NO status.Result') }}"
+          exec_main: "{{ ok_run.status.ExecMainStatus | default('NO ExecMainStatus') }}"
+
+    # ── Часть 3. Модуль падает на юните, который обязан падать ───────────────
+    #
+    # ignore_errors, а не failed_when: false — отказ остаётся видимым в выводе.
+    - name: The failing unit, failure recorded rather than hidden
+      ansible.builtin.systemd_service:
+        name: krot-failing-job.service
+        state: started
+      register: bad_run
+      ignore_errors: true
+
+    - name: A failed module call carries no status at all
+      ansible.builtin.debug:
+        msg:
+          failed: "{{ bad_run.failed | default('ABSENT') }}"
+          has_status: "{{ 'status' in bad_run }}"
+          msg: "{{ bad_run.msg | default('') | truncate(120) }}"

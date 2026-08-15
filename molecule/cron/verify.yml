@@ -4,12 +4,29 @@
 # and this role exists because "reported fine, did nothing" is the failure it
 # was written to stop.
 #
-# ansible-lint would have `systemd_service` here instead of `systemctl`, and for
-# a role it would be right. This file does the opposite of what that module is
-# for: it reads facts back off the machine (`show -p Result`, `list-timers`,
-# `--failed`), and the module reports state it set itself. Swapping the command
-# for the module would leave the test checking its own call rather than the
-# machine — the exact substitution this scenario exists to catch.
+# ansible-lint wants `systemd_service` here instead of `systemctl`, and for a
+# role it would be right. The six warnings it raises on this file are left
+# visible rather than silenced, because the reason is worth reading.
+#
+# The module does return a `status` dictionary of `systemctl show` pairs, so
+# Result and ExecMainStatus can be read from it. The problem is when it is read:
+# systemd_service.py fills result['status'] before it acts (line 425) and never
+# refreshes it afterwards (the start/stop runs at line 571). Measured here — the
+# module started a stopped unit, reported `changed: true`, and in the same
+# return said `ActiveState=inactive` while `systemctl show` on the same machine
+# said `active`.
+#
+# So the module's status describes the machine as it was before the task, which
+# is precisely the wrong moment for a test: this file checks what a run left
+# behind. A verification built on it would read a stale snapshot and call it a
+# result.
+#
+# Second reason, narrower: the module fails outright when a unit does not reach
+# active — `Unable to start service krot-failing-job.service`. The failing job
+# below is meant to fail, so the check that its failure is visible cannot be
+# written with a module that treats that failure as its own error.
+#
+# Measurement and reproduction: wiki/research/systemd-service-status-is-stale.md
 - name: Verify
   hosts: all
   tasks:
