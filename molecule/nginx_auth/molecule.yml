@@ -40,6 +40,11 @@ provisioner:
         # run. It guards nothing: no site is served here, and the machine does
         # not outlive the scenario. Real deployments take this from Bitwarden at
         # run time — see the collection's README.
+        #
+        # verify.yml recomputes the apr1 hash from this exact string to prove
+        # the role stored the password it was given, so it has to be readable
+        # here rather than fetched from somewhere at run time.
+        # secret-lint: allow — throwaway, destroyed with the container
         nginx_auth_password: molecule-scenario-only
         nginx_auth_realm: Preview
 

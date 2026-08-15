@@ -38,12 +38,23 @@
       register: loaded
       changed_when: false
 
+    # Matched as directives, not as substrings. `nginx -T` reproduces each file
+    # verbatim, comments included, and the packaged nginx.conf carries the line
+    #   # server_tokens off;
+    # so a substring test for "server_tokens off" passes on a machine where this
+    # role never ran — measured, on a container with the untouched package
+    # config. The regex requires the line to start with the directive, so a
+    # commented one no longer counts.
     - name: The rendered settings reached the running configuration
       ansible.builtin.assert:
-        that: item in loaded.stdout
+        that: >-
+          loaded.stdout_lines
+          | select('search', '^\s*' ~ item ~ '\s*;\s*$')
+          | list | length > 0
         fail_msg: >-
-          "{{ item }}" is absent from the loaded configuration, so the template
-          either did not render it or nginx did not pick the file up.
+          No uncommented "{{ item }};" directive in the loaded configuration, so
+          the template either did not render it or nginx did not pick the file
+          up. A commented-out line does not count: nginx -T prints those too.
         quiet: true
       loop:
         - worker_connections 2048
