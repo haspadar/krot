@@ -75,8 +75,13 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       `spec-driven` is the only schema openspec 1.9.0 ships. With `schema: change` validation
       fails with "unknown schema 'change'" and silently ignores skip_specs. `openspec validate`
       now passes on this change with no `specs/` at all
-- [ ] `CHANGELOG.md` — decide how to version an infrastructure change: it alters no role, and role
-      semver gives no answer for it
+- [x] `CHANGELOG.md` — **5.2.0**, decided with the user. The premise the question was written on
+      turned out to be wrong: the change does not "alter no role". The scenarios found two real
+      defects, and fixing them changed `common` and `php` in ways a provisioned machine notices —
+      so semver had something to answer after all. Minor rather than patch because the php fix
+      deletes a file on the machine, and rather than major because no variable was renamed and no
+      default changed, which is the line the changelog's own preamble draws. The php entry carries
+      an explicit warning about the deleted `www.conf`
 
 ## Found by the scenarios (2026-08-15)
 
