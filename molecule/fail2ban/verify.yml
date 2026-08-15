@@ -23,7 +23,7 @@
       ansible.builtin.command: fail2ban-client ping
       register: ping
       changed_when: false
-      failed_when: "'pong' not in ping.stdout"
+      failed_when: "'DELIBERATE-FAILURE-branch-protection-test' not in ping.stdout"
 
     - name: The jails it is running are the ones the role configured
       ansible.builtin.command: fail2ban-client status
