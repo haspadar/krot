@@ -11,14 +11,16 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **10**.
+В работе — **2**, заархивировано — **10**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **4** из 10: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **6** из 12: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
+| [`2026-08-15-ci-once-per-change`](../../openspec/changes/2026-08-15-ci-once-per-change/proposal.md) | **в работе** | — | Proposal: CI платит за ответы, которые уже даны |
+| [`2026-08-15-molecule-role-tests`](../../openspec/changes/2026-08-15-molecule-role-tests/proposal.md) | **в работе** | — | Proposal: роль впервые встречает реальность на проде |
 | [`app-cron`](../../openspec/changes/archive/2026-08-13-app-cron/proposal.md) | 2026-08-13 | [#20](https://github.com/haspadar/krot/pull/20) | Proposal: периодические задачи приложения — свойство машины |
 | [`cron-assert-silent-skip`](../../openspec/changes/archive/2026-08-13-cron-assert-silent-skip/proposal.md) | 2026-08-13 | [#21](https://github.com/haspadar/krot/pull/21) | Proposal: провалившийся assert пропускал задачу молча |
 | [`geoip`](../../openspec/changes/archive/2026-08-02-geoip/proposal.md) | 2026-08-02 | [#11](https://github.com/haspadar/krot/pull/11) | Proposal: география в отчётах посещаемости |
