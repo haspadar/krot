@@ -1,54 +1,58 @@
-# Proposal: PostgreSQL 18 и отказ ставить его молча
+# Proposal: PostgreSQL 18 and refusing to install it silently
 
 ## Why
 
-На сервере нужен PostgreSQL 18: Matilda уже на 18, и держать реципиентов на 16 значит
-расходиться внутри одной сети.
+The server needs PostgreSQL 18: Matilda is already on 18, and keeping the recipients on 16 means
+diverging within a single network.
 
-Но **смена `postgresql_version` не обновляет кластер**, и это ловушка, которая срабатывает
-беззвучно:
+But **changing `postgresql_version` does not upgrade the cluster**, and this is a trap that
+springs silently:
 
-- PostgreSQL не читает каталог данных предыдущей мажорной версии, поэтому подъём переменной
-  ставит **второй кластер рядом**, а не апгрейдит первый;
-- `pg_createcluster` берёт первый свободный порт, то есть 5433, а конфиг роли объявляет 5432;
-- новый кластер не стартует, приложение продолжает работать со старым — и всё выглядит
-  исправным.
+- PostgreSQL does not read the data directory of the previous major version, so raising the
+  variable puts **a second cluster alongside** rather than upgrading the first;
+- `pg_createcluster` takes the first free port, that is 5433, while the role's config declares
+  5432;
+- the new cluster does not start, the application keeps working with the old one — and
+  everything looks healthy.
 
-Роль, которая так себя ведёт, опаснее роли, которая отказывается работать.
+A role that behaves this way is more dangerous than a role that refuses to work.
 
 ## What Changes
 
-### Отказ вместо догадки
+### Refusal instead of guesswork
 
-Роль перечисляет существующие кластеры и **отказывается** прогоняться рядом с кластером чужой
-версии, называя её и пути вперёд (`pg_upgrade`, dump/restore, либо осознанно выбросить данные).
+The role lists the existing clusters and **refuses** to run next to a cluster of a foreign
+version, naming that version and the ways forward (`pg_upgrade`, dump/restore, or deliberately
+discarding the data).
 
-Удаление старого кластера возможно только через явный `postgresql_remove_other_versions`
-(дефолт `false`): уничтожение данных не должно быть побочным эффектом правки номера версии.
+Removing the old cluster is only possible through an explicit `postgresql_remove_other_versions`
+(default `false`): destroying data must not be a side effect of editing a version number.
 
-### Кластеры определяются по `pg_lsclusters`, а не по каталогам
+### Clusters are determined by `pg_lsclusters`, not by directories
 
-Найдено на живой машине: `postgresql-18` установился, но кластера **не создал** — порт был
-занят. При этом каталоги под `/etc/postgresql` остаются от пакета, чей postinst не смог создать
-кластер. То есть каталоги отвечают на вопрос «какие версии установлены», а не «какие кластеры
-существуют».
+Found on a live machine: `postgresql-18` installed but **created no cluster** — the port was
+taken. Meanwhile the directories under `/etc/postgresql` remain from the package whose postinst
+could not create a cluster. That is, directories answer the question "which versions are
+installed", not "which clusters exist".
 
-### Кластер создаётся явно
+### The cluster is created explicitly
 
-`postgresql-common` создаёт кластер в postinst только если порт свободен, и удаление старого
-задним числом недостающий не создаёт. Роль создаёт его сама, с `creates:` на `postgresql.conf`,
-поэтому на чистой машине задача пропускается — там кластер уже сделал пакет.
+`postgresql-common` creates a cluster in postinst only if the port is free, and removing the old
+one after the fact does not create the missing one. The role creates it itself, with `creates:`
+on `postgresql.conf`, so on a clean machine the task is skipped — there the cluster has already
+been made by the package.
 
-### Уборка за собой
+### Cleaning up after itself
 
-`purge` снимает то, чем владеет пакет. Он **не снимает** двух вещей: клиентского пакета
-`postgresql-client-<old>` (отдельный пакет, от которого никто не зависит) и собственного
-drop-in роли `99-krot.conf`, не принадлежащего ни одному пакету. Оставленный конфиг молча
-перенастроил бы ту версию, если её когда-нибудь поставят заново.
+`purge` removes what the package owns. It does **not** remove two things: the client package
+`postgresql-client-<old>` (a separate package nobody depends on) and the role's own drop-in
+`99-krot.conf`, which belongs to no package. A leftover config would silently reconfigure that
+version if it were ever installed again.
 
 ## Impact
 
-- **Ломающее:** дефолт `postgresql_version` меняется с 16 на 18. Существующая машина потребует
-  осознанного перехода, а не просто обновления коллекции — роль на это и рассчитана.
-- На busel данных не было: все таблицы по нулю строк, единственное содержимое — журнал
-  миграций Doctrine, восстановленный прогоном миграций. Дамп снят и проверен перед удалением.
+- **Breaking:** the `postgresql_version` default changes from 16 to 18. An existing machine will
+  require a deliberate transition, not just a collection update — that is exactly what the role
+  is designed for.
+- There was no data on busel: all tables at zero rows, the only content was the Doctrine
+  migration log, restored by running the migrations. A dump was taken and verified before removal.

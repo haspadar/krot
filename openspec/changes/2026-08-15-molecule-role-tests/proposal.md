@@ -1,164 +1,168 @@
-# Proposal: роль впервые встречает реальность на проде
+# Proposal: a role meets reality for the first time in production
 
 ## Why
 
-Идемпотентность объявлена обязательным свойством всех одиннадцати ролей — CLAUDE.md говорит
-«повторный прогон даёт `changed=0`», и дальше: «проверяется прогоном на живой машине». Вторая
-половина фразы и есть дефект. Единственная машина, где роль проверяется, — рабочая: busel
-раздаёт сайты, matilda крутит Docker Compose. Первый ответ на вопрос «а роль вообще работает?»
-приходит оттуда, где ошибка стоит дороже всего.
+Idempotence is declared a mandatory property of all eleven roles — CLAUDE.md says "a repeat run
+yields `changed=0`", and then: "verified by running against a live machine". The second half of that
+sentence is the defect. The only machine where a role is verified is a working one: busel serves
+sites, matilda runs Docker Compose. The first answer to "does this role work at all?" arrives from
+where a mistake costs the most.
 
-Что стоит в CI сейчас, и чего оно не отвечает:
+What CI carries today, and what it does not answer:
 
-| Проверка | Отвечает на вопрос |
+| Check | The question it answers |
 |---|---|
-| `yamllint`, `ansible-lint` (production) | синтаксис и стиль корректны |
-| `ansible-galaxy collection build` | коллекция собирается и ставится у потребителя |
-| `wiki-lint`, `wiki-index` | документация не разошлась с ролями |
+| `yamllint`, `ansible-lint` (production) | the syntax and style are correct |
+| `ansible-galaxy collection build` | the collection builds and installs for a consumer |
+| `wiki-lint`, `wiki-index` | the documentation has not drifted from the roles |
 
-Ни одна не запускает роль. `ansible-lint` не знает, поставится ли пакет, заведётся ли юнит и
-даст ли второй прогон `changed=0` — он читает YAML, а не выполняет его. Между «файл написан
-правильно» и «машина пришла в нужное состояние» лежит весь класс отказов, ради которого роли и
-пишутся.
+None of them runs a role. `ansible-lint` does not know whether a package will install, whether a unit
+will start, or whether a second run yields `changed=0` — it reads YAML rather than executing it.
+Between "the file is written correctly" and "the machine reached the required state" lies the whole
+class of failures the roles are written for.
 
-Это тот же класс, которому посвящена `wiki/operations/silent-failures.md`: код возврата ноль,
-работа не сделана. Роль `cron` уже содержала такой дефект внутри себя — `AssertPathIsDirectory=`
-обещал громкое падение и молча пропускал задачу (change `2026-08-13-cron-assert-silent-skip`).
-Нашли его вручную, на живой машине, спустя время.
+It is the same class `wiki/operations/silent-failures.md` is devoted to: exit code zero, work not
+done. The `cron` role already contained such a defect inside itself — `AssertPathIsDirectory=`
+promised a loud failure and silently skipped the job (change `2026-08-13-cron-assert-silent-skip`).
+It was found by hand, on a live machine, after some time had passed.
 
-### Замер: роль krot отрабатывает в контейнере целиком
+### Measured: a krot role runs to completion inside a container
 
-Проверено 2026-08-15 локально, не выведено из документации. Образ
-`geerlingguy/docker-ubuntu2404-ansible`, Docker 29.7.2, `--privileged --cgroupns=host`,
-монтирование `/sys/fs/cgroup`:
+Verified locally on 2026-08-15, not inferred from documentation. Image
+`geerlingguy/docker-ubuntu2404-ansible`, Docker 29.7.2, `--privileged --cgroupns=host`, with
+`/sys/fs/cgroup` mounted:
 
-| Что проверялось | Результат |
+| What was checked | Result |
 |---|---|
-| ОС | Ubuntu **24.04.4 LTS (Noble Numbat)** — целевая платформа |
-| systemd | **`running`**, версия **255** — та же, что на busel, где сделаны все замеры вики |
-| роль `cron`, первый прогон | `ok=11 changed=3`, юнит и таймер установлены |
-| роль `cron`, второй прогон | **`ok=10 changed=0`** — идемпотентность замерена, а не заявлена |
-| таймер по факту | `enabled`, в `list-timers` со следующим стартом |
+| OS | Ubuntu **24.04.4 LTS (Noble Numbat)** — the target platform |
+| systemd | **`running`**, version **255** — the same one every measurement in the wiki was taken on |
+| role `cron`, first run | `ok=11 changed=3`, unit and timer installed |
+| role `cron`, second run | **`ok=10 changed=0`** — idempotence measured rather than declared |
+| the timer itself | `enabled`, present in `list-timers` with a next start |
 
-Отработал и хендлер `daemon-reload`, то есть systemd в контейнере не декорация.
+The `daemon-reload` handler ran too, so systemd in the container is not decorative.
 
-Отдельно проверен firewall, потому что «ufw в контейнере не работает» — расхожее убеждение, и
-оно неверно для привилегированного режима:
+The firewall was checked separately, because "ufw does not work in a container" is a common belief
+and it is wrong for privileged mode:
 
-| Что проверялось | Результат |
+| What was checked | Result |
 |---|---|
 | `ufw enable` | `Firewall is active and enabled on system startup` |
 | `ufw status verbose` | `active`, `deny (incoming)` |
-| правила в ядре (`iptables -L INPUT -n`) | **`policy DROP`**, цепочки `ufw-before-input` и далее |
+| rules in the kernel (`iptables -L INPUT -n`) | **`policy DROP`**, the `ufw-before-input` chain and the rest |
 
-Правила ложатся в netfilter по-настоящему, поэтому `firewall` идёт в первую волну, а не в
-список непокрытых.
+The rules land in netfilter for real, which is why `firewall` goes into the first wave rather than
+the uncovered list.
 
-Времена одного цикла замерены там же: поднятие контейнера **2s**, `converge` **21s**,
-второй прогон **19s**. Это роль `cron`, которая не ставит пакетов; роли с внешними
-репозиториями (`postgresql` из pgdg, `php` из ondrej, `nginx`) будут заметно дольше — их
-время замеряется при заведении сценария, а не предсказывается здесь.
+The timings of one cycle were measured there too: bringing the container up **2s**, `converge`
+**21s**, the second run **19s**. That is the `cron` role, which installs no packages; roles with
+external repositories (`postgresql` from pgdg, `php` from ondrej, `nginx`) will be noticeably
+slower — their time gets measured when their scenario is written, not predicted here.
 
 ## What Changes
 
-Заводится Molecule — сценарий на роль, который поднимает контейнер noble, прогоняет роль
-(`converge`), прогоняет второй раз (`idempotence`) и убирает за собой.
+Molecule is introduced — a scenario per role that brings up a noble container, runs the role
+(`converge`), runs it a second time (`idempotence`) and cleans up after itself.
 
-Molecule, а не `ansible-test`. Это не выбор из двух равных: `ansible-test` тестирует содержимое
-коллекций **как Python-кода** — sanity, unit и integration для модулей и плагинов. В krot их
-ноль: одиннадцать ролей на YAML и ни одного `plugins/`. `validate-modules` без модулей молчит,
-остальное перекрыто связкой `ansible-lint` + `collection build`, которая уже в CI. Molecule же
-проверяет поведение роли на машине — единственное, чего сейчас не проверяет никто. Он
-community-maintained в организации `ansible/` под Ansible by Red Hat, последний релиз
-12.08.2026, поддерживает N/N-1 мажорных версий Ansible; конкурента у него для ролей нет.
+Molecule, not `ansible-test`. This is not a choice between two equals: `ansible-test` tests the
+contents of collections **as Python code** — sanity, unit and integration tests for modules and
+plugins. krot has none of those: eleven roles in YAML and not a single `plugins/`.
+`validate-modules` stays silent without modules, and the rest is already covered by the
+`ansible-lint` + `collection build` pair in CI. Molecule, by contrast, checks a role's behaviour on
+a machine — the one thing nothing checks today. It is community-maintained inside the `ansible/`
+organisation under Ansible by Red Hat, its latest release is from 12.08.2026, and it supports N/N-1
+major Ansible versions; for roles it has no competitor.
 
-### Все одиннадцать ролей названы явно
+### All eleven roles named explicitly
 
-Список без остатка — иначе он не выполняет своей функции. Сумма трёх столбцов равна содержимому
-`roles/`, и это проверяется скриптом (см. ниже).
+A list with no remainder — otherwise it does not do its job. The sum of the three columns equals the
+contents of `roles/`, and that is checked by a script (see below).
 
-| Волна | Роли | Задач | Почему |
+| Wave | Roles | Tasks | Why |
 |---|---|---|---|
-| **Первая** | `cron`, `firewall`, `nginx`, `postgresql` | 76 | тихий отказ уже случался или замер показал, что проверяемо |
-| **Вторая** | `common`, `fail2ban`, `php` | 17 | препятствий нет, но и срочности меньше |
-| **Не покрываются** | `bootstrap`, `deploy`, `deploy_keys`, `docker` | 24 | причины ниже, по каждой |
+| **First** | `cron`, `firewall`, `nginx`, `postgresql` | 76 | a silent failure already happened, or measurement showed it is checkable |
+| **Second** | `common`, `fail2ban`, `php` | 17 | no obstacles, but less urgency |
+| **Not covered** | `bootstrap`, `deploy`, `deploy_keys`, `docker` | 24 | reasons below, one per role |
 
-`bootstrap` вынесен в непокрываемые намеренно, хотя соблазн был обратный. Роль закрывает
-парольный вход и правит sshd — то есть её характерный отказ это «запереть себя снаружи». В
-контейнере Molecule подключается через `community.docker.docker`, **мимо sshd**, поэтому
-испорченный `99-krot.conf` пройдёт незамеченным: сценарий будет зелёным ровно в том случае,
-ради которого он нужен. Проверять здесь нечего, пока транспорт не SSH; это отдельная работа.
+`bootstrap` is deliberately placed among the uncovered, though the temptation was the opposite. The
+role closes password login and edits sshd — that is, its characteristic failure is "locking yourself
+out". Inside a container Molecule connects through `community.docker.docker`, **bypassing sshd**, so
+a broken `99-krot.conf` would pass unnoticed: the scenario would be green in exactly the case it is
+needed for. There is nothing to check here until the transport is SSH; that is separate work.
 
-`deploy` запускает Deployer с control-машины, `deploy_keys` работает с приватными
-репозиториями, `docker` ставит Docker внутрь контейнера. Их сценарии либо бессмысленны, либо
-требуют отдельного разговора.
+`deploy` runs Deployer from the control machine, `deploy_keys` works with private repositories, and
+`docker` installs Docker inside a container. Their scenarios are either meaningless or require a
+separate conversation.
 
-### Покрытие считается, потому что Molecule его не считает
+### Coverage is counted, because Molecule does not count it
 
-**У Molecule нет механизма coverage** — это не unit-фреймворк, он проверяет состояние машины, а
-не исполнение строк. `ansible-test coverage` существует, но меряет покрытие Python-кода модулей
-и плагинов, которых в krot ноль. Привычной метрики «N% покрыто» не даст ни один из двух.
+**Molecule has no coverage mechanism** — it is not a unit-test framework; it checks the state of a
+machine, not the execution of lines. `ansible-test coverage` exists, but it measures coverage of the
+Python code of modules and plugins, of which krot has none. Neither of the two yields the familiar
+"N% covered" metric.
 
-Поэтому заводится свой счётчик охвата: доля ролей со сценарием и доля задач, живущих в них.
-Задача — строка `- name:` в `roles/<role>/tasks/`. Сейчас в репозитории **117 задач в 11
-ролях**, охват **0/11 ролей и 0/117 задач**. После первой волны — 4/11 ролей и 76/117 задач
-(64%). Скрипт живёт рядом с `wiki-index.py`, жанр в репозитории уже есть, и он же следит, что
-сумма списков покрытых и непокрытых равна `roles/`.
+So a reach counter of our own is introduced: the share of roles with a scenario and the share of
+tasks living in them. A task is a `- name:` line under `roles/<role>/tasks/`. The repository
+currently holds **117 tasks across 11 roles**, with a reach of **0/11 roles and 0/117 tasks**. After
+the first wave — 4/11 roles and 76/117 tasks (64%). The script lives next to `wiki-index.py`, a
+genre the repository already has, and it also watches that the sum of the covered and uncovered
+lists equals `roles/`.
 
-Это охват, а не покрытие кода, и называть его надо так. Он отвечает «какие роли вообще
-проверяются», но не «какие ветки внутри роли исполнились».
+This is reach, not code coverage, and it must be called that. It answers "which roles are checked at
+all", but not "which branches inside a role executed".
 
-### Качество сценария не измеряется числом
+### The quality of a scenario is not measured by a number
 
-Единственная честная проверка: намеренно сломать роль и убедиться, что сценарий покраснел. Без
-неё зелёный Molecule не значит ничего, и никакой процент этого не заменит. Стоит в `tasks.md`
-отдельным пунктом.
+The only honest check: deliberately break a role and confirm the scenario turns red. Without it a
+green Molecule means nothing, and no percentage substitutes for it. It stands in `tasks.md` as a
+separate item.
 
-Второе условие качества — **переменные сценария**. На дефолтах `cron_jobs` пуст и роль
-становится no-op: `converge` пройдёт, а проверено будет пусто — тот же «код 0, работа не
-сделана», только в тесте. У каждого сценария набор переменных задаётся явно, и там, где дефолт
-обнуляет роль (`cron_jobs`, `nginx_auth_enabled`, `postgresql_remove_other_versions`), он
-переопределяется.
+The second condition of quality is **the scenario's variables**. On defaults `cron_jobs` is empty and
+the role becomes a no-op: `converge` would pass while nothing was checked — the same "exit code 0,
+work not done", only inside a test. Each scenario sets its variables explicitly, and wherever a
+default nulls the role (`cron_jobs`, `nginx_auth_enabled`, `postgresql_remove_other_versions`), it is
+overridden.
 
-### Возражение «Docker в проде отвергнут» — снимается
+### The objection "Docker was rejected in production" — dismissed
 
-ARCHITECTURE.md формулирует решение узко: «**Docker в проде busel** НЕ используется», и
-обоснование там про рантайм приложения на боевой машине. Docker как эфемерный стенд в CI к
-этому решению отношения не имеет: он не попадает на прод-машину и не конкурирует с Ansible за
-роль механизма развёртывания. В коллекции к тому же есть роль `docker` для matilda — Docker в
-проекте не под запретом как таковой. Записано здесь, чтобы возражение не всплывало на каждом
-ревью.
+ARCHITECTURE.md words the decision narrowly: "**Docker is NOT used in busel production**", and the
+reasoning there is about the application's runtime on a live machine. Docker as an ephemeral test
+bed in CI has nothing to do with that decision: it never reaches a production machine and does not
+compete with Ansible for the role of deployment mechanism. The collection also contains a `docker`
+role for matilda — Docker is not forbidden in the project as such. Recorded here so the objection
+does not resurface at every review.
 
 ## Impact
 
-- **Идемпотентность перестаёт быть дисциплиной и становится гейтом.** Сейчас `changed=0` — это
-  обещание в CLAUDE.md, которое некому проверить; после — шаг, роняющий CI.
-- **Роль встречает реальность до прода.** Пакет, юнит, права, шаблон проверяются на чистой
-  noble, а не на машине с сайтами.
-- **Molecule сам по себе мержу не помешает.** Required status check в защите main задан
-  строкой `lint` — это имя job'а. Новый job `molecule` в required-список **не попадёт
-  автоматически**: красный Molecule при зелёном `lint` не остановит мерж. Его нужно добавить
-  в `contexts` руками, иначе гейт окажется декоративным ровно тогда, когда сработает.
-- **CI дорожает по времени, и это не компенсируется ничем.** Прогон роли — минуты против
-  нынешних 49 секунд медианно, умноженные на число сценариев. Для публичного репозитория это
-  не деньги (минуты Actions бесплатны), но это время ожидания на каждом PR.
-- **Появляется зависимость от внешней сети на каждом прогоне.** `postgresql` тянет ключ и
-  пакеты из pgdg, `php` — из ondrej. Самые долгие и самые хрупкие сценарии из всех.
-- **Появляется зависимость от Docker** в CI и локально. На раннере GitHub он есть штатно.
-- **Отменённый прогон оставляет контейнеры.** Molecule идёт минуты, и `cancel-in-progress`
-  может убить его на середине — уборка должна работать и после отмены.
+- **Idempotence stops being discipline and becomes a gate.** Today `changed=0` is a promise in
+  CLAUDE.md that nobody can check; afterwards it is a step that fails CI.
+- **A role meets reality before production.** Package, unit, permissions and template are checked on
+  a clean noble rather than on a machine serving sites.
+- **Molecule on its own will not block a merge.** The required status check on main's protection is
+  the string `lint` — that is a job name. A new `molecule` job will **not** enter the required list
+  automatically: a red Molecule beside a green `lint` will not stop a merge. It has to be added to
+  `contexts` by hand, otherwise the gate turns out to be decorative exactly when it fires.
+- **CI gets slower, and nothing compensates for it.** Running a role takes minutes against today's
+  49-second median, multiplied by the number of scenarios. For a public repository that is not money
+  (Actions minutes are free), but it is waiting time on every PR.
+- **A dependency on external networking appears on every run.** `postgresql` pulls a key and packages
+  from pgdg, `php` from ondrej. The slowest and most brittle scenarios of the set.
+- **A dependency on Docker appears** in CI and locally. On a GitHub runner it is there by default.
+- **A cancelled run leaves containers behind.** Molecule takes minutes, and `cancel-in-progress` may
+  kill it halfway — cleanup has to work after a cancellation too.
 
-## Что сюда не входит
+## Out of scope
 
-- **`ansible-test`.** Обоснование выше: нечего проверять, пока в krot нет `plugins/`. Появятся
-  свой фильтр, lookup или модуль — sanity и units встанут рядом с Molecule, и это будет
-  отдельное решение, а не расширение этого.
-- **pytest на `scripts/*.py`.** Четыре скрипта вики, из которых `wiki-lint.py` и
-  `wiki-index.py` сами служат гейтами CI, — то есть CI доверяет непроверенному коду. Дефект
-  настоящий и того же рода, но лечится обычным pytest, а не Molecule, и живёт своим change.
-- **Проверка запирания в `bootstrap`.** Требует SSH-транспорта в сценарии — отдельная работа
-  с собственным обоснованием.
-- **Ветка `postgresql_remove_other_versions: true`.** Самая опасная в роли (уничтожает данные)
-  и самая тонкая — с фолбэком `pg_createcluster --creates` на занятый порт. Проверяема
-  сценарием «поставить PG 16, затем роль с версией 18», но это отдельный сценарий и отдельный
-  разговор про то, что делать с найденным.
+- **`ansible-test`.** Reasoning above: there is nothing to check while krot has no `plugins/`. Once
+  there is a filter, lookup or module of our own, sanity and units will stand beside Molecule, and
+  that will be a separate decision rather than an extension of this one.
+- **pytest for `scripts/*.py`.** Four wiki scripts, two of which — `wiki-lint.py` and
+  `wiki-index.py` — serve as CI gates themselves, meaning CI trusts unverified code. The defect is
+  real and of the same kind, but it is cured by ordinary pytest rather than by Molecule, and it lives
+  in its own change.
+- **Checking the lockout in `bootstrap`.** Requires SSH transport in the scenario — separate work
+  with its own justification.
+- **The `postgresql_remove_other_versions: true` branch.** The most dangerous one in the role (it
+  destroys data) and the subtlest — with the `pg_createcluster --creates` fallback on a taken port.
+  It is checkable by a scenario that installs PG 16 and then runs the role with version 18, but that
+  is a separate scenario and a separate conversation about what to do with what it finds.

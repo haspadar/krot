@@ -1,10 +1,10 @@
-# Proposal: провалившийся assert пропускал задачу молча
+# Proposal: a failed assert skipped the job silently
 
 ## Why
 
-Роль `cron` заведена ради одного класса отказа: задача перестаёт выполняться, а машина
-рапортует здоровье. В самой роли этот отказ и остался — в четырёх строках, которые обещали
-обратное.
+The `cron` role exists for one class of failure: a job stops running while the machine reports
+health. That very failure was still present inside the role itself — in four lines that promised
+the opposite.
 
 ```jinja
 # Fail loudly if the directory is gone rather than running from / and blaming
@@ -13,73 +13,77 @@
 AssertPathIsDirectory={{ item.working_directory }}
 ```
 
-Комментарий обещает громкое падение. `Assert*=` его не даёт: **провалившийся assert не роняет
-unit**. Задача пропускается, состояние остаётся успешным, в `systemctl --failed` пусто.
+The comment promises a loud failure. `Assert*=` does not deliver one: **a failed assert does not
+fail the unit**. The job is skipped, the state stays successful, `systemctl --failed` is empty.
 
-Замерено на busel (systemd 255, 2026-08-13) двумя пробными юнитами, а не выведено из
-документации:
+Measured on busel (systemd 255, 2026-08-13) with two probe units, not inferred from the
+documentation:
 
-| | `AssertPathIsDirectory=/nonexistent` | `WorkingDirectory=/nonexistent`, без assert |
+| | `AssertPathIsDirectory=/nonexistent` | `WorkingDirectory=/nonexistent`, no assert |
 |---|---|---|
 | `Result` | **success** | `exit-code` |
 | `ExecMainStatus` | **0** | 200 (CHDIR) |
 | `ActiveState` | inactive | **failed** |
-| строк в `systemctl --failed` | **0** | **1** |
+| lines in `systemctl --failed` | **0** | **1** |
 
-Второй столбец проверен и на запуске **по таймеру**, а не только руками: юнит с
-`OnCalendar=*-*-* *:*:00` после первого же срабатывания оказался в `--failed`.
+The second column was also verified **under a timer**, not only by hand: a unit with
+`OnCalendar=*-*-* *:*:00` landed in `--failed` after its very first firing.
 
-Когда стреляет: `working_directory` — это релизный симлинк `current`, и после неудачного деплоя
-он указывает в никуда. Ровно тот случай, который назван в комментарии. Задача тогда перестаёт
-отрабатывать, а `list-timers` показывает правдоподобный следующий старт и `--failed` молчит.
-`Persistent=` не догоняет: таймер сработал, догонять нечего.
+When it fires: `working_directory` is the `current` release symlink, and after a failed deploy it
+points nowhere. Exactly the case named in the comment. The job then stops running, while
+`list-timers` shows a plausible next start and `--failed` stays quiet. `Persistent=` does not
+catch up: the timer did fire, there is nothing to catch up on.
 
-Это founding-дефект роли, воспроизведённый внутри неё самой.
+This is a founding defect of the role, reproduced inside the role itself.
 
-### Вторая половина: assert проверял не от того пользователя
+### The other half: the assert checked as the wrong user
 
-Найдено на ревью и замерено там же. `Assert*=` считает PID 1, то есть **root**, а работать в
-каталоге будет `User=`. На каталоге `0700 root:root` это расходится:
+Found during review and measured on the spot. `Assert*=` is evaluated by PID 1, that is **root**,
+while the one working in the directory will be `User=`. On a `0700 root:root` directory the two
+diverge:
 
-| юнит | результат | команда |
+| unit | result | command |
 |---|---|---|
-| `AssertPathIsDirectory` + `User=km` | `success`, `--failed` пуст | **выполнилась** — из чужого каталога |
-| `WorkingDirectory` + `User=km` | `failed`, 200/CHDIR | не выполнялась |
-| `WorkingDirectory` + `User=root` | `success` | выполнилась штатно |
+| `AssertPathIsDirectory` + `User=km` | `success`, `--failed` empty | **ran** — from someone else's directory |
+| `WorkingDirectory` + `User=km` | `failed`, 200/CHDIR | did not run |
+| `WorkingDirectory` + `User=root` | `success` | ran normally |
 
-Первая строка проверена следом на диске (`touch` в `ExecStart`), а не по полям `systemctl show`.
-Задача, потерявшая свой каталог, отработала и вернула 0 — то есть assert не просто молчал, он
-**пропускал целый класс отказа**: у systemd `chdir` происходит после `setresuid`, поэтому права
-проверяются тем, кто будет работать, а не тем, кто ставит задачу.
+The first row was verified afterwards on disk (`touch` in `ExecStart`), not by the fields of
+`systemctl show`. A job that had lost its directory ran and returned 0 — that is, the assert was
+not merely silent, it **let through a whole class of failure**: in systemd `chdir` happens after
+`setresuid`, so permissions are checked as the one who will do the work, not as the one who
+schedules the job.
 
 ## What Changes
 
-`AssertPathIsDirectory=` снимается. Отсутствующий каталог роняет юнит сам — через
-`WorkingDirectory=`, который в юните уже есть и остаётся на месте.
+`AssertPathIsDirectory=` is removed. A missing directory fails the unit on its own — through
+`WorkingDirectory=`, which is already in the unit and stays there.
 
-Кода не добавляется: правка — удаление четырёх строк. Объяснение переезжает к
-`WorkingDirectory=`, потому что теперь поведение обеспечивает эта строка, и вместе с ним
-переезжает замер. Неверный комментарий про видимость отказа — то, чем такие ошибки
-размножаются, и второй раз ему поверят так же, как поверили первый.
+No code is added: the change is the deletion of four lines. The explanation moves to
+`WorkingDirectory=`, because that line is what now provides the behaviour, and the measurement
+moves with it. The wrong comment about failure visibility is how mistakes like this multiply, and
+it would be believed a second time just as it was believed the first.
 
 ## Impact
 
-- **Отказ становится видимым.** Задача с битым `working_directory` попадает в
-  `systemctl --failed` и `systemctl status` показывает `status=200/CHDIR`.
-- **Юниты на развёрнутых машинах перезаписываются** — из `.service` уходит строка. Прогон
-  покажет `changed`, перезапуска задачи это не требует.
-- **Проверки на прогоне не убавилось.** `Assert*` проверял состояние в момент старта, а не
-  в момент прогона Ansible: он ничего не ловил заранее и заменять его нечем и незачем.
-- **Проверки прибавилось.** Случай «каталог есть, но пользователь в него не может» assert
-  пропускал целиком, а `WorkingDirectory=` ловит.
-- **На машине с уже битым симлинком `--failed` станет непустым** после первого срабатывания
-  таймера. Это и есть работа правки: машина была сломана и раньше, просто молчала.
-- Поведение задач с исправным `working_directory` не меняется.
+- **The failure becomes visible.** A job with a broken `working_directory` shows up in
+  `systemctl --failed`, and `systemctl status` shows `status=200/CHDIR`.
+- **Units on deployed machines are rewritten** — a line leaves the `.service`. A run will report
+  `changed`; this does not require restarting the job.
+- **No check is lost at run time.** `Assert*` checked the state at start time, not at the time of
+  the Ansible run: it caught nothing in advance, and there is nothing to replace it with, nor any
+  reason to.
+- **A check is gained.** The case "the directory exists, but the user cannot enter it" was skipped
+  by the assert entirely, and `WorkingDirectory=` catches it.
+- **On a machine with an already broken symlink, `--failed` will become non-empty** after the
+  first timer firing. That is exactly the work of this change: the machine was broken before too,
+  it just kept quiet.
+- The behaviour of jobs with a working `working_directory` does not change.
 
-## Что сюда не входит
+## Out of scope
 
-Ревью нашло ещё семь замечаний по роли (экранирование `\` в юните, `JOB_REPLACE` при
-переполнении по времени, права на лог-каталог при своём `user`, осиротевший `.service` при
-ретайре, отсутствие валидации `schedule`, снятие ручной строки crontab в документации,
-расхождение README и defaults про `fixed_random_delay`). Они разбираются отдельно: это
-улучшения, а здесь чинится единственный пункт, воспроизводящий founding-дефект.
+The review found seven more remarks about the role (escaping `\` in the unit, `JOB_REPLACE` on
+time overrun, log directory permissions with a custom `user`, an orphaned `.service` on retire, no
+validation of `schedule`, removal of the manual crontab line from the documentation, README and
+defaults disagreeing about `fixed_random_delay`). They are handled separately: those are
+improvements, whereas the single item fixed here is the one reproducing the founding defect.

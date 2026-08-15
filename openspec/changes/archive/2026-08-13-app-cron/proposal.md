@@ -1,77 +1,81 @@
-# Proposal: периодические задачи приложения — свойство машины
+# Proposal: application periodic jobs are a property of the machine
 
 ## Why
 
-На busel почасовая задача `colony:traffic` **пять дней не отработала ни разу**, и это было
-невидимо с обеих сторон.
+On busel the hourly `colony:traffic` job **did not run once in five days**, and this was
+invisible from both sides.
 
 ```
 17 * * * * cd /var/www/busel/current && APP_ENV=prod /usr/bin/php bin/console colony:traffic >> /var/log/busel-traffic.log 2>&1
 ```
 
-`/var/log` — `root:syslog`, `drwxr-xr-x`; у `km` записи туда нет. Перенаправление падает **до**
-запуска PHP, поэтому сообщению об ошибке некуда лечь: файла `/var/log/busel-traffic.log` не
-существует вовсе. Сама команда исправна — ручной запуск от `km` отработал с кодом 0 и залил
-пропущенные дни.
+`/var/log` is `root:syslog`, `drwxr-xr-x`; `km` has no write access there. The redirection fails
+**before** PHP starts, so the error message has nowhere to land: the file
+`/var/log/busel-traffic.log` does not exist at all. The command itself is sound — a manual run as
+`km` finished with code 0 and backfilled the missed days.
 
-Почему пять дней никто не заметил — три независимых слоя молчания:
+Why nobody noticed for five days — three independent layers of silence:
 
-- `journalctl -u cron` бодро печатает `(km) CMD (...)` каждый час: cron честно сообщает, что
-  **запустил** строку, и ничего не знает о том, чем она кончилась;
-- лога нет — значит, нечего и читать, а отсутствие файла неотличимо от «ещё не писал»;
-- данные просто перестают обновляться, о чём узнаёшь, лишь заглянув в таблицу.
+- `journalctl -u cron` cheerfully prints `(km) CMD (...)` every hour: cron honestly reports that
+  it **started** the line, and knows nothing about how it ended;
+- there is no log — so there is nothing to read, and a missing file is indistinguishable from
+  "hasn't written yet";
+- the data simply stops updating, which you only find out by looking into the table.
 
-Главное здесь не «неверный путь». Неверный путь — опечатка на минуту работы. Дефект в том, что
-**пять суток зелёных запусков при нулевом результате выглядели нормой**, и никакая команда,
-которую набирают, глядя на машину, не сказала бы обратного.
+The point here is not "wrong path". A wrong path is a typo, a minute of work. The defect is that
+**five days of green runs with zero result looked normal**, and no command you would type while
+looking at the machine would have said otherwise.
 
-### Почему это дефект krot, а не busel
+### Why this is a krot defect, not a busel one
 
-Крон заведён руками через `crontab -e`. Его нет ни в krot, ни в репозитории busel. Отсюда:
+The cron entry was created by hand via `crontab -e`. It is neither in krot nor in the busel
+repository. Hence:
 
-- не переживёт пересоздания машины;
-- не появится на следующем сервере, а busel — фабрика сайтов, серверов будет больше;
-- находится только через `crontab -l` у нужного пользователя — то есть неизвестен тому, кто не
-  знает, что искать и у кого;
-- ротации нет: в `/etc/logrotate.d/` лежат `krot-nginx` и `krot-php`, `busel-traffic` — нет.
+- it will not survive a machine rebuild;
+- it will not appear on the next server, and busel is a site factory, there will be more servers;
+- it is found only through `crontab -l` under the right user — that is, unknown to anyone who
+  does not know what to look for and under whom;
+- there is no rotation: `/etc/logrotate.d/` holds `krot-nginx` and `krot-php`, but no
+  `busel-traffic`.
 
-Krot этого не ломал; krot этого просто не делает. Соседние сервисы он заводит вместе с их
-логами и ротацией — периодические задачи приложения выпали из ряда.
+Krot did not break this; krot simply does not do it. It sets up neighbouring services together
+with their logs and rotation — application periodic jobs fell out of that row.
 
-### Что нашлось по дороге: тот же дефект уже сработал на logrotate
+### What turned up along the way: the same defect had already fired on logrotate
 
-При проверке машины (2026-08-13) `systemctl --failed` показал:
+While checking the machine (2026-08-13) `systemctl --failed` showed:
 
 ```
 ● logrotate.service loaded failed failed Rotate log files
 ```
 
-Третьи сутки подряд, начиная с 11 августа:
+For the third day in a row, starting on 11 August:
 
 ```
 error: nginx:1 duplicate log entry for /var/log/nginx/access.log
 error: found error in file nginx, skipping
 ```
 
-Роль `nginx` кладёт `/etc/logrotate.d/krot-nginx` с glob `/var/log/nginx/*.log`, а штатный
-пакетный `/etc/logrotate.d/nginx` объявляет тот же самый glob. logrotate считает это ошибкой
-конфигурации и **выходит с кодом 1, не обработав ни одного файла** — включая `krot-php`,
-postgresql и всё остальное на машине.
+The `nginx` role drops `/etc/logrotate.d/krot-nginx` with the glob `/var/log/nginx/*.log`, while
+the stock package `/etc/logrotate.d/nginx` declares the very same glob. logrotate treats this as
+a configuration error and **exits with code 1 without processing a single file** — including
+`krot-php`, postgresql and everything else on the machine.
 
-Это тот же самый класс отказа, что и в задании, и он подтверждает выбор транспорта ниже: путь
-«свой файл + свой logrotate» на этой машине **уже сломан**, и сломан молча. Чинится в этом же
-изменении (см. «Impact»).
+This is the same class of failure as in the assignment, and it confirms the choice of transport
+below: the "own file + own logrotate" path on this machine is **already broken**, and broken
+silently. Fixed within this same change (see "Impact").
 
 ## What Changes
 
-### Новая роль `cron`
+### New role `cron`
 
-Не место в `common`: у задач своя переменная, свой список, свои шаблоны юнитов и свой тег для
-`--tags`. `common` — это hostname, timezone и базовые пакеты, задачи приложения там были бы
-чужеродны. Не место и в `deploy`: та сознательно тонкая обёртка над Deployer проекта.
+It does not belong in `common`: the jobs have their own variable, their own list, their own unit
+templates and their own tag for `--tags`. `common` is hostname, timezone and base packages;
+application jobs would be alien there. It does not belong in `deploy` either: that one is a
+deliberately thin wrapper over the project's Deployer.
 
-Роль знает про **механизм периодических задач**, но не про `colony:traffic`. Список — переменная
-инвентаря:
+The role knows about the **mechanism of periodic jobs**, but not about `colony:traffic`. The list
+is an inventory variable:
 
 ```yaml
 # busel: group_vars/all.yml
@@ -85,111 +89,120 @@ cron_jobs:
       APP_ENV: prod
 ```
 
-Следующий сервер объявит свои. Krot по имени `colony:traffic` не знает ничего.
+The next server will declare its own. Krot knows nothing about the name `colony:traffic`.
 
-### systemd-таймеры вместо cron
+### systemd timers instead of cron
 
-Транспорт вывода — journal, и это следствие требования «вывод не должен зависеть от прав на
-файл», а не вкусовое предпочтение. Что даёт замена, проверено на живой машине:
+The output transport is the journal, and that follows from the requirement "output must not
+depend on file permissions", not from taste. What the replacement buys, verified on a live
+machine:
 
-| | cron сейчас | systemd-таймер |
+| | cron today | systemd timer |
 |---|---|---|
-| куда идёт вывод | в файл, на который нет прав | в journal, права не нужны |
-| виден ли код возврата | нет | `Main PID: … (code=exited, status=3)` |
-| виден ли отказ без знания пути | нет | `systemctl --failed` |
-| ротация | своя, которой не написали | системная, уже работает |
-| переживает пересоздание машины | нет | да, роль ставит заново |
+| where output goes | into a file there are no rights for | into the journal, no rights needed |
+| is the exit code visible | no | `Main PID: … (code=exited, status=3)` |
+| is a failure visible without knowing the path | no | `systemctl --failed` |
+| rotation | its own, which nobody wrote | system-wide, already working |
+| survives a machine rebuild | no | yes, the role installs it again |
 
-Проверено под `km` без sudo на busel (2026-08-13): системный юнит с `User=km` пишет stdout и
-stderr в journal, и `journalctl -u <юнит>` их **показывает** — вопреки тому, что `km` не состоит
-ни в `adm`, ни в `systemd-journal`. Записи самого `systemd[1]` (`Deactivated successfully`) при
-этом не видны, а строки процесса — видны, потому что процесс принадлежит `km`. Полную картину
-даёт `systemctl status <юнит>`, тоже без sudo: он берёт код возврата не из journal.
+Verified as `km` without sudo on busel (2026-08-13): a system unit with `User=km` writes stdout
+and stderr to the journal, and `journalctl -u <unit>` **shows** them — despite `km` belonging to
+neither `adm` nor `systemd-journal`. Entries from `systemd[1]` itself (`Deactivated successfully`)
+are not visible, but the process's own lines are, because the process belongs to `km`. The full
+picture is given by `systemctl status <unit>`, also without sudo: it takes the exit code not from
+the journal.
 
-То есть требование «вывод находится без знания пути к файлу» выполняется буквально: имя юнита
-выводится из имени задачи, а список юнитов печатает `systemctl list-timers 'krot-*'`.
+That is, the requirement "output is found without knowing the path to a file" is met literally:
+the unit name is derived from the job name, and the list of units is printed by
+`systemctl list-timers 'krot-*'`.
 
-Файловый вывод остаётся возможен (`log_file`), но **не по умолчанию** — и роль тогда создаёт
-файл с нужным владельцем и пишет `/etc/logrotate.d/`, потому что половина этой пары
-воспроизводит ровно исходный дефект.
+File output remains possible (`log_file`), but **not by default** — and then the role creates the
+file with the right owner and writes `/etc/logrotate.d/`, because half of that pair reproduces
+exactly the original defect.
 
-### `APP_ENV=prod` не теряется при переносе
+### `APP_ENV=prod` is not lost in the move
 
-В существующем кроне это записано с причиной, и причина сохраняется в defaults роли: cron не
-несёт окружения, без переменной поднимается dev, копит логи запросов и на длинном синхроне
-упирался в память. У systemd ровно та же особенность — юнит стартует с пустым окружением, — так
-что переменные не «унаследуются», их объявляют явно через `Environment=`.
+In the existing cron entry this is written with a reason, and the reason is preserved in the
+role's defaults: cron carries no environment, without the variable dev comes up, accumulates
+request logs and on a long sync ran into memory. systemd has exactly the same trait — a unit
+starts with an empty environment — so variables are not "inherited", they are declared explicitly
+via `Environment=`.
 
-### Минута не 0 — и теперь это не забота автора задачи
+### The minute is not 0 — and now that is not the job author's concern
 
-У cron минута 17 выбрана вручную, чтобы не совпасть с остальными почасовыми задачами машины.
-Идея сохраняется, но исполняется надёжнее: `RandomizedDelaySec` разводит задачи сам, а
-`schedule: hourly` разворачивается в `OnCalendar=*-*-* *:00:00` со сдвигом. Тому, кто добавляет
-вторую задачу, больше не нужно помнить, какие минуты уже заняты, — а это ровно то знание,
-которое теряется первым.
+In cron the minute 17 was picked by hand so as not to collide with the machine's other hourly
+jobs. The idea is preserved but carried out more reliably: `RandomizedDelaySec` spreads the jobs
+out by itself, and `schedule: hourly` expands into `OnCalendar=*-*-* *:00:00` with an offset.
+Whoever adds a second job no longer needs to remember which minutes are already taken — and that
+is exactly the kind of knowledge that is lost first.
 
-Явная минута тоже доступна: `schedule` принимает любое выражение `OnCalendar`.
+An explicit minute is available too: `schedule` accepts any `OnCalendar` expression.
 
-### Команда экранируется ролью, а не автором инвентаря
+### The command is escaped by the role, not by the inventory author
 
-Выяснилось на ревью и подтвердилось замером: unit-файл умеет отказывать ровно так же тихо, как
-исходный крон.
+Discovered in review and confirmed by measurement: a unit file can fail just as quietly as the
+original cron entry.
 
-- **`%` — спецификатор systemd.** `date +%Y-%m-%d` в `ExecStart` напечатал
-  `/etc/systemd/system-<machine-id>-/run/credentials/<юнит>` и вышел **с кодом 0**. Роль
-  удваивает `%`.
-- **Одинарная кавычка рвёт argv.** `--msg='hi there'` для systemd не открывающая кавычка, а
-  литеральная, поэтому `-c` забирает первое слово, а остальное уходит в `$0` и `$1` — тот же
-  механизм, что при склейке аргументов в `ssh`, с тем же почерком: половина работы, код 0.
-  Роль кавычит команду фильтром `quote`.
-- **Кавычка в `Environment=`** заставляла systemd отбросить присваивание с записью
-  `Ignoring invalid environment assignment` — юнит стартовал **без переменной**. Это ровно тот
-  способ потерять `APP_ENV`, от которого требование №2 и защищает.
+- **`%` is a systemd specifier.** `date +%Y-%m-%d` in `ExecStart` printed
+  `/etc/systemd/system-<machine-id>-/run/credentials/<unit>` and exited **with code 0**. The role
+  doubles `%`.
+- **A single quote tears argv apart.** `--msg='hi there'` is for systemd not an opening quote but
+  a literal one, so `-c` takes the first word and the rest goes into `$0` and `$1` — the same
+  mechanism as when arguments are glued together in `ssh`, with the same signature: half the work
+  done, code 0. The role quotes the command with the `quote` filter.
+- **A quote in `Environment=`** made systemd discard the assignment with the entry
+  `Ignoring invalid environment assignment` — the unit started **without the variable**. That is
+  exactly the way of losing `APP_ENV` that requirement #2 protects against.
 
-В инвентаре пишется обычная строка; знать про удвоение и кавычки автору задачи не нужно.
+In the inventory you write an ordinary string; the job author does not need to know about
+doubling and quoting.
 
-### Тихий отказ становится заметным
+### Silent failure becomes noticeable
 
-Здесь три уровня, и первые два входят в это изменение:
+There are three levels here, and the first two are part of this change:
 
-1. **Код возврата фиксируется.** Неуспешный запуск оставляет юнит в `failed`, и это видно в
-   `systemctl --failed` — команде, которую набирают, впервые глядя на машину, не зная про
-   существование задачи. Сегодня такой команды нет вовсе.
-2. **`Persistent=true`.** Машина, выключенная в момент срабатывания, догоняет пропуск при
-   старте, а не молча теряет час.
-3. **«Не отработала N раз подряд» — предложено, но не реализовано** (см. ниже).
+1. **The exit code is recorded.** An unsuccessful run leaves the unit in `failed`, and that is
+   visible in `systemctl --failed` — the command you type when first looking at a machine, not
+   knowing the job exists. Today there is no such command at all.
+2. **`Persistent=true`.** A machine switched off at the moment of firing catches up on the miss at
+   start, instead of silently losing an hour.
+3. **"Did not run N times in a row" — proposed, but not implemented** (see below).
 
 ## Impact
 
-- **Существующий крон на busel не трогается руками.** Роль объявляет `krot-<name>.timer`; ручную
-  строку убирает прогон, а не `crontab -e`. Роль удаляет из crontab пользователя только строки,
-  которые сама туда и не клала — см. tasks.md, пункт про миграцию: по умолчанию она этого **не
-  делает**, чтобы прогон не унёс чужую задачу, о которой не знает.
-- **На busel меняется момент запуска.** Было `17 * * * *`, станет час со случайным сдвигом.
-  Для задачи, чей интервал продиктован источником (Analytics отдаёт максимум прошлый час), это
-  безразлично.
-- **Чинится `logrotate.service`.** Роль `nginx` перестаёт дублировать пакетный glob: `krot-nginx`
-  снимается, а `nginx_log_retention_days` применяется правкой строки `rotate` в пакетном файле.
-  Drop-in тут невозможен: logrotate допускает ровно одну запись на лог и на дубликат
-  останавливает обработку всей машины. Прогон падает, если правúть нечего, — дописывать строку
-  нельзя: за закрывающей скобкой она молча отбрасывается, и ротация идёт **без ретенции вообще**.
-- **Роль общая.** matilda получит тот же механизм, объявив свой список; ничего специфичного для
-  busel в роли нет.
-- **Требуется systemd ≥ 236** (`RandomizedDelaySec`, `Persistent`). На целевой Ubuntu 24.04 —
-  systemd 255, проверено.
+- **The existing cron entry on busel is not touched by hand.** The role declares
+  `krot-<name>.timer`; the manual line is removed by a run, not by `crontab -e`. The role removes
+  from the user's crontab only lines it did not put there itself — see tasks.md, the item about
+  migration: by default it does **not** do this, so that a run does not carry off someone else's
+  job it knows nothing about.
+- **On busel the moment of firing changes.** It was `17 * * * *`, it becomes the hour with a
+  random offset. For a job whose interval is dictated by the source (Analytics returns at most the
+  previous hour) this is immaterial.
+- **`logrotate.service` gets fixed.** The `nginx` role stops duplicating the package glob:
+  `krot-nginx` is removed, and `nginx_log_retention_days` is applied by editing the `rotate` line
+  in the package file. A drop-in is impossible here: logrotate allows exactly one entry per log
+  and on a duplicate stops processing for the whole machine. The run fails if there is nothing to
+  edit — appending the line is not allowed: past the closing brace it is silently discarded, and
+  rotation proceeds **with no retention at all**.
+- **The role is general.** matilda will get the same mechanism by declaring its own list; there is
+  nothing busel-specific in the role.
+- **Requires systemd ≥ 236** (`RandomizedDelaySec`, `Persistent`). On the target Ubuntu 24.04 it
+  is systemd 255, verified.
 
-## Что предлагается, но не делается сейчас
+## Out of scope
 
-**«Команда не отработала N раз подряд».** Дешёвый способ есть, и он не требует ни мониторинга,
-ни агента: `OnFailure=` на юните задачи, указывающий на общий `krot-job-failed@.service`,
-который пишет в journal под отдельным тегом и/или трогает файл-маркер в `/var/lib/krot/`.
-Тогда `systemctl --failed` ловит единичный отказ, а маркер накапливает серию.
+**"The command did not run N times in a row".** There is a cheap way, and it requires neither
+monitoring nor an agent: `OnFailure=` on the job's unit pointing at a shared
+`krot-job-failed@.service`, which writes to the journal under a separate tag and/or touches a
+marker file in `/var/lib/krot/`. Then `systemctl --failed` catches a single failure, while the
+marker accumulates a streak.
 
-Не реализуется сгоряча по причине из задания: у этого есть адресат, и он не выбран. Уведомление,
-которое некому прочесть, — это ещё один тихий отказ, только с большим количеством кода. Пока
-адресата нет, `systemctl --failed` покрывает главный разрыв: сегодня отказ не виден **вообще
-ничем**, после изменения — виден стандартной командой.
+It is not implemented in haste, for the reason given in the assignment: this has an addressee, and
+the addressee has not been chosen. A notification with nobody to read it is one more silent
+failure, only with more code. While there is no addressee, `systemctl --failed` covers the main
+gap: today a failure is visible through **nothing at all**, after the change it is visible through
+a standard command.
 
-Отдельно стоит заметить, что даже это не покрыло бы исходный случай полностью: команда,
-завершившаяся кодом 0, но не сделавшая работы, остаётся зелёной. Ответ на такое — не в krot, а в
-самой задаче: она должна падать, когда не сделала того, ради чего запущена.
+It is worth noting separately that even this would not fully cover the original case: a command
+that finished with code 0 but did no work stays green. The answer to that lies not in krot but in
+the job itself: it must fail when it has not done what it was started for.

@@ -1,53 +1,55 @@
-# Tasks: периодические задачи приложения
+# Tasks: application periodic jobs
 
-## Роль `cron`
-- [x] `cron_jobs` — список в инвентаре; роль не знает ни одного имени задачи. Пустой список по
-      умолчанию, применение к машине без задач — no-op
-- [x] Задача разворачивается в пару `krot-<name>.service` + `.timer`. Имя юнита выводится из
-      имени задачи, поэтому вывод находится, не зная пути к файлу
-- [x] Вывод по умолчанию в journal. Проверено под `km` **без sudo**: `journalctl -u krot-selftest`
-      печатает stdout и stderr, хотя `km` не состоит ни в `adm`, ни в `systemd-journal` — строки
-      принадлежат процессу `km`. Записи самого `systemd[1]` при этом не видны, код возврата даёт
-      `systemctl status`, тоже без sudo
-- [x] `Environment=` для каждой переменной. `APP_ENV=prod` не теряется: у systemd та же
-      особенность, что у cron, — юнит стартует с пустым окружением
-- [x] `RandomizedDelaySec` (15m) вместо ручного выбора минуты. Минута 17 в исходном кроне
-      выбиралась, чтобы не совпасть с прочими почасовыми, — это знание жило только у автора
-      строки, и второму автору пришлось бы добывать его заново
-- [x] `Persistent=true` — машина, выключенная в момент срабатывания, догоняет пропуск
-- [x] `TimeoutStartSec` (30m): зависшая задача иначе блокирует все последующие старты юнита,
-      пока таймер продолжает исправно срабатывать — задача перестаёт выполняться, а таймер
-      выглядит здоровым
-- [x] `AssertPathIsDirectory` на `working_directory`: `current`, указывающий в никуда после
-      неудачного деплоя, валит юнит с внятной причиной, а не запускает команду из `/`
-- [x] Файловый режим (`log_file`) — не по умолчанию, и роль создаёт файл с владельцем **и**
-      пишет `/etc/logrotate.d/krot-cron`. Половина этой пары воспроизводит исходный дефект
+## Role `cron`
+- [x] `cron_jobs` — a list in the inventory; the role knows not a single job name. Empty list by
+      default, applying it to a machine with no jobs is a no-op
+- [x] A job expands into the pair `krot-<name>.service` + `.timer`. The unit name is derived from
+      the job name, so the output is found without knowing the path to a file
+- [x] Output goes to the journal by default. Verified as `km` **without sudo**:
+      `journalctl -u krot-selftest` prints stdout and stderr, although `km` belongs to neither
+      `adm` nor `systemd-journal` — the lines belong to the `km` process. Entries from
+      `systemd[1]` itself are not visible; the exit code is given by `systemctl status`, also
+      without sudo
+- [x] `Environment=` for each variable. `APP_ENV=prod` is not lost: systemd has the same trait as
+      cron — a unit starts with an empty environment
+- [x] `RandomizedDelaySec` (15m) instead of picking a minute by hand. The minute 17 in the original
+      cron entry was picked so as not to collide with the other hourly jobs — that knowledge lived
+      only with the author of the line, and a second author would have had to work it out again
+- [x] `Persistent=true` — a machine switched off at the moment of firing catches up on the miss
+- [x] `TimeoutStartSec` (30m): otherwise a hung job blocks all subsequent starts of the unit while
+      the timer keeps firing correctly — the job stops running, and the timer looks healthy
+- [x] `AssertPathIsDirectory` on `working_directory`: a `current` pointing nowhere after a failed
+      deploy fails the unit with a clear reason instead of running the command from `/`
+- [x] File mode (`log_file`) — not the default, and the role creates the file with an owner
+      **and** writes `/etc/logrotate.d/krot-cron`. Half of that pair reproduces the original
+      defect
 
-## Валидация объявления
-- [x] `assert` на `name`/`command`/`schedule`; имя ограничено `[a-z0-9-]`, потому что становится
-      именем файла юнита
-- [x] `assert` на уникальность имён: два одноимённых юнита молча затирают друг друга
+## Declaration validation
+- [x] `assert` on `name`/`command`/`schedule`; the name is restricted to `[a-z0-9-]`, because it
+      becomes the unit file name
+- [x] `assert` on name uniqueness: two units with the same name silently overwrite each other
 
-## Удаление снятых задач (главный риск)
-- [x] Задача, убранная из инвентаря, снимается с машины: иначе продолжает срабатывать против
-      релиза, который её больше не ждёт, и при этом отсутствует в инвентаре — то есть в записи о
-      том, что машина делает
-- [x] **Владение определяется маркером `# krot-cron-job` внутри `.service`, а не именем файла.**
-      `krot-cf-ranges.timer` принадлежит роли `firewall` и попадает под тот же glob. Проверено
-      прогоном: в цикле ретайра он появился и был пропущен, `is-enabled`/`is-active` после —
-      `enabled`/`active`
-- [x] Таймер без парного `.service` не трогается: доказать владение нечем, и безопасная ошибка
-      здесь — лишний юнит, а не удалённый чужой
+## Removal of retired jobs (the main risk)
+- [x] A job removed from the inventory is removed from the machine: otherwise it keeps firing
+      against a release that no longer expects it, and at the same time is absent from the
+      inventory — that is, from the record of what the machine does
+- [x] **Ownership is determined by the marker `# krot-cron-job` inside the `.service`, not by the
+      file name.** `krot-cf-ranges.timer` belongs to the `firewall` role and falls under the same
+      glob. Verified by a run: in the retire loop it showed up and was skipped, `is-enabled`/
+      `is-active` afterwards — `enabled`/`active`
+- [x] A timer without a paired `.service` is not touched: there is nothing to prove ownership with,
+      and the safe error here is a leftover unit, not someone else's unit deleted
 
-## Проверка на живой машине (busel, 2026-08-13)
-Прогон изолированным плейбуком с тестовой задачей; боевой `colony:traffic` и его строка в
-`crontab` не тронуты.
+## Check on a live machine (busel, 2026-08-13)
+Run with an isolated playbook and a test job; the production `colony:traffic` and its line in
+`crontab` were not touched.
 
-- [x] Первый прогон ставит юниты, `systemctl list-timers 'krot-*'` показывает задачу
-- [x] Запуск отрабатывает, вывод в journal читается под `km` без sudo
-- [x] **Исходный дефект воспроизведён на новом механизме и стал видимым.** В юнит подставлена
-      та же запись в `/var/log/busel-traffic.log`, на который у `km` нет прав. Результат — три
-      независимых сигнала без sudo, там где раньше было пять суток тишины:
+- [x] The first run installs the units, `systemctl list-timers 'krot-*'` shows the job
+- [x] The run works, the output in the journal is readable as `km` without sudo
+- [x] **The original defect was reproduced on the new mechanism and became visible.** The unit was
+      given the same write to `/var/log/busel-traffic.log`, which `km` has no rights for. The
+      result — three independent signals without sudo, where before there were five days of
+      silence:
 
       ```
       systemctl --failed
@@ -56,121 +58,131 @@
       /bin/sh: 1: cannot create /var/log/busel-traffic.log: Permission denied
       systemctl status  →  Main PID: … (code=exited, status=2)
       ```
-- [x] Повторный прогон — `changed=0`
-- [x] Ручная порча юнита откатывается прогоном (`changed=1`, следующий — `0`)
-- [x] **Аналог `crontab -r`:** юниты снесены руками, прогон вернул задачу сам (`changed=3`)
-- [x] Ретайр: `cron_jobs: []` снял `krot-selftest`, не тронув `krot-cf-ranges`
-- [x] Файловый режим: `/var/log/krot/selftest.log` создан `km:adm 0640`, каталог `0750`,
-      `/etc/logrotate.d/krot-cron` записан, `logrotate -d` ошибок не даёт, статус юнита виден
-      и при записи в файл
-- [x] За собой убрано: на машине остались только `krot-cf-ranges.*` и `krot-php`, `--failed` пуст
-- [x] `yamllint`, `ansible-lint` (profile production) чистые
+- [x] A repeat run — `changed=0`
+- [x] Manual corruption of the unit is rolled back by a run (`changed=1`, the next one — `0`)
+- [x] **The equivalent of `crontab -r`:** the units were removed by hand, the run brought the job
+      back by itself (`changed=3`)
+- [x] Retire: `cron_jobs: []` removed `krot-selftest` without touching `krot-cf-ranges`
+- [x] File mode: `/var/log/krot/selftest.log` created as `km:adm 0640`, the directory `0750`,
+      `/etc/logrotate.d/krot-cron` written, `logrotate -d` gives no errors, the unit status is
+      visible even when writing to a file
+- [x] Cleaned up afterwards: only `krot-cf-ranges.*` and `krot-php` were left on the machine,
+      `--failed` is empty
+- [x] `yamllint`, `ansible-lint` (profile production) clean
 
-## Попутный дефект: logrotate падал третьи сутки
-Найден при проверке машины, не входил в задание, но того же рода — тихий отказ.
+## Incidental defect: logrotate had been failing for three days
+Found while checking the machine, not part of the assignment, but of the same kind — a silent
+failure.
 
-- [x] `systemctl --failed` показал `logrotate.service` в `failed` с 11 августа:
+- [x] `systemctl --failed` showed `logrotate.service` in `failed` since 11 August:
       `error: nginx:1 duplicate log entry for /var/log/nginx/access.log`
-- [x] Причина: роль `nginx` кладёт `krot-nginx` с glob `/var/log/nginx/*.log`, пакетный
-      `/etc/logrotate.d/nginx` объявляет тот же. logrotate считает это ошибкой и **выходит с
-      кодом 1, не обработав ни одного файла на машине** — включая `krot-php` и postgresql,
-      которые ни при чём
-- [x] Обойти переписыванием шаблона нельзя: проверено экспериментом — дубликат ловится по
-      **разрешённому пути**, а не по тексту glob (`/var/log/nginx/access.log` против
-      `/var/log/nginx/*.log` даёт ту же ошибку)
-- [x] Роль перестала ставить второй файл; `nginx_log_retention_days` применяется правкой строки
-      `rotate` в пакетном конфиге. Regexp проверен на живом файле — ровно одно совпадение
-- [x] `create: false` — файл принадлежит пакету, а создание его здесь вернуло бы роль к владению
-      вторым конфигом под другим именем
-- [x] **Починено на busel по отдельному разрешению**: `krot-nginx` снят, `logrotate.service`
-      отработал `status=0/SUCCESS`, `systemctl --failed` пуст, `/var/lib/logrotate/status` снова
-      отслеживает nginx, php и postgresql
+- [x] Cause: the `nginx` role drops `krot-nginx` with the glob `/var/log/nginx/*.log`, and the
+      package `/etc/logrotate.d/nginx` declares the same one. logrotate treats this as an error and
+      **exits with code 1 without processing a single file on the machine** — including `krot-php`
+      and postgresql, which have nothing to do with it
+- [x] Working around it by rewriting the template is impossible: verified by experiment — the
+      duplicate is caught by the **resolved path**, not by the glob text
+      (`/var/log/nginx/access.log` against `/var/log/nginx/*.log` gives the same error)
+- [x] The role stopped installing a second file; `nginx_log_retention_days` is applied by editing
+      the `rotate` line in the package config. The regexp was checked against the live file —
+      exactly one match
+- [x] `create: false` — the file belongs to the package, and creating it here would return the
+      role to owning a second config under a different name
+- [x] **Fixed on busel under separate permission**: `krot-nginx` was removed, `logrotate.service`
+      ran with `status=0/SUCCESS`, `systemctl --failed` is empty, `/var/lib/logrotate/status` again
+      tracks nginx, php and postgresql
 
-## По ревью
+## From review
 
-Каждое замечание проверено экспериментом, а не принято на веру: два из пятнадцати не
-подтвердились, одно подтвердилось с другим исходом, чем описано.
+Every remark was verified by experiment rather than taken on faith: two out of fifteen were not
+confirmed, one was confirmed with a different outcome than described.
 
-- [x] **`%` в команде раскрывался как спецификатор systemd.** Проверено: `date +%Y-%m-%d` в
-      `ExecStart` напечатал `/etc/systemd/system-<machine-id>-/run/credentials/<юнит>` и вышел
-      **с кодом 0**. То есть роль, написанная против тихих отказов, несла тихий отказ внутри.
-      Теперь `| replace('%', '%%')`; после правки та же задача печатает `2026-08-13`
-- [x] **Одинарная кавычка в команде рвала argv.** `--msg='hi there'` — кавычка в середине слова
-      для systemd литеральная, `-c` забирает только первое слово. Тот же механизм, что при
-      склейке аргументов в `ssh`. Теперь команда кавычится фильтром `quote`; проверено на
-      машине — `--msg=hi there` доезжает одним аргументом
-- [x] **Кавычка в значении `Environment=` теряла переменную целиком.** systemd писал
-      `Ignoring invalid environment assignment` и стартовал юнит без неё — ровно тот способ
-      потерять `APP_ENV`, от которого роль защищает. После правки `TRICKY=say "hi" now` доезжает
-      в процесс; проверено `env` внутри юнита
-- [x] **Два задания с одним `log_file` воспроизводили `duplicate log entry`** — тот самый
-      дефект, который это же изменение чинит для nginx. Проверено: `logrotate -d` на таком файле
-      даёт `exit=1`. Добавлен `assert`; прогон падает с внятным сообщением
-- [x] **Ретайр оставлял файл лога навсегда** — уже без записи ротации, то есть растущим до
-      заполнения диска. Путь читается из юнита по строке `# krot-cron-log=`, а не разбором
-      `ExecStart`: тот теперь кавычится, и regex по нему сломался бы при первой же смене формы.
-      Удаление ограничено `cron_log_dir` — задача, по опечатке нацеленная на `/var/log/syslog`,
-      не унесёт его с собой
-- [x] **`lineinfile` в роли `nginx` дописывал `rotate` за пределы блока**, когда якорной строки
-      нет. Здесь ревью ошиблось в последствии, и настоящее оказалось хуже: logrotate **не
-      падает** (`exit=0`), он молча отбрасывает директиву и ротирует **вообще без ретенции** —
-      вчерашний лог удаляется вместо хранения четырнадцати. Заменено на `replace` (ничего не
-      дописывает) плюс `assert`, что якорь найден. Проверено: прогон падает, файл не тронут
-- [x] **`lineinfile` правил только последний блок `rotate`.** На пакетном файле Ubuntu 24.04
-      блок один, но роль общая. `replace` правит все совпадения; отступ сохраняется через
-      `\g<1>`
-- [x] **Правка `conffile` и обновление пакета** — проверено `dpkg-query`: файл действительно
-      conffile `nginx-common`, dpkg в неинтерактивном режиме сохраняет локальную версию, а если
-      она откатится, её вернёт следующий прогон. Компромисс вынесен в README и CHANGELOG
-- [x] **`RandomizedDelaySec` рерандомизируется на каждое срабатывание** — почасовая задача
-      гуляла бы между 45 и 75 минутами. Добавлен `FixedRandomDelay=true`
-      (`cron_fixed_random_delay`, включено по умолчанию): сдвиг постоянный. Проверено —
-      systemd 255 принимает, `FixedRandomDelay=yes`, следующий запуск на минуте 07
-- [x] **Многострочный `description` ломал бы `Description=`** — переносы схлопываются в пробел
-- [x] **Semver.** Роль `cron` — добавление, но `nginx` меняет состояние развёрнутых машин.
-      Формально под правило «major за переименование переменной или смену дефолта» не подпадает,
-      имена и смысл не менялись; версия оставлена 5.1.0, но раздел в CHANGELOG переименован в
-      «Исправлено — с изменением состояния уже развёрнутых машин», чтобы обновление не читалось
-      как бесшумное
-- [x] **Docs-drift:** в README и ARCHITECTURE у роли `nginx` значилась «ротация», хотя роль ею
-      больше не владеет — заменено на «ретенция логов»
+- [x] **`%` in the command was expanded as a systemd specifier.** Verified: `date +%Y-%m-%d` in
+      `ExecStart` printed `/etc/systemd/system-<machine-id>-/run/credentials/<unit>` and exited
+      **with code 0**. That is, a role written against silent failures carried a silent failure
+      inside. Now `| replace('%', '%%')`; after the fix the same job prints `2026-08-13`
+- [x] **A single quote in the command tore argv apart.** `--msg='hi there'` — a quote in the
+      middle of a word is literal for systemd, `-c` takes only the first word. The same mechanism
+      as when arguments are glued together in `ssh`. Now the command is quoted with the `quote`
+      filter; verified on the machine — `--msg=hi there` arrives as a single argument
+- [x] **A quote in an `Environment=` value lost the variable entirely.** systemd wrote
+      `Ignoring invalid environment assignment` and started the unit without it — exactly the way
+      of losing `APP_ENV` that the role protects against. After the fix `TRICKY=say "hi" now`
+      arrives in the process; verified with `env` inside the unit
+- [x] **Two jobs with the same `log_file` reproduced `duplicate log entry`** — the very defect
+      this same change fixes for nginx. Verified: `logrotate -d` on such a file gives `exit=1`.
+      An `assert` was added; the run fails with a clear message
+- [x] **Retire left the log file forever** — already without a rotation entry, that is, growing
+      until the disk fills up. The path is read from the unit by the line `# krot-cron-log=`, not
+      by parsing `ExecStart`: the latter is now quoted, and a regex over it would break at the very
+      first change of form. Deletion is confined to `cron_log_dir` — a job pointed at
+      `/var/log/syslog` by a typo will not carry it away with itself
+- [x] **`lineinfile` in the `nginx` role appended `rotate` outside the block** when the anchor line
+      is missing. Here the review was wrong about the consequence, and the truth turned out worse:
+      logrotate does **not** fail (`exit=0`), it silently discards the directive and rotates
+      **with no retention at all** — yesterday's log is deleted instead of fourteen being kept.
+      Replaced with `replace` (which appends nothing) plus an `assert` that the anchor was found.
+      Verified: the run fails, the file is not touched
+- [x] **`lineinfile` edited only the last `rotate` block.** In the Ubuntu 24.04 package file there
+      is one block, but the role is general. `replace` edits all matches; the indentation is
+      preserved via `\g<1>`
+- [x] **Editing a `conffile` and package upgrades** — verified with `dpkg-query`: the file really
+      is a conffile of `nginx-common`, dpkg in non-interactive mode keeps the local version, and
+      if it does get rolled back, the next run restores it. The trade-off is written up in README
+      and CHANGELOG
+- [x] **`RandomizedDelaySec` is re-randomised on every firing** — an hourly job would drift
+      between 45 and 75 minutes. `FixedRandomDelay=true` was added (`cron_fixed_random_delay`,
+      enabled by default): the offset is constant. Verified — systemd 255 accepts it,
+      `FixedRandomDelay=yes`, the next run at minute 07
+- [x] **A multi-line `description` would break `Description=`** — line breaks are collapsed into a
+      space
+- [x] **Semver.** The `cron` role is an addition, but `nginx` changes the state of deployed
+      machines. Formally it does not fall under the rule "major for renaming a variable or changing
+      a default", names and meanings did not change; the version was left at 5.1.0, but the section
+      in CHANGELOG was renamed to "Fixed — with a change of state on already deployed machines",
+      so that the update does not read as silent
+- [x] **Docs drift:** README and ARCHITECTURE listed "rotation" for the `nginx` role, although the
+      role no longer owns it — replaced with "log retention"
 
-### Регрессия, пойманная прогоном (не ревью)
+### A regression caught by a run (not by review)
 
-- [x] Правка по замечанию про уборку лога **сломала ретайр journal-задач**: у них нет маркера,
-      `regex_search` возвращает `None`, и `first` падал с `'NoneType' object is not iterable`.
-      Прогон валился на любой задаче без `log_file`. Исправлено `default([], true)` перед
-      `first`; перепроверено на обеих формах задач
+- [x] The fix for the remark about log cleanup **broke the retire of journal jobs**: they have no
+      marker, `regex_search` returns `None`, and `first` failed with
+      `'NoneType' object is not iterable`. The run failed on any job without `log_file`. Fixed with
+      `default([], true)` before `first`; re-checked on both forms of jobs
 
-### Не подтвердилось
+### Not confirmed
 
-- [ ] **`Persistent=true` якобы запускает задачу немедленно при первой установке.** Проверено на
-      systemd 255: штампа нет — запуска нет, юнит ждёт расписания. В теории верно для случая,
-      когда штамп есть и устарел, но описанного сценария (первая установка) не даёт
-- [ ] **Регексп ретайра может удалить чужой юнит.** Попасть в цикл может, удалить — нет:
-      владение решает маркер. Подтверждено прогоном, `krot-cf-ranges` пропускается на каждом шаге
+- [ ] **`Persistent=true` supposedly runs the job immediately on first installation.** Verified on
+      systemd 255: no stamp — no run, the unit waits for its schedule. In theory this is true for
+      the case where a stamp exists and is stale, but it does not produce the described scenario
+      (first installation)
+- [ ] **The retire regexp may delete someone else's unit.** It can enter the loop, but delete —
+      no: ownership is decided by the marker. Confirmed by a run, `krot-cf-ranges` is skipped at
+      every step
 
-## Решения
-- [x] **Новая роль, а не `common`.** У задач свой список, свои шаблоны юнитов и свой тег для
-      `--tags`; в `common` (hostname, timezone, пакеты) они чужеродны. `deploy` отпадает по
-      прямому указанию задания — она тонкая обёртка над Deployer
-- [x] **systemd-таймеры, а не запись в crontab Ansible-модулем.** `cron`-модуль решил бы
-      «переживает пересоздание машины», но не решил бы главного: cron сообщает лишь о том, что
-      **запустил** строку, и не знает, чем она кончилась. Именно это и дало пять суток зелёных
-      запусков
-- [ ] **Автоснятие ручной строки из `crontab`** — отклонено. Роль не различает строку, которую
-      заменяет, и чужую задачу, о которой не знает; прогон, молча уносящий чужой крон, — тот же
-      класс дефекта с другой стороны. Снятие остаётся явным шагом миграции (см. ниже)
-- [ ] **Уведомление «не отработала N раз подряд»** — предложено, не реализовано. Механика
-      дешёвая (`OnFailure=` на общий `krot-job-failed@.service` плюс маркер в `/var/lib/krot/`),
-      но адресат не выбран, а уведомление, которое некому прочесть, — ещё один тихий отказ, лишь
-      с бо́льшим объёмом кода. `systemctl --failed` закрывает главный разрыв: сегодня отказ не
-      виден ничем
+## Decisions
+- [x] **A new role, not `common`.** The jobs have their own list, their own unit templates and their
+      own tag for `--tags`; in `common` (hostname, timezone, packages) they are alien. `deploy` is
+      ruled out by the direct instruction of the assignment — it is a thin wrapper over Deployer
+- [x] **systemd timers, not a crontab entry via an Ansible module.** The `cron` module would have
+      solved "survives a machine rebuild", but not the main thing: cron only reports that it
+      **started** the line, and does not know how it ended. That is exactly what produced five days
+      of green runs
+- [ ] **Automatic removal of the manual line from `crontab`** — rejected. The role does not tell
+      apart the line it replaces from someone else's job it knows nothing about; a run that
+      silently carries off someone else's cron entry is the same class of defect from the other
+      side. Removal remains an explicit migration step (see below)
+- [ ] **The "did not run N times in a row" notification** — proposed, not implemented. The
+      mechanics are cheap (`OnFailure=` on a shared `krot-job-failed@.service` plus a marker in
+      `/var/lib/krot/`), but the addressee has not been chosen, and a notification with nobody to
+      read it is one more silent failure, only with a larger volume of code. `systemctl --failed`
+      closes the main gap: today a failure is visible through nothing
 
-## Миграция busel (в krot не входит, делается в busel)
-- [ ] Объявить `colony:traffic` в `group_vars`, добавить роль `cron` в `site.yml`
-- [ ] Прогнать роль, убедиться, что `krot-traffic.timer` на месте и отработал
-- [ ] **Только после этого** снять ручную строку из `crontab -l` у `km` — заменой занимается
-      прогон, а не `crontab -e`
-- [ ] Проверить, что задача падает, когда не сделала работы: команда, вернувшая 0 и ничего не
-      залившая, остаётся зелёной при любом транспорте, и это ответственность самой задачи
+## busel migration (not part of krot, done in busel)
+- [ ] Declare `colony:traffic` in `group_vars`, add the `cron` role to `site.yml`
+- [ ] Run the role, make sure `krot-traffic.timer` is in place and has run
+- [ ] **Only after that** remove the manual line from `crontab -l` under `km` — replacement is
+      done by a run, not by `crontab -e`
+- [ ] Check that the job fails when it has not done the work: a command that returned 0 and
+      uploaded nothing stays green under any transport, and that is the job's own responsibility

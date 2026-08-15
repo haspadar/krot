@@ -1,57 +1,58 @@
-# Proposal: ручной деплой, ключи под каждое репо и замок на неопубликованные сайты
+# Proposal: manual deploy, a key per repository and a lock on unpublished sites
 
 ## Why
 
-Машина busel была поднята вручную и разъезжалась с репозиторием, а выкатка упиралась в две
-вещи сразу.
+The busel machine was brought up by hand and had drifted from the repository, while the rollout ran
+into two things at once.
 
-- **CI выключен** (выжраны лимиты), а Deployer в busel настроен без `host()` — выкатывать
-  нечем. Нужен ручной путь, не переизобретающий релизы.
-- **Один deploy key не обслуживает два репозитория GitHub.** Машина тянет и busel, и (позже)
-  matilda; без host-алиасов ssh предъявляет первый подошедший ключ, и GitHub отвечает за чужой
-  репозиторий — ошибка выглядит как «репозиторий не найден», хотя ключ валиден.
-- **Сайты открыты миру до того, как их посмотрели.** Неопубликованный сайт не должен быть
-  доступен, проиндексирован или обойдён краулером. Закрытое состояние должно быть умолчанием,
-  а публикация — явным действием, причём по одному сайту, а не всем скопом.
-- **Krot и busel писали одну и ту же настройку.** Роль `nginx` клала `log_format` и
-  `set_real_ip_from`, а коммит busel `f260b46` начал класть то же самое в `busel-shared.conf`.
-  Два писателя на одну настройку разъезжаются, а устаревший `set_real_ip_from` молча пишет в
-  логи адрес CDN вместо посетителя.
+- **CI is off** (limits burned through), and Deployer in busel is configured without `host()` —
+  there is nothing to deploy with. A manual path is needed, one that does not reinvent releases.
+- **One deploy key does not serve two GitHub repositories.** The machine pulls both busel and
+  (later) matilda; without host aliases ssh presents the first key that fits, and GitHub answers
+  for the wrong repository — the error looks like "repository not found", even though the key is
+  valid.
+- **Sites are open to the world before anyone has looked at them.** An unpublished site must not be
+  reachable, indexed or crawled. The closed state must be the default, and publication an explicit
+  action, done per site rather than for all of them at once.
+- **Krot and busel were writing the same setting.** The `nginx` role laid down `log_format` and
+  `set_real_ip_from`, and busel commit `f260b46` started laying down the same thing in
+  `busel-shared.conf`. Two writers on one setting drift apart, and a stale `set_real_ip_from`
+  silently writes the CDN address into the logs instead of the visitor's.
 
 ## What Changes
 
-### Роль `deploy` — тонкая обёртка
+### The `deploy` role — a thin wrapper
 
-Deployer запускается **на control-машине** и сам ходит на сервер по SSH (`delegate_to:
-localhost`). Роль не переизобретает релизы, symlink и rollback — этим занимается `deploy.php`
-проекта. Задаётся задача (`deploy`, `rollback`) и ветка.
+Deployer runs **on the control machine** and goes to the server over SSH itself (`delegate_to:
+localhost`). The role does not reinvent releases, the symlink or rollback — that is the job of the
+project's `deploy.php`. What is set is the task (`deploy`, `rollback`) and the branch.
 
-### Роль `deploy_keys` — по ключу на репозиторий
+### The `deploy_keys` role — a key per repository
 
-Генерит отдельный ключ на каждое приватное репо и пишет host-алиасы в `~/.ssh/config`, чтобы
-git предъявлял нужный: клонировать надо с `git@<name>.github.com:owner/repo.git`.
+It generates a separate key for each private repo and writes host aliases into `~/.ssh/config` so
+that git presents the right one: cloning must use `git@<name>.github.com:owner/repo.git`.
 
-### Basic auth: механизм в Krot, решение в busel
+### Basic auth: the mechanism in Krot, the decision in busel
 
-Krot ставит `/etc/nginx/.htpasswd` (пароль из Bitwarden в рантайме) и сниппет
-`/etc/nginx/snippets/krot-auth.conf`. **Какие сайты закрыты — решает генератор vhost'ов busel**,
-включая сниппет, пока сайт не помечен опубликованным. Krot не хранит список сайтов: иначе
-плейбук машины начал бы знать про конкретные сайты.
+Krot installs `/etc/nginx/.htpasswd` (password from Bitwarden at run time) and the snippet
+`/etc/nginx/snippets/krot-auth.conf`. **Which sites are closed is decided by the busel vhost
+generator**, which includes the snippet until the site is marked published. Krot does not keep the
+list of sites: otherwise the machine playbook would start knowing about specific sites.
 
-Синхронизация htpasswd вынесена в `files/htpasswd-sync.sh`: инлайновый вариант ломался о
-подстановку `$` в shell до того, как строка доходила до хоста, и файл переписывался каждый
-прогон.
+The htpasswd sync was moved out into `files/htpasswd-sync.sh`: the inline variant broke on `$`
+substitution in the shell before the string ever reached the host, and the file was rewritten on
+every run.
 
-### `log_format` и real-IP отданы busel
+### `log_format` and real-IP handed over to busel
 
-Роль `nginx` перестаёт их писать и **удаляет то, что писала раньше** (`krot-real-ip.conf`,
-`*-log-format.conf`). Владелец — генератор vhost'ов: он знает имя формата, которое называют его
-конфиги, и обновляет CF-диапазоны при каждой генерации, а не раз в прогон Ansible.
+The `nginx` role stops writing them and **removes what it wrote before** (`krot-real-ip.conf`,
+`*-log-format.conf`). The owner is the vhost generator: it knows the format name its own configs
+refer to, and it updates the CF ranges on every generation rather than once per Ansible run.
 
 ## Impact
 
-- Ломающее для тех, кто полагался на `log_format` от Krot: имя формата теперь обязан
-  определять проект. У busel это уже сделано (`busel-shared.conf`).
-- `nginx.conf` больше не называет формат на уровне `http` — `access_log off`, каждый vhost
-  логирует сам. Иначе файл ссылался бы на определение, которым не владеет, и падал бы при
-  любой смене имени.
+- Breaking for anyone who relied on `log_format` from Krot: the format name must now be defined by
+  the project. In busel this is already done (`busel-shared.conf`).
+- `nginx.conf` no longer names the format at the `http` level — `access_log off`, each vhost logs
+  for itself. Otherwise the file would refer to a definition it does not own, and would break on
+  any change of the name.
