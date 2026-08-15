@@ -1,0 +1,154 @@
+---
+# Settings are read from the running server with SHOW, never from the config
+# file. PostgreSQL accepts a reload for a postmaster-level setting and carries
+# on with the old value — the file then says one thing and the server does
+# another, which is precisely why the role restarts rather than reloads.
+- name: Verify
+  hosts: all
+  vars:
+    pg_version: "18"
+  tasks:
+    - name: Exactly one cluster exists, of the requested version
+      ansible.builtin.command: pg_lsclusters --no-header
+      register: clusters
+      changed_when: false
+
+    - name: It is the requested version, on the requested port, and online
+      ansible.builtin.assert:
+        that:
+          - clusters.stdout_lines | length == 1
+          - clusters.stdout_lines[0].split()[0] == pg_version
+          - clusters.stdout_lines[0].split()[2] == "5432"
+          - clusters.stdout_lines[0].split()[3] == "online"
+        fail_msg: >-
+          pg_lsclusters says "{{ clusters.stdout | trim }}". A second cluster,
+          or one on 5433, is the measured failure: it never starts while the
+          application keeps talking to the old one and everything looks healthy.
+        quiet: true
+
+    - name: The service is enabled at boot
+      ansible.builtin.command: systemctl is-enabled postgresql@{{ pg_version }}-main
+      register: pg_enabled
+      changed_when: false
+      failed_when: pg_enabled.stdout != "enabled"
+
+    # The heart of it: what the server is actually running with. `SHOW` reports
+    # the value in effect, so a setting that was written but silently not
+    # applied — the whole reason this role restarts — fails here.
+    - name: Read the settings the server is actually running with
+      become: true
+      become_user: postgres
+      ansible.builtin.command: >-
+        psql -tAc "select name || '=' || setting from pg_settings
+        where name in ('max_connections','shared_buffers','work_mem',
+        'log_min_duration_statement','log_destination','listen_addresses',
+        'port','pg_stat_statements.max')"
+      register: settings
+      changed_when: false
+
+    - name: They match what the scenario asked for
+      ansible.builtin.assert:
+        that: item in settings.stdout_lines
+        fail_msg: >-
+          "{{ item }}" is not in effect. The server is running with something
+          other than what the role configured — a config file that was written
+          and never applied looks identical from the filesystem.
+        quiet: true
+      loop:
+        # shared_buffers and work_mem are reported in 8kB blocks and kB
+        # respectively: 192MB = 24576 blocks, 6MB = 6144 kB.
+        - max_connections=123
+        - shared_buffers=24576
+        - work_mem=6144
+        - log_min_duration_statement=400
+        - listen_addresses=localhost
+        - port=5432
+        - pg_stat_statements.max=4000
+
+    # A library only reaches shared memory at postmaster start. The role flushes
+    # its restart handler mid-play for exactly this, so checking that the
+    # extension is usable also checks that the flush did its job.
+    - name: The extension is installed in the maintenance database
+      become: true
+      become_user: postgres
+      ansible.builtin.command: >-
+        psql -tAc "select extname from pg_extension where extname =
+        'pg_stat_statements'"
+      register: ext
+      changed_when: false
+      failed_when: "'pg_stat_statements' not in ext.stdout"
+
+    # Installed is not the same as working: the extension can exist in the
+    # catalogue while the library is absent from shared_preload_libraries, and
+    # every query against the view then errors out.
+    - name: Its view answers, which needs the library actually loaded
+      become: true
+      become_user: postgres
+      ansible.builtin.command: >-
+        psql -tAc "select count(*) >= 0 from pg_stat_statements"
+      register: stat_view
+      changed_when: false
+      failed_when: stat_view.rc != 0 or stat_view.stdout | trim != "t"
+
+    - name: The drop-in config has the ownership and mode the role promises
+      ansible.builtin.stat:
+        path: /etc/postgresql/{{ pg_version }}/main/conf.d/99-krot.conf
+      register: dropin
+
+    - name: 0640 postgres:postgres, readable by the server and nobody else
+      ansible.builtin.assert:
+        that:
+          - dropin.stat.exists
+          - dropin.stat.mode == "0640"
+          - dropin.stat.pw_name == "postgres"
+          - dropin.stat.gr_name == "postgres"
+        fail_msg: >-
+          99-krot.conf is {{ dropin.stat.mode | default('missing') }}
+          {{ dropin.stat.pw_name | default('-') }}:{{ dropin.stat.gr_name | default('-') }}.
+        quiet: true
+
+    # prepare planted the legacy list. apt refuses to read two sources for one
+    # repository, so leaving it would break every later package operation on the
+    # machine — not only this role's.
+    - name: The legacy pgdg source list is gone
+      ansible.builtin.stat:
+        path: /etc/apt/sources.list.d/pgdg.list
+      register: legacy_list
+      failed_when: legacy_list.stat.exists
+
+    - name: The repository the role added is the one apt uses
+      ansible.builtin.stat:
+        path: /etc/apt/sources.list.d/pgdg.sources
+      register: repo_file
+      failed_when: not repo_file.stat.exists
+
+    # apt update is the honest test of a source list: a malformed entry or a
+    # keyring mismatch fails here and nowhere else until the next install.
+    - name: Apt can read the repository the role configured
+      ansible.builtin.command: apt-get update
+      register: apt_update
+      changed_when: false
+      failed_when: >-
+        apt_update.rc != 0 or
+        'is misconfigured' in apt_update.stderr or
+        'NO_PUBKEY' in apt_update.stderr
+
+    # Everything except one unit that fails for being in a container, not for
+    # anything this role did. `become_user: postgres` opens a user session, and
+    # tearing it down runs user-runtime-dir@102, which cannot remove
+    # /run/user/102: "Operation not permitted" — the container lacks the
+    # privilege. Measured while the cluster stayed online and every check above
+    # passed.
+    #
+    # Excluded by exact unit name rather than by clearing the check: a blanket
+    # skip would also hide postgresql@18-main failing, which is the thing this
+    # task exists to notice.
+    - name: Nothing on the machine is in a failed state
+      ansible.builtin.command: systemctl --failed --no-legend
+      register: failed_units
+      changed_when: false
+      failed_when: >-
+        failed_units.stdout_lines
+        | reject('search', 'user-runtime-dir@\d+\.service')
+        | select('search', '\S')
+        | list | length > 0

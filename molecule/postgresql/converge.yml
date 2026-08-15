@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    # Settings come from the scenario's host_vars, all of them different from
+    # PostgreSQL's built-in values — otherwise a check reading them back would
+    # pass on a server the role never touched.
+    - name: Run the postgresql role
+      ansible.builtin.include_role:
+        name: postgresql

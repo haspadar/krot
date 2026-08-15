@@ -34,7 +34,7 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
 ## Work
 - [x] `molecule/` with a scenario per role: docker driver, noble platform, `privileged`,
       `cgroupns_mode: host`, cgroup mount
-- [ ] First wave: `cron` (done), `firewall` (done, two scenarios), `nginx` (done, two scenarios),
+- [x] First wave complete: `cron`, `firewall` (two scenarios), `nginx` (two scenarios),
       `postgresql`
 - [x] **`firewall` needed two scenarios, not one.** Its branches configure the web ports in
       opposite ways — one opens 80/443 to everyone, the other closes them — so a single converge
@@ -93,25 +93,56 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       did not; the break was unreachable from that starting state. Worth recording because the
       conclusion "the test does not catch it" was wrong for a reason easy to repeat
 
+### Found while writing the nginx and postgresql scenarios (2026-08-15)
+
+- [x] **A check that passed on a machine the role never touched.** `nginx -T` prints every file
+      verbatim, comments included, and the packaged nginx.conf carries `# server_tokens off;`.
+      A substring test for `server_tokens off` therefore passed on a container with the untouched
+      package config — measured. Now matched as a directive at the start of a line. The same trap
+      the retention value avoided (14 vs 21), missed one line away from it
+- [x] **A scenario starting from a clean machine cannot tell `restart` from `reload`.** On a bare
+      host the package creates the cluster, the role writes 99-krot.conf, and the server starts
+      afterwards — reading the finished file on its first boot. Swapping the handler's
+      `state: restarted` for `reloaded` left the whole scenario green. On a machine that is
+      already running, the difference is exactly what the handler's comment claims: measured,
+      `max_connections` stayed 123 in effect while the file said 177, and a restart applied it.
+      `prepare` now installs and starts the cluster before the role runs, and with that the
+      reload break is caught
+- [x] **The repository's own secret detector never looked at `molecule/`.** wiki-lint has carried
+      secret patterns since the wiki was set up, and its regex matches
+      `nginx_auth_password: molecule-scenario-only` exactly — but it walks `wiki/**/*.md` and
+      nothing else. So the first hardcoded credential in this repository's history landed in the
+      one directory nothing was watching. Added `scripts/secret-lint.py`, which imports the same
+      patterns (two lists drift apart) and runs them over everything git tracks, with an explicit
+      `secret-lint: allow` marker for the throwaway value. Verified both ways: the marked line
+      passes, an unmarked `db_password: ...` fails the run
+- [x] **The built collection carried 5462 entries, of which 5283 had no business being there** —
+      `collections/` (a vendored copy of other people's collections), `CLAUDE.md` (instructions
+      for an agent working ON this repository) and `.ruff_cache`. All three are in `.gitignore`,
+      which `ansible-galaxy` does not read, and the CI build step only checks that the build
+      succeeds. Added to `build_ignore`; the tarball is now 179 entries
+
 ## Verification
 - [x] `molecule test` green locally for `cron`, `firewall`, `firewall_cloudflare`, `nginx`,
       `nginx_auth` — 7/7 actions each, idempotence included
-- [ ] The second run yields `changed=0` inside the scenario, not only in the manual probe.
-      A finding is separately expected in `postgresql`: `meta: flush_handlers` mid-role and
-      `postgresql_ext` over a live connection make idempotence there questionable — which is
-      exactly what Molecule is being introduced for
+- [x] The second run yields `changed=0` inside the scenario, not only in the manual probe.
+      **The finding expected in `postgresql` did not materialise:** `meta: flush_handlers`
+      mid-role and `postgresql_ext` over a live connection were predicted to break idempotence,
+      and they do not — the second run is clean. Recorded because a prediction that failed is
+      worth as much as one that held: the reasoning behind it was plausible and wrong
 - [x] A deliberately broken role **fails** the scenario — checking the check: without this a green
       CI means nothing. Done per scenario, each break chosen to be one the role exists to prevent:
       `cron` — `ExecStart=-` swallowing a failure; `firewall` — port 443 dropped from the allow
       loop; `firewall_cloudflare` — the open-to-everyone rules left in place; `nginx` — the
       duplicate logrotate config left behind; `nginx_auth` — the htpasswd never rewritten, so an
-      old password keeps working. In all five
+      old password keeps working; `postgresql` — the handler reloading instead of restarting, so
+      a postmaster-level setting stays in the file and never reaches the server. In all six
       `converge` and `idempotence` stayed green while `verify` went red, which is the only
       arrangement that proves the checks read the machine rather than Ansible's report
 - [ ] **A PR with a red Molecule does not merge** — verified in fact, not by the setting: that is
       the only proof the required check was added correctly
-- [ ] The reach counter prints 4/11 roles and 76/117 tasks after the first wave — **3/11 and
-      62/117 (52%)** with `cron`, `firewall` and `nginx` done. The counter maps scenario directories to
+- [x] The reach counter prints **4/11 roles and 76/117 tasks (64%)** after the first wave —
+      exactly the figure this change set as the target. The counter maps scenario directories to
       roles by prefix, so `firewall_cloudflare` counts towards `firewall` rather than reading as
       an eleventh role that does not exist
 - [x] `wiki-lint.py` does not object to test values in the scenarios — checked with
