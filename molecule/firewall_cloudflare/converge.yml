@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    # firewall_cloudflare_only and the two stand-in URLs come from the
+    # scenario's host_vars, so the role runs exactly as it would on a machine
+    # behind Cloudflare — only the endpoint it fetches from is local.
+    - name: Run the firewall role with the Cloudflare lock on
+      ansible.builtin.include_role:
+        name: firewall

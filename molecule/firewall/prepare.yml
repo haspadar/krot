@@ -1,0 +1,13 @@
+---
+- name: Prepare
+  hosts: all
+  tasks:
+    # iptables is what the verification reads the real ruleset through. The role
+    # does not install it — ufw pulls in its own backend — so without this the
+    # checks would fail on a missing command rather than on a missing rule.
+    - name: Install iptables, so the verification can read netfilter directly
+      ansible.builtin.apt:
+        name: iptables
+        state: present
+        update_cache: true
+        cache_valid_time: 3600

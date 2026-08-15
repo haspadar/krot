@@ -8,3 +8,5 @@
 # which is precisely the failure these scenarios exist to catch. The rule keeps
 # applying to roles/, where reaching for a module instead of a command is correct.
 molecule/cron/verify.yml command-instead-of-module
+molecule/firewall/verify.yml command-instead-of-module
+molecule/firewall_cloudflare/verify.yml command-instead-of-module

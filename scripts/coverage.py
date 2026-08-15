@@ -36,7 +36,13 @@ UNCOVERED = {
 # Roles that will get a scenario, in the order they are being written. Separate
 # from UNCOVERED because the two mean opposite things: one is "never", the other
 # is "not yet". Both count as named; a role in neither list fails the check.
-PLANNED = ["firewall", "nginx", "postgresql", "common", "fail2ban", "php"]
+PLANNED = ["nginx", "postgresql", "common", "fail2ban", "php"]
+
+# A role can have more than one scenario, and firewall does: its two branches
+# configure the web ports in contradictory ways, so one converge cannot cover
+# both. Scenario directories are matched to roles by prefix, which is why the
+# second one is named firewall_cloudflare rather than cloudflare.
+SCENARIO_PREFIXES = {"firewall_cloudflare": "firewall"}
 
 
 def count_tasks(role: Path) -> int:
@@ -48,11 +54,12 @@ def count_tasks(role: Path) -> int:
 
 def main() -> int:
     roles = sorted(p for p in (ROOT / "roles").iterdir() if p.is_dir())
-    scenarios = (
+    directories = (
         {p.name for p in (ROOT / "molecule").iterdir() if p.is_dir()}
         if (ROOT / "molecule").is_dir()
         else set()
     )
+    scenarios = {SCENARIO_PREFIXES.get(name, name) for name in directories}
 
     rows = [(r.name, count_tasks(r), r.name in scenarios) for r in roles]
     total_tasks = sum(t for _, t, _ in rows)
