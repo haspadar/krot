@@ -32,9 +32,26 @@
       changed_when: false
       failed_when: pg_enabled.stdout != "enabled"
 
-    # The heart of it: what the server is actually running with. `SHOW` reports
-    # the value in effect, so a setting that was written but silently not
-    # applied — the whole reason this role restarts — fails here.
+    # What the server is actually running with. `SHOW` reports the value in
+    # effect, so a setting that was written but silently not applied fails here.
+    #
+    # Of the eight, only two carry the restart handler: max_connections and
+    # shared_buffers are postmaster-level AND prepare gave them a different
+    # value first, so a reload leaves 111 and 16384 in effect while the file
+    # says 123 and 24576. Measured both ways.
+    #
+    # The other six do not, and it is worth being exact about why, because the
+    # list reads as if they all did. work_mem is context `user` and
+    # log_min_duration_statement `superuser` — both apply on SIGHUP, so they
+    # pass on a reload. log_destination likewise. listen_addresses and port are
+    # postmaster-level but prepare already set them to these values, so there is
+    # nothing for a restart to change. They check that the template rendered,
+    # which is a different thing worth checking.
+    #
+    # So: dropping postgresql_max_connections and postgresql_shared_buffers from
+    # molecule.yml, or setting them to what the server already runs, would make
+    # this scenario green against a reloading handler. Those two entries are
+    # load-bearing — the note is there too.
     - name: Read the settings the server is actually running with
       become: true
       become_user: postgres
@@ -61,6 +78,7 @@
         - shared_buffers=24576
         - work_mem=6144
         - log_min_duration_statement=400
+        - log_destination=csvlog
         - listen_addresses=localhost
         - port=5432
         - pg_stat_statements.max=4000
@@ -124,14 +142,22 @@
 
     # apt update is the honest test of a source list: a malformed entry or a
     # keyring mismatch fails here and nowhere else until the next install.
+    #
+    # The exit code alone, having measured the three ways this can go wrong on
+    # noble. All give rc=100:
+    #
+    #   duplicate source  E: Conflicting values set for option Signed-By ...
+    #   garbage keyring   W: GPG error ... NO_PUBKEY, then E: ... is not signed
+    #   missing keyring   the same pair
+    #
+    # This condition previously also matched 'NO_PUBKEY' and 'is misconfigured'
+    # in stderr. The first is redundant — apt escalates it to an E: line and a
+    # non-zero exit. The second was never emitted by any of the three, and a
+    # clause that cannot fire reads as coverage while contributing none.
     - name: Apt can read the repository the role configured
       ansible.builtin.command: apt-get update
       register: apt_update
       changed_when: false
-      failed_when: >-
-        apt_update.rc != 0 or
-        'is misconfigured' in apt_update.stderr or
-        'NO_PUBKEY' in apt_update.stderr
 
     # Everything except one unit that fails for being in a container, not for
     # anything this role did. `become_user: postgres` opens a user session, and
@@ -140,9 +166,14 @@
     # privilege. Measured while the cluster stayed online and every check above
     # passed.
     #
-    # Excluded by exact unit name rather than by clearing the check: a blanket
-    # skip would also hide postgresql@18-main failing, which is the thing this
-    # task exists to notice.
+    # Excluded by that one unit template rather than by clearing the check: a
+    # blanket skip would also hide postgresql@18-main failing, which is the
+    # thing this task exists to notice. The UID is left as \d+ because it is
+    # whichever one the become_user session got — 102 in the measured run, but
+    # nothing pins it. That is wider than the single unit observed, and the
+    # widening is bounded: the template belongs to systemd-logind, no krot role
+    # creates a user whose runtime dir could fail for a real reason, and if one
+    # ever does, this line is what has to be narrowed.
     - name: Nothing on the machine is in a failed state
       ansible.builtin.command: systemctl --failed --no-legend
       register: failed_units

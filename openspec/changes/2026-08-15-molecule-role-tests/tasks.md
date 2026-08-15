@@ -109,7 +109,8 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       `prepare` now installs and starts the cluster before the role runs, and with that the
       reload break is caught
 - [x] **The repository's own secret detector never looked at `molecule/`.** wiki-lint has carried
-      secret patterns since the wiki was set up, and its regex matches
+      secret patterns since the wiki was set up, and its regex matches this scenario-only
+      value (secret-lint: allow — quoted here as the example that made the gap visible)
       `nginx_auth_password: molecule-scenario-only` exactly — but it walks `wiki/**/*.md` and
       nothing else. So the first hardcoded credential in this repository's history landed in the
       one directory nothing was watching. Added `scripts/secret-lint.py`, which imports the same
@@ -156,6 +157,22 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       `wiki/research/systemd-service-status-is-stale.md`, with the probe as a runnable asset
 - [ ] Molecule's run time in CI measured — the figure is needed before conclusions about it, not
       after
+- [x] **Second review found four things in the postgresql scenario, all confirmed by measurement.**
+      One was a live regression: quoting the scenario's throwaway password (secret-lint: allow —
+      the value itself is quoted, marked, a few items above)
+      in the prose of this very file tripped `secret-lint.py`, the linter the same commit adds — the
+      item describing the escape marker had not applied it, so CI would have gone red on the
+      commit claiming CI was green. `log_destination` was selected in verify's query and missing
+      from its assert loop, checking nothing; added, and it is meaningful — without the drop-in
+      the server answers `stderr`. The apt check carried three clauses of which one worked:
+      measured all three failure modes on noble (duplicate source, garbage keyring, missing
+      keyring) and every one exits 100, while `is misconfigured` is emitted by none of them —
+      cut to the exit code, with the measurements written down. And the restart-vs-reload guard
+      rests on exactly two of the eight settings read back, because the other six are either
+      SIGHUP-applied or already at the asked-for value; that was true but written nowhere, so
+      deleting one host_var would have silently disarmed the scenario. Noted in both files.
+      Re-verified after the changes: 7/7 green, and swapping `restarted` for `reloaded` still
+      fails verify on `max_connections` with converge and idempotence clean
 
 ## Not done here
 - `ansible-test` — nothing to check while there is no `plugins/` (reasoning in the proposal)

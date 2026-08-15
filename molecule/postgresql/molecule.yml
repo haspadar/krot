@@ -36,6 +36,13 @@ provisioner:
         # the role put it there. max_connections at the role default of 100 is
         # PostgreSQL's default too — it would be identical on a server nothing
         # ever configured.
+        #
+        # The first two are load-bearing beyond that: they are the only settings
+        # in this scenario that are postmaster-level AND differ from what prepare
+        # left running, which is what makes a reloading handler fail verify.
+        # Remove them, or set them to the value already in effect, and the
+        # scenario goes green against the bug it exists to catch. The reasoning
+        # is spelled out in verify.yml.
         postgresql_max_connections: 123
         postgresql_shared_buffers: 192MB
         postgresql_work_mem: 6MB
