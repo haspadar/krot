@@ -6,17 +6,21 @@ name: lint
     branches: [main]
   pull_request:
 
+# Actions are pinned by commit SHA with the version in a comment, matching busel.
+# A tag like v5 is movable: whoever owns the action can repoint it, and CI would
+# then run someone else's code holding this repository's token. The comment is
+# what makes the pin readable; the SHA is what makes it a pin.
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       # Full history, not the default shallow clone: wiki-index.py restores PR numbers
       # from merge commits, and at depth=1 every one of them silently becomes a dash.
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
 
@@ -73,9 +77,9 @@ jobs:
   molecule:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
 
