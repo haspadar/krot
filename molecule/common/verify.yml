@@ -73,6 +73,15 @@
       register: fdfind
       failed_when: not fdfind.stat.exists
 
+    # The package itself, not only the config beside it. prepare deliberately
+    # leaves it absent: with it pre-installed, review measured that the role's
+    # install task could be deleted outright and the scenario stayed green.
+    - name: The role installed unattended-upgrades
+      ansible.builtin.command: dpkg-query -W -f=${Status} unattended-upgrades
+      register: uu_pkg
+      changed_when: false
+      failed_when: "'install ok installed' not in uu_pkg.stdout"
+
     - name: The unattended-upgrades config the role wrote is in place
       ansible.builtin.stat:
         path: /etc/apt/apt.conf.d/52-krot-unattended

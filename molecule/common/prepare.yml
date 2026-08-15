@@ -68,12 +68,18 @@
       community.general.timezone:
         name: Etc/UTC
 
-    # Present before the role runs, so `state: present` is a no-op and the
-    # scenario cannot pass merely because apt installed something. What is being
-    # checked is the configuration the role drops next to it.
-    - name: The unattended-upgrades package already installed, as on any Ubuntu server
+    # unattended-upgrades is deliberately NOT installed here, though a real
+    # Ubuntu server has it. Review measured what pre-installing it costs:
+    # deleting the role's "Install unattended-upgrades" task left the whole
+    # scenario green, because prepare had already put the package there and
+    # verify only looked at the config file beside it. One of the role's six
+    # tasks was counted as covered while nothing exercised it.
+    #
+    # Leaving it absent makes the package's presence in verify a fact about the
+    # role. The prior state this scenario recreates is a machine provisioned
+    # badly — a stale hosts entry and the wrong timezone — and a missing
+    # unattended-upgrades fits that just as well as a present one.
+    - name: Refresh the apt cache, so the role's install is not the first fetch
       ansible.builtin.apt:
-        name: unattended-upgrades
-        state: present
         update_cache: true
         cache_valid_time: 3600
