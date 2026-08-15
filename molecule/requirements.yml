@@ -1,0 +1,14 @@
+---
+# Collections the Molecule scenarios need, kept apart from the project's
+# requirements.yml on purpose: community.docker is what drives the test
+# container, not something any role uses. Putting it in the collection's own
+# requirements would push a testing dependency onto every consumer that installs
+# haspadar.krot.
+#
+# Install with:
+#   ansible-galaxy collection install -r molecule/requirements.yml
+collections:
+  - name: community.docker
+    version: ">=3.10.2"
+  - name: ansible.posix
+    version: ">=1.4.0"

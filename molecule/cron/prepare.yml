@@ -1,0 +1,18 @@
+---
+- name: Prepare
+  hosts: all
+  tasks:
+    # The role writes an entry into /etc/logrotate.d/ but never installs
+    # logrotate itself: on a real machine it arrives with the base system. The
+    # container image has neither the binary nor /etc/logrotate.conf, so the
+    # duplicate-entry check in verify.yml would fail on a missing command rather
+    # than on the rotation config — an error that reads like a broken role.
+    #
+    # Installed here rather than in converge.yml on purpose: this is the machine
+    # the role expects to find, not part of what the role does.
+    - name: Install logrotate, which the role's config is written for
+      ansible.builtin.apt:
+        name: logrotate
+        state: present
+        update_cache: true
+        cache_valid_time: 3600

@@ -1,0 +1,10 @@
+# Rule exemptions scoped to a single file, rather than a global skip_list entry
+# that would also silence the rule where it is right.
+#
+# Molecule verification playbooks read facts back off the machine — `systemctl
+# show -p Result`, `systemctl list-timers`, `systemctl --failed`. systemd_service
+# cannot do that: it reports the state it set itself. Substituting the module for
+# the command would leave the test checking its own call instead of the machine,
+# which is precisely the failure these scenarios exist to catch. The rule keeps
+# applying to roles/, where reaching for a module instead of a command is correct.
+molecule/cron/verify.yml command-instead-of-module
