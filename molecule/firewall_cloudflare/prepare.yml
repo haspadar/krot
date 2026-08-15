@@ -1,10 +1,19 @@
 ---
 - name: Prepare
   hosts: all
+  # Facts are gathered by the first real task instead of on entry, so the wait
+  # below can run before anything needs the container to be responsive. Without
+  # it, Gathering Facts is the first thing to touch the container and it fails
+  # with UNREACHABLE while systemd is still coming up — observed on a machine
+  # busy with another project's containers, and a CI runner is no faster.
+  gather_facts: false
   vars:
-    # Deliberately not the real Cloudflare ranges. Ten v4 plus two v6 clears the
-    # role's `length >= 10` sanity assert with nothing to spare, so if that
-    # guard ever loosens, this scenario stops proving it holds.
+    # Deliberately not the real Cloudflare ranges. Ten v4 plus two v6 makes
+    # twelve, and the role's sanity guard asserts `length >= 10` against the
+    # combined list — so this clears it with two to spare rather than exactly.
+    # The guard itself is NOT tested here: proving it holds needs a run where
+    # the endpoint serves too few ranges and the role refuses to touch the
+    # firewall, which is a separate scenario (recorded in the change).
     #
     # Documentation ranges (RFC 5737 / RFC 3849) rather than invented ones: if a
     # rule ever escapes onto a real machine, it points at addresses reserved for
@@ -24,18 +33,28 @@
       - 2001:db8::/32
       - 2001:db8:1::/48
   tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
     # iptables is for the verification to read netfilter with.
     #
-    # curl is a different matter: the refresh script the role installs calls it,
-    # but no role declares it. It arrives from `common` (common_base_packages),
-    # which every real machine runs first, so the dependency has never been
-    # visible. This scenario found it — the script exited 1 with "keeping
-    # current rules", which is how the weekly refresh would quietly stop working
-    # on any host provisioned without `common`.
-    #
-    # Installed here rather than fixed in the role on purpose: this branch is
-    # about testing the role, and changing what firewall installs is a decision
-    # about the collection's layout. Recorded in the change's tasks.md.
+    # curl is here because the container lacks it, not because a real machine
+    # would. The refresh script this role installs calls curl while
+    # meta/main.yml declares `dependencies: []` — an undeclared dependency,
+    # which is worth recording as hygiene. It is not a production defect:
+    # measured, curl ships in Ubuntu 24.04 itself (cloud image
+    # 8.5.0-2ubuntu10.11, live-server 8.5.0-2ubuntu10.6), and `common` installs
+    # it besides. Docker base images are the odd ones out — `ubuntu:24.04` has
+    # no curl, which is why the script failed here with "keeping current rules"
+    # and nowhere else.
     - name: Packages this scenario needs, and one the role should declare itself
       ansible.builtin.apt:
         name:
@@ -135,8 +154,67 @@
         proto: tcp
       loop: [80, 443]
 
-    - name: And open them through an application profile as well
+    # The profile has to exist before ufw will accept a rule naming it. The
+    # image ships none — `ufw app list` is empty and /etc/ufw/applications.d/ is
+    # an empty directory — so an earlier version of this file just called `ufw
+    # allow "Nginx Full"` with failed_when: false and silently did nothing:
+    # ufw answered `ERROR: Could not find a profile matching 'Nginx Full'`, the
+    # suppressor swallowed it, and the branch this is meant to cover stayed
+    # untested while the comment claimed otherwise.
+    #
+    # Written by hand rather than installing nginx: this is a copy of the
+    # profile nginx ships, and pulling in a web server plus its dependencies to
+    # obtain one 4-line file would make the scenario slower for nothing.
+    - name: The Nginx application profile nginx would have installed
+      ansible.builtin.copy:
+        dest: /etc/ufw/applications.d/nginx
+        content: |
+          [Nginx HTTP]
+          title=Web Server (Nginx, HTTP)
+          description=Small, but very powerful and efficient web server
+          ports=80/tcp
+
+          [Nginx HTTPS]
+          title=Web Server (Nginx, HTTPS)
+          description=Small, but very powerful and efficient web server
+          ports=443/tcp
+
+          [Nginx Full]
+          title=Web Server (Nginx, HTTP + HTTPS)
+          description=Small, but very powerful and efficient web server
+          ports=80,443/tcp
+        mode: "0644"
+
+    - name: And open the web ports through that profile as well
       community.general.ufw:
         rule: allow
         name: Nginx Full
-      failed_when: false
+
+    # An application-profile rule is not matched by a port-based delete, so if
+    # the role only removed ports, 80/443 would stay open to the world through
+    # this rule while every other check passed. Asserting it exists before the
+    # role runs is what stops that from being assumed.
+    # Read from the rules file rather than `ufw status`: the role has not
+    # enabled ufw yet, and while it is inactive `ufw status` prints
+    # "Status: inactive" and nothing else — no rules at all. Asserting against
+    # that output here would fail on a rule that exists, which is exactly what
+    # it did before this was measured.
+    # `Nginx%20Full`, not `Nginx Full`: ufw percent-encodes the space when it
+    # writes the rule, so a grep for the readable name finds nothing while the
+    # rule is plainly there. Measured — the file contains
+    #   ### tuple ### allow tcp 80,443 0.0.0.0/0 any 0.0.0.0/0 Nginx%20Full - in
+    # The pattern below matches either spelling rather than betting on one.
+    - name: The profile rule really is in place before the role runs
+      ansible.builtin.command: grep -cE 'Nginx(%20| )Full' /etc/ufw/user.rules
+      register: pre_rules
+      changed_when: false
+      failed_when: pre_rules.rc not in [0, 1]
+
+    - name: The rules file records a rule naming the profile
+      ansible.builtin.assert:
+        that: pre_rules.stdout | int > 0
+        fail_msg: >-
+          The Nginx Full rule was not created, so the role's
+          firewall_app_profiles_to_remove branch has nothing to remove and goes
+          untested no matter what this scenario asserts afterwards.
+        quiet: true

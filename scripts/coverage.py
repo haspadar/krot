@@ -40,9 +40,14 @@ PLANNED = ["nginx", "postgresql", "common", "fail2ban", "php"]
 
 # A role can have more than one scenario, and firewall does: its two branches
 # configure the web ports in contradictory ways, so one converge cannot cover
-# both. Scenario directories are matched to roles by prefix, which is why the
-# second one is named firewall_cloudflare rather than cloudflare.
-SCENARIO_PREFIXES = {"firewall_cloudflare": "firewall"}
+# both. Extra scenarios are mapped to their role by name here.
+#
+# Listed one by one rather than derived from the directory name: a rule like
+# "split on the first underscore" would quietly claim a scenario named after a
+# role that does not exist, and this counter's whole job is to refuse to assume
+# coverage. A new scenario that is not listed simply does not count — visible,
+# and fixed by adding a line.
+EXTRA_SCENARIOS = {"firewall_cloudflare": "firewall"}
 
 
 def count_tasks(role: Path) -> int:
@@ -59,7 +64,7 @@ def main() -> int:
         if (ROOT / "molecule").is_dir()
         else set()
     )
-    scenarios = {SCENARIO_PREFIXES.get(name, name) for name in directories}
+    scenarios = {EXTRA_SCENARIOS.get(name, name) for name in directories}
 
     rows = [(r.name, count_tasks(r), r.name in scenarios) for r in roles]
     total_tasks = sum(t for _, t, _ in rows)

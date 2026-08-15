@@ -65,14 +65,20 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
 
 ## Found by the scenarios (2026-08-15)
 
-- [ ] **`firewall` depends on `curl` without declaring it.** The refresh script it installs calls
-      `curl`, but `meta/main.yml` has `dependencies: []` and the role installs no packages beyond
-      ufw. On every real machine `curl` arrives from `common` (`common_base_packages`), which runs
-      first — so the dependency has never been visible. The scenario exposed it: the script exited
-      1 with `curl: command not found` and the message **"keeping current rules"**, meaning the
-      weekly refresh would fail silently and the CF ranges would quietly go stale. The scenario
-      installs `curl` in `prepare` for now, reproducing a real host; fixing the role is a decision
-      about the collection's layout and belongs in its own change
+- [ ] **`firewall` uses `curl` without declaring it** — hygiene, not an outage. The refresh script
+      calls `curl` while `meta/main.yml` has `dependencies: []` and the role installs nothing but
+      ufw. The scenario hit it as a real failure (`curl: command not found`, then **"keeping
+      current rules"** and exit 1), and the first conclusion drawn was that the weekly refresh
+      would silently break on any host provisioned without `common`. **That conclusion was wrong,
+      and review caught it:** curl ships in Ubuntu 24.04 itself — cloud image
+      `8.5.0-2ubuntu10.11`, live-server `8.5.0-2ubuntu10.6`, verified against both manifests. What
+      lacks curl is the Docker base image (`ubuntu:24.04` has none), so the failure was an
+      artefact of the test environment. The undeclared dependency is still worth fixing, in its
+      own change; the scenario installs curl in `prepare` to match a real host
+- [x] The lesson worth more than the finding: **a container is not the machine.** A package
+      missing from a minimal image reads exactly like a package the role forgot, and the
+      difference is one manifest lookup away — which was not done before writing the conclusion
+      down
 - [x] **A scenario starting from a clean machine cannot test the lock at all.** Deleting the
       role's "close the web ports" tasks left the whole scenario green: on a host that was never
       open there is nothing for them to delete. `prepare` now opens 80/443 first, both by port and
@@ -106,8 +112,9 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       build on strings that look like secrets, examples included
 - [x] `yamllint`, `ansible-lint` clean on the Molecule files themselves — 0 failures. The
       `command-instead-of-module` warnings the verification files raise are left visible through
-      `.ansible-lint-ignore` rather than silenced globally; the reason is measured and written up
-      in `wiki/research/`
+      `.ansible-lint-ignore` rather than silenced globally. The measured reason — the module's
+      `status` is a snapshot taken before it acts — is written up on its own wiki page, which
+      lands in a separate PR; until that merges, the explanation lives in the ignore file itself
 - [ ] Molecule's run time in CI measured — the figure is needed before conclusions about it, not
       after
 

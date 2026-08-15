@@ -59,16 +59,26 @@
 
     # The open branch: both web ports reachable from anywhere. Read per port
     # rather than as one assertion, so a failure names which port is wrong.
+    #
+    # `reject('search', ' -s ')` is what makes this check mean what its name
+    # says. A source-restricted rule prints as
+    #   -A ufw-user-input -s 192.0.2.0/24 -p tcp -m tcp --dport 80 -j ACCEPT
+    # and satisfies both "dport 80" and "-j ACCEPT" — so without the reject, a
+    # machine that had wrongly gone down the Cloudflare branch, reachable only
+    # from someone else's ranges, would pass a check titled "from anywhere".
     - name: Both web ports accept traffic from anywhere
       ansible.builtin.assert:
         that: >-
           iptables_rules.stdout_lines
           | select('search', 'dport ' ~ item ~ ' ')
           | select('search', '-j ACCEPT')
+          | reject('search', ' -s ')
           | list | length > 0
         fail_msg: >-
-          Port {{ item }} has no ACCEPT rule in netfilter, though this scenario
-          runs with firewall_cloudflare_only false.
+          Port {{ item }} has no unrestricted ACCEPT rule in netfilter. Either
+          it is closed, or it is open only to specific sources — and this
+          scenario runs with firewall_cloudflare_only false, where neither is
+          what the role promises.
         quiet: true
       loop: [80, 443]
 

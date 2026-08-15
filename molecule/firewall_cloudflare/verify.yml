@@ -66,6 +66,19 @@
     # Counted, not merely present. A truncated fetch that produced two rules
     # instead of twenty would satisfy "some CF rules exist" while quietly
     # locking out most of Cloudflare — and with it, most visitors.
+    # prepare opened the web ports through the "Nginx Full" profile as well as
+    # by port. A profile rule survives a port-based delete, so this is a
+    # separate way for the ports to stay open to everyone — and the one the
+    # role's firewall_app_profiles_to_remove list exists for.
+    - name: No application-profile rule keeps the web ports open
+      ansible.builtin.assert:
+        that: "'Nginx' not in ufw_status.stdout"
+        fail_msg: >-
+          An Nginx application-profile rule is still present. It opens 80/443 to
+          everyone regardless of the Cloudflare rules beside it, and a
+          port-based delete does not touch it.
+        quiet: true
+
     - name: Every prepared IPv4 range has a rule for every web port
       ansible.builtin.assert:
         that: >-
