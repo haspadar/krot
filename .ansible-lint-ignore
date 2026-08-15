@@ -12,7 +12,11 @@
 # The measurement, and how to repeat it, are in
 # wiki/research/systemd-service-status-is-stale.md.
 #
-# Listing the file here keeps the six warnings visible and marked `# ignored`
+# Listing each file here keeps the warnings visible and marked `# ignored`
 # rather than silencing them: a global skip_list would also mute the rule in
-# roles/, where preferring the module is correct.
+# roles/, where preferring the module is correct. A count is not given on
+# purpose — it would need updating with every scenario, and a stale number in a
+# comment about honesty is a poor look.
 molecule/cron/verify.yml command-instead-of-module
+molecule/firewall/verify.yml command-instead-of-module
+molecule/firewall_cloudflare/verify.yml command-instead-of-module

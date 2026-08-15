@@ -30,5 +30,10 @@ build_ignore:
   - playbooks
   # Development history, not something the installed collection needs to carry.
   - openspec
+  # Same reasoning: the scenarios test the roles, they are not part of what a
+  # consumer installs. Left out of the build, they would otherwise ship a
+  # throwaway HTTP-server unit and a playbook that opens 80/443 — inert on a
+  # consumer's machine, but with no business being there.
+  - molecule
   - .idea
   - .ansible

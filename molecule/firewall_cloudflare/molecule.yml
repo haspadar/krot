@@ -1,0 +1,55 @@
+---
+# The locked branch: 80/443 reachable only from Cloudflare's ranges. Separate
+# from the `firewall` scenario because the two configurations contradict each
+# other — that one opens the web ports to everyone, this one closes them.
+driver:
+  name: docker
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-firewall-cf
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      roles_path: ../../roles
+  inventory:
+    host_vars:
+      krot-firewall-cf:
+        firewall_cloudflare_only: true
+        # Served by a throwaway HTTP server inside the container, not fetched
+        # from Cloudflare. Two reasons, and the second is the important one:
+        #
+        #   1. a test that calls a third party fails when that third party has
+        #      an outage, and reports it as a defect in this repository;
+        #   2. the real ranges change without notice, so assertions about what
+        #      the ruleset contains could not be written against them. With a
+        #      fixed list, the verification can state exact rule counts and
+        #      exact addresses — and catch a range that silently went missing.
+        firewall_cloudflare_ipv4_url: http://127.0.0.1:8099/ips-v4
+        firewall_cloudflare_ipv6_url: http://127.0.0.1:8099/ips-v6
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible
