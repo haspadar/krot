@@ -33,6 +33,42 @@
         update_cache: true
         cache_valid_time: 3600
 
+    # Without this, the role's "Enable PHP-FPM" task is untestable: review
+    # measured that deleting it left the whole scenario green. Two things hid
+    # it. The package enables the unit itself — on a container where only
+    # `apt-get install php8.5-fpm` had run, is-enabled already says `enabled`
+    # — so that check is not about the role. And the role's handler uses
+    # `ansible.builtin.service: state=reloaded`, which STARTS a stopped
+    # service (measured: changed=true, is-active=active afterwards), unlike
+    # `systemctl reload` which refuses — so is-active was not about the role
+    # either.
+    #
+    # A preset of `disable` makes dpkg leave the unit alone: measured, after
+    # the same install is-enabled says `disabled` and WantedBy is empty. From
+    # there, `enabled` in verify can only have come from the role.
+    #
+    # This is the container being made honest, not the role being worked
+    # around: on a real machine the package's preset is what it is, and the
+    # role enabling an already-enabled unit is a harmless no-op. The scenario
+    # simply refuses to accept the package's work as the role's.
+    - name: The preset directory, which this image does not ship
+      ansible.builtin.file:
+        path: /etc/systemd/system-preset
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Stop the package from enabling FPM, so the role has to do it
+      ansible.builtin.copy:
+        dest: /etc/systemd/system-preset/00-krot-scenario.preset
+        content: |
+          # Scenario-only: see molecule/php/prepare.yml for why.
+          disable php*-fpm.service
+        owner: root
+        group: root
+        mode: "0644"
+
     # Nothing else is planted. Unlike postgresql, this role has no task that
     # removes a legacy source, so there is no prior state for one to act on —
     # and a file put here only to be looked at afterwards would test the

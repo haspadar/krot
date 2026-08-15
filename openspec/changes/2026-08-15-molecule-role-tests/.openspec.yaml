@@ -1,3 +1,4 @@
+---
 # krot has no openspec/specs/ and is not meant to: its unit of knowledge is a
 # role, not a capability. Without this file `openspec archive` refuses with "No
 # deltas found" and has to be talked round with --skip-specs on every call — a

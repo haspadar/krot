@@ -34,14 +34,15 @@ changing a default that affects production) bump major.
   appeared the moment a project named its pool anything else — which is the only reason the
   variable exists, so the broken case was the configured one.
 
-  The role now removes the packaged pool when it is not writing to it. The `when` matters: at the
-  default there is nothing to remove, and an unconditional delete would take out the role's own
-  work.
+  The role now moves the packaged pool aside — to `www.conf.disabled`, since FPM includes
+  `pool.d/*.conf` — but **only when that file actually listens on the socket the role's own pool
+  claims**. Both conditions are needed, and the second was learned the hard way: the first version
+  keyed on the pool's name alone, and review measured that a hand-written `www.conf` on a
+  *different* socket coexists perfectly (`--test` passes, both sockets are served) while that
+  condition deleted it anyway, taking the site behind it to 502.
 
-  ⚠️ **On a machine where `php_fpm_pool` is not `www` and someone edited `www.conf` by hand, that
-  file is deleted on the next run.** It cannot have been in use — two pools on one socket keep FPM
-  down — but a hand-written file does disappear. Worth a look before upgrading if that describes
-  your machine.
+  So on an already-provisioned machine: a `www.conf` that conflicts is renamed, one that does not
+  is left alone, and nothing is deleted outright.
 
 ### Added
 

@@ -14,10 +14,40 @@
     - name: Gather facts now that the machine responds
       ansible.builtin.setup:
 
-    # The extra jail points at nginx's error log, and fail2ban refuses to start
-    # a jail whose logpath does not exist. Creating it here rather than
-    # installing nginx keeps this scenario about fail2ban: what is being tested
-    # is that the role renders a working extra jail, not that nginx works.
+    # The extra jail points at nginx's error log. This is NOT because fail2ban
+    # refuses a jail whose logpath is missing — it does not: review measured a
+    # jail with `logpath = /var/log/nowhere/missing.log` and the directory
+    # deleted, and it stayed in `Jail list` with the service active and no
+    # warning. The original comment here claimed otherwise and was wrong.
+    #
+    # It is here so the scenario resembles the machine the jail is written for,
+    # where that log exists. Creating the file rather than installing nginx
+    # keeps this scenario about fail2ban.
+    # Without this the role's "Enable fail2ban" task is untestable — review
+    # measured that deleting it left the scenario green. The package enables
+    # the unit itself, and the role's Restart handler starts it, so neither
+    # is-enabled nor is-active was a fact about the task. A preset of `disable`
+    # makes dpkg leave the unit alone, and then `enabled` in verify can only
+    # have come from the role. Same reasoning as molecule/php/prepare.yml,
+    # where it is written out in full.
+    - name: The preset directory, which this image does not ship
+      ansible.builtin.file:
+        path: /etc/systemd/system-preset
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Stop the package from enabling fail2ban, so the role has to do it
+      ansible.builtin.copy:
+        dest: /etc/systemd/system-preset/00-krot-scenario.preset
+        content: |
+          # Scenario-only: see molecule/php/prepare.yml for why.
+          disable fail2ban.service
+        owner: root
+        group: root
+        mode: "0644"
+
     - name: The log directory the extra jail watches
       ansible.builtin.file:
         path: /var/log/nginx

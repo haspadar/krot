@@ -9,6 +9,11 @@
     php_version: "8.5"
     fpm_pool: krot-test
   tasks:
+    # This means something only because prepare stopped the package from
+    # enabling the unit — see the reasoning there. Left to itself, dpkg leaves
+    # FPM `enabled` and this check passes whether the role ran or not, which is
+    # exactly how review found the role's Enable task deleted and the scenario
+    # still green.
     - name: The FPM service is enabled at boot
       ansible.builtin.command: systemctl is-enabled php{{ php_version }}-fpm
       register: fpm_enabled
@@ -20,6 +25,17 @@
       register: fpm_active
       changed_when: false
       failed_when: fpm_active.stdout != "active"
+
+    # Enablement as systemd records it, not as `is-enabled` summarises it.
+    # Measured: after `systemctl disable` this property goes empty, so it
+    # reflects the actual link rather than the unit's [Install] section.
+    - name: The unit systemd would pull in at boot is wanted by the target
+      ansible.builtin.command: >-
+        systemctl show php{{ php_version }}-fpm.service
+        --property=WantedBy --value
+      register: wanted_by
+      changed_when: false
+      failed_when: "'multi-user.target' not in wanted_by.stdout"
 
     # The version the role claims to install, from the interpreter itself. A
     # repository that resolved to the distro's PHP rather than ondrej's would

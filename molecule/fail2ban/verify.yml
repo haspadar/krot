@@ -40,8 +40,10 @@
           - "'nginx-http-auth' in jails.stdout"
         fail_msg: >-
           fail2ban-client status lists "{{ jails.stdout | trim }}". A jail that
-          is in jail.local but not here was skipped at load — a bad filter name
-          or an unreadable logpath does that without touching the file.
+          is in jail.local but not here was skipped at load, and a bad filter
+          name does exactly that: the daemon stays active while the jail
+          silently disappears. (An unreadable logpath does not — measured, the
+          jail stays listed. The earlier claim that it did was wrong.)
         quiet: true
 
     # `get` reads the value from the running daemon, which is the only place
@@ -51,7 +53,12 @@
       ansible.builtin.command: fail2ban-client get sshd {{ item.key }}
       register: setting
       changed_when: false
-      failed_when: item.value not in setting.stdout
+      # Equality, not `in`. Review measured the difference: with `in`, a
+      # maxretry of 30 satisfies a check for 3, and 72000 satisfies 7200 — so
+      # the assertion that these values differ from the defaults was worth far
+      # less than it read. fail2ban-client answers with the bare number on its
+      # own line, so an exact match is what the output supports.
+      failed_when: setting.stdout | trim != item.value
       loop:
         # bantime 2h and findtime 15m are reported in seconds.
         - {key: bantime, value: "7200"}
@@ -88,7 +95,7 @@
         port
       register: jail_port
       changed_when: false
-      failed_when: "'2222' not in jail_port.stdout"
+      failed_when: jail_port.stdout | trim != "2222"
 
     # The extra jail's own options, not the defaults: maxretry is 2 here while
     # the DEFAULT section says 3, so this also proves per-jail options override
@@ -97,13 +104,19 @@
       ansible.builtin.command: fail2ban-client get nginx-http-auth maxretry
       register: extra_maxretry
       changed_when: false
-      failed_when: "'2' not in extra_maxretry.stdout"
+      failed_when: extra_maxretry.stdout | trim != "2"
 
     - name: The ignore list includes the range the scenario added
       ansible.builtin.command: fail2ban-client get sshd ignoreip
       register: ignoreip
       changed_when: false
-      failed_when: "'10.44.0.0/16' not in ignoreip.stdout"
+      # This one is a list rather than a value — fail2ban-client prints a
+      # tree ("|- 127.0.0.0/8", "`- ::1") — so the match is anchored to a whole
+      # entry instead of comparing the output as a whole.
+      failed_when: >-
+        ignoreip.stdout_lines
+        | select('search', '(^|[|`]- )10\.44\.0\.0/16$')
+        | list | length != 1
 
     - name: The jail config has the ownership and mode the role promises
       ansible.builtin.stat:
