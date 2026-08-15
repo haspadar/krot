@@ -10,7 +10,11 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
+      # Full history, not the default shallow clone: wiki-index.py restores PR numbers
+      # from merge commits, and at depth=1 every one of them silently becomes a dash.
       - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v6
         with:
@@ -34,3 +38,24 @@ jobs:
       # neither shows up in linting, but both break every consumer's install.
       - name: Build the collection
         run: ansible-galaxy collection build --output-path /tmp/krot-build
+
+      - name: wiki-lint
+        run: python3 scripts/wiki-lint.py
+
+      # wiki/index/ is generated from roles/, openspec/ and git. A stale index is
+      # worse than none: it states a role is explained when nothing explains it.
+      # Regenerating in CI turns that into a failure instead of a quiet lie.
+      #
+      # `git status --porcelain`, not `git diff --exit-code`: a deleted index file
+      # comes back as untracked, which `git diff` does not report at all — the check
+      # would pass on the one case where the index is missing outright.
+      - name: wiki-index is up to date
+        run: |
+          python3 scripts/wiki-index.py
+          if [ -n "$(git status --porcelain -- wiki/index/)" ]; then
+            echo "wiki/index/ разошёлся с источниками — пересобери:"
+            echo "  python3 scripts/wiki-index.py"
+            git status --porcelain -- wiki/index/
+            git diff -- wiki/index/
+            exit 1
+          fi
