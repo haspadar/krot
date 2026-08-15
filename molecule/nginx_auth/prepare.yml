@@ -1,0 +1,41 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
+    - name: Install nginx and logrotate ahead of the role
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - logrotate
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: The deploy user bootstrap would have created
+      ansible.builtin.user:
+        name: km
+        shell: /bin/bash
+        create_home: true
+
+    # A password file left by an earlier run with a DIFFERENT password. This is
+    # what makes the helper's comparison branch run: with no file at all it
+    # would simply write one, and the "stored hash does not match, rewrite"
+    # path — the half that can silently keep an old password in place — would
+    # never execute.
+    - name: A stale htpasswd from an earlier password
+      ansible.builtin.copy:
+        dest: /etc/nginx/.htpasswd
+        content: "preview:$apr1$abcdefgh$0123456789abcdefghijk.\n"
+        mode: "0644"

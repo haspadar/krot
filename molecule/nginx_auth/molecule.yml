@@ -1,0 +1,57 @@
+---
+# The basic-auth branch, which the default configuration never reaches:
+# auth.yml is guarded by `when: nginx_auth_enabled` and that defaults to false.
+#
+# It earns its own scenario rather than a variable flip in the main one because
+# its idempotence is hand-written. openssl salts every run differently, so an
+# unconditional write would report a change every play; the role calls a helper
+# that compares first and signals "rewritten" with exit code 10. That contract
+# — rc 0 means unchanged, rc 10 means changed, anything else is a failure —
+# exists nowhere else in the collection and is only exercised here.
+driver:
+  name: docker
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-nginx-auth
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      roles_path: ../../roles
+  inventory:
+    host_vars:
+      krot-nginx-auth:
+        nginx_auth_enabled: true
+        nginx_auth_user: preview
+        # A throwaway value for a container that is destroyed at the end of the
+        # run. It guards nothing: no site is served here, and the machine does
+        # not outlive the scenario. Real deployments take this from Bitwarden at
+        # run time — see the collection's README.
+        nginx_auth_password: molecule-scenario-only
+        nginx_auth_realm: Preview
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible

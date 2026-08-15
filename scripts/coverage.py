@@ -44,7 +44,7 @@ UNCOVERED = {
 # Roles that will get a scenario, in the order they are being written. Separate
 # from UNCOVERED because the two mean opposite things: one is "never", the other
 # is "not yet". Both count as named; a role in neither list fails the check.
-PLANNED = ["nginx", "postgresql", "common", "fail2ban", "php"]
+PLANNED = ["postgresql", "common", "fail2ban", "php"]
 
 # A role can have more than one scenario, and firewall does: its two branches
 # configure the web ports in contradictory ways, so one converge cannot cover
@@ -55,7 +55,10 @@ PLANNED = ["nginx", "postgresql", "common", "fail2ban", "php"]
 # role that does not exist, and this counter's whole job is to refuse to assume
 # coverage. A new scenario that is not listed simply does not count — visible,
 # and fixed by adding a line.
-EXTRA_SCENARIOS = {"firewall_cloudflare": "firewall"}
+EXTRA_SCENARIOS = {
+    "firewall_cloudflare": "firewall",
+    "nginx_auth": "nginx",
+}
 
 # A ratchet: what has been covered stays covered. Raised by hand, in a commit,
 # when the run says it can be — never lowered to make a build pass.
@@ -69,8 +72,8 @@ EXTRA_SCENARIOS = {"firewall_cloudflare": "firewall"}
 #
 # These two cannot be moved that way. Deleting a scenario, or gutting the roles
 # it covers, drops covered_tasks below the floor; adding tasks anywhere does not.
-MIN_COVERED_ROLES = 2
-MIN_COVERED_TASKS = 39
+MIN_COVERED_ROLES = 3
+MIN_COVERED_TASKS = 62
 
 
 def count_tasks(role: Path) -> int:

@@ -34,7 +34,8 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
 ## Work
 - [x] `molecule/` with a scenario per role: docker driver, noble platform, `privileged`,
       `cgroupns_mode: host`, cgroup mount
-- [ ] First wave: `cron` (done), `firewall` (done, two scenarios), `nginx`, `postgresql`
+- [ ] First wave: `cron` (done), `firewall` (done, two scenarios), `nginx` (done, two scenarios),
+      `postgresql`
 - [x] **`firewall` needed two scenarios, not one.** Its branches configure the web ports in
       opposite ways — one opens 80/443 to everyone, the other closes them — so a single converge
       cannot exercise both. `firewall` covers the default, `firewall_cloudflare` the lock
@@ -44,9 +45,12 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       fixed list the scenario asserts exact rule counts — which is what catches a range that
       silently went missing. Ranges are RFC 5737 / RFC 3849 documentation blocks, so a rule that
       ever escapes points at addresses reserved for examples
-- [ ] **Explicit variables in every scenario** wherever a default makes the role a no-op:
+- [x] **Explicit variables in every scenario** wherever a default makes the role a no-op:
       `cron_jobs` with a job, `nginx_auth_enabled: true` with a test password (otherwise the
-      `auth.yml` branch with its hand-written `rc == 10` idempotence never executes)
+      `auth.yml` branch with its hand-written `rc == 10` idempotence never executes). One more
+      case turned up while writing the nginx scenario, and it is the sharper one: the package
+      ships `rotate 14`, which is also the role's default — running on defaults would leave the
+      file byte-identical whether the role edited it or did nothing, so the scenario asks for 21
 - [x] `converge.yml` and an `idempotence` run in every scenario
 - [ ] Container cleanup that works **after a cancelled run** as well
 - [x] A Molecule job in `.github/workflows/` — a separate job, so that a linter failure stays
@@ -90,8 +94,8 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
       conclusion "the test does not catch it" was wrong for a reason easy to repeat
 
 ## Verification
-- [x] `molecule test` green locally for `cron`, `firewall`, `firewall_cloudflare` — 7/7 actions
-      each, idempotence included
+- [x] `molecule test` green locally for `cron`, `firewall`, `firewall_cloudflare`, `nginx`,
+      `nginx_auth` — 7/7 actions each, idempotence included
 - [ ] The second run yields `changed=0` inside the scenario, not only in the manual probe.
       A finding is separately expected in `postgresql`: `meta: flush_handlers` mid-role and
       `postgresql_ext` over a live connection make idempotence there questionable — which is
@@ -99,17 +103,21 @@ Probe containers brought up and removed; image `geerlingguy/docker-ubuntu2404-an
 - [x] A deliberately broken role **fails** the scenario — checking the check: without this a green
       CI means nothing. Done per scenario, each break chosen to be one the role exists to prevent:
       `cron` — `ExecStart=-` swallowing a failure; `firewall` — port 443 dropped from the allow
-      loop; `firewall_cloudflare` — the open-to-everyone rules left in place. In all three
+      loop; `firewall_cloudflare` — the open-to-everyone rules left in place; `nginx` — the
+      duplicate logrotate config left behind; `nginx_auth` — the htpasswd never rewritten, so an
+      old password keeps working. In all five
       `converge` and `idempotence` stayed green while `verify` went red, which is the only
       arrangement that proves the checks read the machine rather than Ansible's report
 - [ ] **A PR with a red Molecule does not merge** — verified in fact, not by the setting: that is
       the only proof the required check was added correctly
-- [ ] The reach counter prints 4/11 roles and 76/117 tasks after the first wave — **2/11 and
-      39/117 (33%)** with `cron` and `firewall` done. The counter maps scenario directories to
+- [ ] The reach counter prints 4/11 roles and 76/117 tasks after the first wave — **3/11 and
+      62/117 (52%)** with `cron`, `firewall` and `nginx` done. The counter maps scenario directories to
       roles by prefix, so `firewall_cloudflare` counts towards `firewall` rather than reading as
       an eleventh role that does not exist
-- [ ] `wiki-lint.py` does not object to test values in `molecule/*/converge.yml` — it fails the
-      build on strings that look like secrets, examples included
+- [x] `wiki-lint.py` does not object to test values in the scenarios — checked with
+      `nginx_auth_password` present in `molecule/nginx_auth/molecule.yml`: 18 pages, no errors.
+      The linter reads `wiki/` only, so scenario files are outside its reach entirely; the value
+      is a throwaway for a container destroyed at the end of the run and guards nothing
 - [x] `yamllint`, `ansible-lint` clean on the Molecule files themselves — 0 failures. The
       `command-instead-of-module` warnings the verification files raise are left visible through
       `.ansible-lint-ignore` rather than silenced globally. The measured reason — the module's

@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    # Variables come from the scenario's host_vars, chosen so a rendered setting
+    # is distinguishable from the one the nginx package ships. Running on
+    # defaults would leave several checks passing on a role that did nothing.
+    - name: Run the nginx role
+      ansible.builtin.include_role:
+        name: nginx

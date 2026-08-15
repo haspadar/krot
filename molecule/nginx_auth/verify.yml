@@ -1,0 +1,158 @@
+---
+# The question this file answers is not "was a password file written" but "does
+# the password in it actually match". A file with a stale hash exists, is
+# readable, has the right mode, and lets nobody in — every check short of
+# verifying the hash passes on it.
+- name: Verify
+  hosts: all
+  tasks:
+    - name: The config on disk is valid
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: The password file exists
+      ansible.builtin.stat:
+        path: /etc/nginx/.htpasswd
+      register: htpasswd
+
+    # 0640 root:www-data — readable by nginx, not by anyone with a shell. The
+    # file prepare planted was 0644, so this also proves the role tightened it.
+    - name: It is readable by nginx and by nobody else
+      ansible.builtin.assert:
+        that:
+          - htpasswd.stat.exists
+          - htpasswd.stat.mode == "0640"
+          - htpasswd.stat.pw_name == "root"
+          - htpasswd.stat.gr_name == "www-data"
+        fail_msg: >-
+          .htpasswd is {{ htpasswd.stat.mode | default('missing') }}
+          {{ htpasswd.stat.pw_name | default('-') }}:{{ htpasswd.stat.gr_name | default('-') }}.
+          A world-readable password file hands the hash to every local account.
+        quiet: true
+
+    - name: Read the stored entry
+      ansible.builtin.slurp:
+        src: /etc/nginx/.htpasswd
+      register: stored
+      no_log: true
+
+    # The check that matters. prepare planted a valid-looking apr1 hash for a
+    # different password; the role must have replaced it. Recomputing the hash
+    # with the stored salt and comparing is the only way to tell a current
+    # password from a stale one — both look identical otherwise.
+    - name: The stored hash matches the password that was configured
+      ansible.builtin.shell: |
+        set -euo pipefail
+        stored=$(cut -d: -f2- /etc/nginx/.htpasswd)
+        salt=$(printf '%s' "$stored" | cut -d'$' -f3)
+        [ -n "$salt" ] || { echo "no salt in stored hash"; exit 1; }
+        computed=$(openssl passwd -apr1 -salt "$salt" 'molecule-scenario-only')
+        [ "$computed" = "$stored" ]
+      args:
+        # bash, not the default /bin/sh: `set -o pipefail` is a bashism, and
+        # dash answers "Illegal option -o pipefail" — a failure of the check
+        # itself, indistinguishable in the summary from the hash not matching.
+        executable: /bin/bash
+      register: hash_match
+      changed_when: false
+      failed_when: hash_match.rc != 0
+
+    - name: The stale entry planted before the run is gone
+      ansible.builtin.assert:
+        that: "'abcdefgh' not in (stored.content | b64decode)"
+        fail_msg: >-
+          The htpasswd still carries the salt planted by prepare, so the role
+          left an earlier password in place. Access would be granted by a
+          credential nobody configured and nobody knows.
+        quiet: true
+
+    - name: The auth snippet was installed
+      ansible.builtin.stat:
+        path: /etc/nginx/snippets/krot-auth.conf
+      register: snippet
+
+    - name: It exists with the mode the role promises
+      ansible.builtin.assert:
+        that:
+          - snippet.stat.exists
+          - snippet.stat.mode == "0644"
+        fail_msg: "/etc/nginx/snippets/krot-auth.conf is missing or not 0644."
+        quiet: true
+
+    - name: The snippet names the realm and the password file
+      ansible.builtin.slurp:
+        src: /etc/nginx/snippets/krot-auth.conf
+      register: snippet_body
+
+    - name: Its directives point at what the role installed
+      ansible.builtin.assert:
+        that:
+          - "'auth_basic' in (snippet_body.content | b64decode)"
+          - "'Preview' in (snippet_body.content | b64decode)"
+          - "'/etc/nginx/.htpasswd' in (snippet_body.content | b64decode)"
+        fail_msg: >-
+          The snippet does not reference the realm and password file the role
+          configured, so including it would guard nothing or fail the config.
+        quiet: true
+
+    # The helper is what makes the role idempotent, and it is a shell script
+    # rather than a module — so its contract is worth exercising directly.
+    - name: The sync helper is installed and executable
+      ansible.builtin.stat:
+        path: /usr/local/sbin/krot-htpasswd-sync
+      register: helper
+
+    - name: It is 0755
+      ansible.builtin.assert:
+        that:
+          - helper.stat.exists
+          - helper.stat.mode == "0755"
+        fail_msg: "/usr/local/sbin/krot-htpasswd-sync is missing or not 0755."
+        quiet: true
+
+    # rc 0 means "already correct". The role reads this as unchanged, and
+    # idempotence depends on it: if the helper returned 10 here, every play
+    # would report a change and churn the file.
+    - name: Running the helper with the same password reports no change
+      ansible.builtin.command:
+        argv:
+          - /usr/local/sbin/krot-htpasswd-sync
+          - /etc/nginx/.htpasswd
+          - preview
+          - molecule-scenario-only
+      register: unchanged_run
+      changed_when: false
+      failed_when: unchanged_run.rc != 0
+      no_log: true
+
+    # And rc 10 means "rewritten". Checked with a different password, then the
+    # real one is restored so the machine ends as the role left it.
+    - name: Running it with a different password reports a change
+      ansible.builtin.command:
+        argv:
+          - /usr/local/sbin/krot-htpasswd-sync
+          - /etc/nginx/.htpasswd
+          - preview
+          - a-different-password
+      register: changed_run
+      changed_when: false
+      failed_when: changed_run.rc != 10
+      no_log: true
+
+    - name: Put the configured password back
+      ansible.builtin.command:
+        argv:
+          - /usr/local/sbin/krot-htpasswd-sync
+          - /etc/nginx/.htpasswd
+          - preview
+          - molecule-scenario-only
+      register: restore_run
+      changed_when: false
+      failed_when: restore_run.rc != 10
+      no_log: true
+
+    - name: Nothing on the machine is in a failed state
+      ansible.builtin.command: systemctl --failed --no-legend
+      register: failed_units
+      changed_when: false
+      failed_when: failed_units.stdout | trim | length > 0
