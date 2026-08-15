@@ -22,6 +22,7 @@ roles: []
 |---|---|
 | `systemd_service` отдаёт `ActiveState=inactive` про юнит, который сам же запустил | [status — снимок до действия](systemd-service-status-is-stale.md) |
 | Файл с бо́льшим номером в `apt.conf.d` дополнил список origins вместо замены — машина брала обновления всего релиза | [Allowed-Origins дополняется](apt-allowed-origins-appends.md) |
+| Пакетный пул FPM и пул роли на одном сокете — сервис не стартует вовсе (`status=78/CONFIG`) | [два пула на одном сокете](fpm-pools-cannot-share-a-socket.md) |
 
 ## Замеры внутри описаний
 

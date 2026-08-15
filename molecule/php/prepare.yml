@@ -1,0 +1,39 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
+    # Missing from the Docker image and present on a real machine — checked
+    # against the Ubuntu 24.04 cloud image manifest, which lists python3-debian
+    # 0.1.49ubuntu2. deb822_repository refuses to run without it, and the role
+    # adds the ondrej repository with that module, so without this the scenario
+    # fails on the image being minimal rather than on anything about the role.
+    # logrotate is the same kind of gap and worth being explicit about, because
+    # the last time a missing binary turned up it was wrongly called a role
+    # defect: checked against the Ubuntu 24.04 cloud image manifest, which
+    # lists logrotate 3.21.0-2build1. So a real machine has it and this image
+    # does not, and the role is right not to declare it.
+    - name: Packages the image lacks and a real machine has
+      ansible.builtin.apt:
+        name:
+          - python3-debian
+          - logrotate
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    # Nothing else is planted. Unlike postgresql, this role has no task that
+    # removes a legacy source, so there is no prior state for one to act on —
+    # and a file put here only to be looked at afterwards would test the
+    # scenario's own setup rather than the role.

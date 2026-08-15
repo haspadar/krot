@@ -67,6 +67,23 @@
     mode: "0644"
   notify: Reload php-fpm
 
+# The package ships pool.d/www.conf listening on the same socket this role's
+# pool uses. Two pools cannot share a listen address: FPM refuses the whole
+# configuration with "unable to set listen address as it's already used in
+# another pool" and exits 78/CONFIG, so the service does not start at all.
+#
+# Invisible at the default php_fpm_pool: www, where the role simply overwrites
+# that file. It appears the moment a project names its pool anything else —
+# which is what naming the variable is for. Measured: with both files present
+# `php-fpm --test` fails and systemd gives up after five restarts; with only
+# one, it starts.
+- name: Remove the packaged pool the role's own pool replaces
+  ansible.builtin.file:
+    path: "/etc/php/{{ php_version }}/fpm/pool.d/www.conf"
+    state: absent
+  when: php_fpm_pool != "www"
+  notify: Reload php-fpm
+
 - name: Enable PHP-FPM
   ansible.builtin.service:
     name: "php{{ php_version }}-fpm"

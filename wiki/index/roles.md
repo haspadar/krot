@@ -24,5 +24,5 @@ roles: []
 | [`fail2ban`](../../roles/fail2ban/) | 5 | [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`firewall`](../../roles/firewall/) | 9 | [operations/cloudflare.md](../operations/cloudflare.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`nginx`](../../roles/nginx/) | 12 | [operations/cloudflare.md](../operations/cloudflare.md), [operations/logging.md](../operations/logging.md), [operations/secrets.md](../operations/secrets.md), [operations/silent-failures.md](../operations/silent-failures.md) |
-| [`php`](../../roles/php/) | 20 | [operations/logging.md](../operations/logging.md), [operations/silent-failures.md](../operations/silent-failures.md) |
+| [`php`](../../roles/php/) | 20 | [operations/logging.md](../operations/logging.md), [operations/silent-failures.md](../operations/silent-failures.md), [research/fpm-pools-cannot-share-a-socket.md](../research/fpm-pools-cannot-share-a-socket.md) |
 | [`postgresql`](../../roles/postgresql/) | 17 | [operations/logging.md](../operations/logging.md), [operations/postgresql.md](../operations/postgresql.md), [operations/silent-failures.md](../operations/silent-failures.md) |
