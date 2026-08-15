@@ -3,8 +3,16 @@
 #
 # Molecule verification playbooks read facts back off the machine — `systemctl
 # show -p Result`, `systemctl list-timers`, `systemctl --failed`. systemd_service
-# cannot do that: it reports the state it set itself. Substituting the module for
-# the command would leave the test checking its own call instead of the machine,
-# which is precisely the failure these scenarios exist to catch. The rule keeps
-# applying to roles/, where reaching for a module instead of a command is correct.
+# does return those pairs in its `status`, but it captures them BEFORE it acts
+# and never refreshes them: measured, the module started a stopped unit, said
+# `changed: true`, and reported `ActiveState=inactive` while the machine already
+# said `active`. A test built on that reads the state a run was supposed to
+# change, not the state it produced.
+#
+# The measurement, and how to repeat it, are in
+# wiki/research/systemd-service-status-is-stale.md.
+#
+# Listing the file here keeps the six warnings visible and marked `# ignored`
+# rather than silencing them: a global skip_list would also mute the rule in
+# roles/, where preferring the module is correct.
 molecule/cron/verify.yml command-instead-of-module
