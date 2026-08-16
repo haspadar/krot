@@ -41,7 +41,14 @@
       leg gets its own runner, so nothing is shared to collide over
 
 ## Work
-- [x] `cache: pip` in `actions/setup-python` — in both jobs
+- [x] A pip cache in both jobs — **not** `cache: pip` on `actions/setup-python`, which was tried
+      first and is what the task originally said. It looks for `requirements.txt` or
+      `pyproject.toml`; this repository has neither, since the linters are named on the pip
+      command line, and the `requirements.yml` files are galaxy manifests. Given nothing to key
+      on, setup-python **errors** rather than warning — and it is the second step, so run
+      31973846564 went red in all twelve checks without running yamllint, ansible-lint,
+      secret-lint or a single scenario. Replaced with `actions/cache` on `~/.cache/pip`, keyed on
+      the workflow file, which is where the package names live
 - [x] A cache of the collections directory keyed on the hash of `requirements.yml`; the Molecule
       job keys on both requirements files, since a scenario needs the driver's collections too
 - [x] `concurrency` grouped by `ref` with `cancel-in-progress: true`
@@ -72,6 +79,31 @@
 - [ ] **The wall clock of the run drops to roughly 2–3 minutes** from 14m7s
 - [ ] `scenarios` fails outright when the list comes back empty, rather than skipping the matrix
       and reporting green
+
+## Review (two passes, different angles — Codex is out of service until 2026-08-18)
+
+- [x] **Accepted: `cache: pip` was broken** — found by both passes and by the run itself. Above
+- [x] **Accepted: the cache key promises more than it delivers.** The comment said an unchanged
+      key could not give a green CI on a dependency a consumer cannot install. But the
+      requirements pin ranges (`>=1.5.4`), so the hash holds still while the resolved version
+      moves: a hit keeps yesterday's resolution. That is the ordinary price of caching; the
+      comment no longer claims otherwise
+- [x] **Accepted: "GitHub waits forever" was too categorical.** A skipped required check either
+      hangs pending or reports success, depending on how it was skipped. Both are worse than red,
+      so the gate stands — but the wiki and the comment now say which two ways it goes wrong
+      rather than asserting one
+- [x] **Accepted: quote `${{ matrix.scenario }}`**, and `SC2038` on the `find | xargs` pipeline —
+      actionlint reports it, so it was not hypothetical. Rewritten as a read loop rather than
+      `-print0 | xargs -0`, because the latter needs `xargs -d` for `basename`, which is GNU-only
+      and therefore unverifiable on the machine this was written on. That is the same mistake as
+      the one above, one step earlier: the read loop was run here and produced the nine names
+- [x] **Rejected: "the page's frontmatter should list nine, not seven."** `roles:` takes roles,
+      and `firewall_cloudflare` / `nginx_auth` are scenarios of `firewall` and `nginx`. Checked
+      rather than argued: adding `firewall_cloudflare` makes `wiki-lint` fail with «объявлена
+      несуществующая роль». Seven is correct
+- [x] **Noted, not rewritten: `proposal.md` says the required check is `lint`.** True when read on
+      2026-08-15; `molecule` joined the list later. The measurement stays, with a note beside it
+      saying what changed — the project's rule is that measurements are not rewritten
 
 ## Not done here
 - Removing `push: [main]` — considered and rejected: there is nothing to save, and the direct

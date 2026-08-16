@@ -79,6 +79,11 @@ than the text claimed: `strict: true` (a branch must be up to date), `enforce_ad
 applies to the owner as well), force-push and branch deletion forbidden, required check `lint`. There
 is no direct path into main for anyone, the admin included.
 
+> Read on 2026-08-15 and left as read. `molecule` was added to the required checks when that change
+> landed, so the list is `["lint", "molecule"]` today — checked through the API on 2026-08-17, and it
+> matters, because a matrix reports one check per leg and would have retired the name `molecule`
+> outright. The measurement is not rewritten; what changed after it is noted here.
+
 **`paths-ignore` is not carried over from busel.** Its list holds `wiki/**` and `**.md`, and for
 busel that is correct: its CI does not read the wiki. In krot **CI checks the wiki** — `wiki-lint.py`
 and the reconciliation of `wiki/index/` against its sources — and wiki pages are `.md`. Copying it

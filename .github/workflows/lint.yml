@@ -50,14 +50,38 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
-          cache: pip
+
+      # Not `cache: pip` on setup-python: it looks for requirements.txt or
+      # pyproject.toml, and this repository has neither — the linters are named
+      # on the pip command line. With nothing to key on, setup-python does not
+      # warn, it **errors**, and since it is the second step, everything after
+      # it is skipped: yamllint, ansible-lint, secret-lint, the lot. Measured on
+      # run 31973846564, where all twelve checks went red without a single one
+      # of them running.
+      #
+      # The key hangs on this workflow file, which is where the installed
+      # package names live. Editing the pip line therefore invalidates it.
+      - name: Cache pip
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/pip
+          key: >-
+            pip-lint-${{ runner.os }}-${{
+            hashFiles('.github/workflows/lint.yml') }}
 
       - name: Install linters
         run: pip install ansible-lint yamllint
 
       # Keyed on the hash of requirements.yml, so changing a dependency
-      # invalidates the cache. A key that ignored the file would give a green CI
-      # on a dependency the consumer cannot actually install.
+      # invalidates the cache, and there are no restore-keys — an exact match or
+      # nothing.
+      #
+      # What that does NOT buy: the file pins ranges (">=1.5.4"), so the hash
+      # stays put while the version a fresh install would resolve to moves on.
+      # A hit therefore keeps yesterday's resolution, and CI can stay green on a
+      # collection version no consumer would now get. That is the ordinary price
+      # of caching rather than a hole to plug here, but it is worth not
+      # mistaking this key for protection against it.
       - name: Cache collections
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
@@ -133,8 +157,15 @@ jobs:
       - name: Collect the scenario names
         id: find
         run: |
-          list=$(find molecule -mindepth 2 -maxdepth 2 -name molecule.yml \
-            | xargs -n1 dirname | xargs -n1 basename | sort | jq -R . | jq -sc .)
+          # A read loop rather than a find | xargs pipeline: -print0 with
+          # xargs -0 needs a second delimiter switch for basename, and that
+          # spelling is GNU-only. This form is portable and, unlike the
+          # pipeline, can be run to completion on the author's machine.
+          list=$(
+            find molecule -mindepth 2 -maxdepth 2 -name molecule.yml -print \
+              | while IFS= read -r f; do basename "$(dirname "$f")"; done \
+              | sort | jq -R . | jq -sc .
+          )
           echo "list=$list" >> "$GITHUB_OUTPUT"
           echo "$list"
           # An empty matrix is not an error to GitHub — it skips the job and
@@ -178,7 +209,16 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
-          cache: pip
+
+      # Same reasoning as in the lint job: no requirements.txt to key on, so
+      # the cache is declared here rather than through setup-python.
+      - name: Cache pip
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/pip
+          key: >-
+            pip-molecule-${{ runner.os }}-${{
+            hashFiles('.github/workflows/lint.yml') }}
 
       - name: Install Molecule
         run: pip install molecule 'molecule-plugins[docker]' ansible-core
@@ -205,7 +245,7 @@ jobs:
       # `test` rather than `converge`: the sequence includes idempotence, which
       # is the promise this whole job exists to keep honest.
       - name: molecule test
-        run: molecule test --scenario-name ${{ matrix.scenario }}
+        run: molecule test --scenario-name "${{ matrix.scenario }}"
 
   # The check main's protection actually requires. It exists because a matrix
   # cannot report under a single name, and it holds the name the protection
@@ -213,10 +253,11 @@ jobs:
   #
   # `if: always()` plus an explicit look at the results, rather than `needs`
   # alone: a needed job that fails **skips** its dependents, and a skipped
-  # required check is not a red one — GitHub waits for it forever instead. The
-  # same is true of a cancelled run, which is exactly what `concurrency` above
-  # produces on every second push. So this job must run in all cases and decide
-  # for itself.
+  # required check is not a red one. Which way it then goes wrong depends on how
+  # it was skipped — the check either hangs pending, blocking the PR for good,
+  # or reports success and waves the failure through. Both are worse than red,
+  # so the job runs in all cases and decides for itself. The same applies to a
+  # cancelled run, which `concurrency` above produces on every second push.
   molecule:
     needs: [scenarios, molecule-scenario]
     if: always()
