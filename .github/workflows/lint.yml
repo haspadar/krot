@@ -6,13 +6,35 @@ name: lint
     branches: [main]
   pull_request:
 
+# Nothing here writes anything back: these jobs read the tree, run linters and a
+# container. Stated explicitly because the default token is far broader, and a
+# workflow that never declares its permissions silently keeps whatever the
+# repository setting hands out.
+permissions:
+  contents: read
+
+# Actions are pinned by commit SHA with the version in a comment, matching busel.
+# A tag like v5 is movable: whoever owns the action can repoint it, and CI would
+# then run someone else's code holding this repository's token. The comment is
+# what makes the pin readable; the SHA is what makes it a pin.
 jobs:
   lint:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v5
+      # Full history, not the default shallow clone: wiki-index.py restores PR numbers
+      # from merge commits, and at depth=1 every one of them silently becomes a dash.
+      #
+      # persist-credentials: false — checkout otherwise leaves the token in
+      # .git/config, where any later step, or anything that packages the
+      # directory, can read it. Nothing here pushes, so it is never needed.
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
 
@@ -34,3 +56,72 @@ jobs:
       # neither shows up in linting, but both break every consumer's install.
       - name: Build the collection
         run: ansible-galaxy collection build --output-path /tmp/krot-build
+
+      - name: wiki-lint
+        run: python3 scripts/wiki-lint.py
+
+      # wiki-lint has carried secret patterns since the wiki was set up, but it
+      # only walks wiki/. This runs the same patterns over everything git
+      # tracks — the blind spot was found the hard way, by a hardcoded test
+      # password landing in molecule/ and matching wiki-lint's own regex while
+      # no linter was looking at that directory.
+      - name: secret-lint
+        run: python3 scripts/secret-lint.py
+
+      # wiki/index/ is generated from roles/, openspec/ and git. A stale index is
+      # worse than none: it states a role is explained when nothing explains it.
+      # Regenerating in CI turns that into a failure instead of a quiet lie.
+      #
+      # `git status --porcelain`, not `git diff --exit-code`: a deleted index file
+      # comes back as untracked, which `git diff` does not report at all — the check
+      # would pass on the one case where the index is missing outright.
+      - name: wiki-index is up to date
+        run: |
+          python3 scripts/wiki-index.py
+          if [ -n "$(git status --porcelain -- wiki/index/)" ]; then
+            echo "wiki/index/ разошёлся с источниками — пересобери:"
+            echo "  python3 scripts/wiki-index.py"
+            git status --porcelain -- wiki/index/
+            git diff -- wiki/index/
+            exit 1
+          fi
+
+      # Prints the reach figure on every run, and fails only when a role appears
+      # in no list at all — a role nobody named reads as checked while nothing
+      # checks it.
+      - name: Every role is named as covered, planned or excluded
+        run: python3 scripts/coverage.py
+
+  # A separate job, so a red role run stays distinguishable from a red linter at
+  # a glance. Note this does NOT gate merges on its own: main's protection names
+  # the required check by job name, and only "lint" is in that list — adding
+  # "molecule" there is a deliberate, separate step.
+  molecule:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+
+      - name: Install Molecule
+        run: pip install molecule 'molecule-plugins[docker]' ansible-core
+
+      # community.docker drives the container itself, so a missing one fails
+      # `create` before any role code runs — an error that reads like a broken
+      # scenario rather than a missing collection.
+      - name: Install the scenarios' collections
+        run: ansible-galaxy collection install -r molecule/requirements.yml
+
+      - name: The collection's own dependencies
+        run: ansible-galaxy collection install -r requirements.yml
+
+      # `test` rather than `converge`: the sequence includes idempotence, which
+      # is the promise this whole job exists to keep honest.
+      - name: molecule test
+        run: molecule test --all

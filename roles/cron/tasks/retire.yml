@@ -1,0 +1,57 @@
+---
+# krot-cf-ranges.timer belongs to the firewall role and matches the same glob,
+# so ownership is decided by a marker this role writes into its own services,
+# never by the file name. Removing another role's timer would take the
+# Cloudflare range refresh down without a word.
+- name: Look for this role's marker in the paired service
+  ansible.builtin.slurp:
+    src: "/etc/systemd/system/{{ cron_timer_file | regex_replace('\\.timer$', '.service') }}"
+  register: cron_retire_service
+  # A timer whose service is missing proves nothing about ownership, so it is
+  # left alone: the safe error here is an extra unit, not a deleted one.
+  failed_when: false
+
+- name: Retire the job
+  when:
+    - cron_retire_service.content is defined
+    - cron_job_marker in (cron_retire_service.content | b64decode)
+  block:
+    - name: Stop and disable the retired timer
+      ansible.builtin.systemd_service:
+        name: "{{ cron_timer_file }}"
+        state: stopped
+        enabled: false
+
+    # The rotation entry for this job is already gone — the template only lists
+    # jobs still declared. A log file left behind therefore has nobody to rotate
+    # it and grows until the disk is full: the same second-order failure this
+    # role exists to avoid. The path is read back out of the unit, because the
+    # inventory no longer says anything about a job it has dropped.
+    # default() before first(): a job that logged to the journal carries no
+    # marker at all, and regex_search returns None there rather than an empty
+    # list — first() on that raises and takes the whole retirement down.
+    - name: Find the log file the retired job wrote to
+      ansible.builtin.set_fact:
+        cron_retired_log: >-
+          {{ (cron_retire_service.content | b64decode
+              | regex_search('^# krot-cron-log=(.+)$', '\1', multiline=True)
+              | default([], true) | first | default('', true)) | trim }}
+
+    - name: Remove the log file of the retired job
+      ansible.builtin.file:
+        path: "{{ cron_retired_log }}"
+        state: absent
+      when:
+        - cron_retired_log | length > 0
+        # Only inside the directory this role owns. A job pointed at
+        # /var/log/syslog by a typo must not take that file with it on retirement.
+        - cron_retired_log.startswith(cron_log_dir ~ '/')
+
+    - name: Remove the retired unit files
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ item }}"
+        state: absent
+      loop:
+        - "{{ cron_timer_file }}"
+        - "{{ cron_timer_file | regex_replace('\\.timer$', '.service') }}"
+      notify: Reload systemd

@@ -1,0 +1,64 @@
+---
+# Periodic jobs an application needs, declared by the inventory rather than by
+# this role: the machine owns the mechanism, the project owns the list. Empty by
+# default, so applying the role to a machine with nothing to schedule is a no-op.
+#
+# Each entry:
+#
+#   name:              required, [a-z0-9-]. Becomes krot-<name>.{service,timer}.
+#   command:           required. Executed by /bin/sh -c, so pipes and && work.
+#   schedule:          required. Any OnCalendar expression; "hourly" and "daily"
+#                      are the systemd shorthands and expand to the top of the
+#                      hour / midnight.
+#   description:       optional, shown by systemctl status and list-timers.
+#   user:              optional, defaults to cron_user.
+#   working_directory: optional. A release symlink is fine — systemd resolves it
+#                      at every start, not once at install, and a symlink
+#                      pointing nowhere fails the job loudly instead of running
+#                      it from /.
+#   environment:       optional dict. systemd starts units with an empty
+#                      environment, so anything the command needs goes here.
+#   timeout:           optional, defaults to cron_job_timeout.
+#   randomized_delay:  optional, defaults to cron_randomized_delay.
+#   fixed_random_delay: optional, defaults to cron_fixed_random_delay.
+#   persistent:        optional, defaults to cron_persistent.
+#   log_file:          optional. Absent means the journal, which is the point of
+#                      this role — see below.
+cron_jobs: []
+
+# The account application jobs run as. Same operator user Deployer pushes
+# releases with, because the code they run is that user's code.
+cron_user: km
+
+# Spread starts instead of hand-picking minutes. The job that prompted this role
+# used minute 17 to dodge everything else hourly on the machine, which is real
+# but fragile: it is knowledge held by whoever wrote the crontab line, and the
+# second job's author has to rediscover it. A random offset removes the need to
+# know.
+#
+# 15m against an hourly job: far enough to unstack, short enough that "the
+# hourly job" still means what it says.
+cron_randomized_delay: 15m
+
+# The offset above is re-rolled on every elapse, so an hourly job ends up 45 to
+# 75 minutes from its predecessor. Fixed derives it from the machine and unit
+# name instead: still spread against the other jobs, but the same minute every
+# time. On by default, because a job declared "hourly" should run hourly — the
+# point of the offset is to miss the crowd, not to wander.
+cron_fixed_random_delay: true
+
+# A machine that was off at the scheduled time catches up on boot rather than
+# silently dropping the run. This is the difference between a missed hour and a
+# missed hour nobody hears about.
+cron_persistent: true
+
+# No job here is allowed to run forever: a hung command with no timeout blocks
+# every subsequent start of the same unit, and the timer keeps firing into a
+# unit that is already active — the job stops running while the timer still
+# looks healthy.
+cron_job_timeout: 30m
+
+# Only consulted by jobs that opt into a log file. The journal needs no rotation
+# policy, which is most of why it is the default.
+cron_log_retention_days: 14
+cron_log_dir: /var/log/krot

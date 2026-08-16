@@ -1,48 +1,50 @@
-# Tasks: роль geoip и география в отчётах
+# Tasks: the geoip role and geography in reports
 
-## Роль `geoip`
-- [x] `geoipupdate` из репозитория Ubuntu (6.1.0), `libmaxminddb0` уже стояла
-- [x] `assert` на пустые ключи: без них `geoipupdate` пишет ошибку вместо базы, и это
-      обнаруживается лишь как отчёт без географии
-- [x] `/etc/GeoIP.conf` — `0600 root`, задача `no_log`, иначе ключ уходит в вывод каждого прогона
-- [x] Разовая загрузка в прогоне роли, а не ожидание таймера (он может быть сутки впереди)
-- [x] systemd timer (daily) + oneshot service с `ProtectSystem=strict`
-- [x] Штатный таймер пакета выключается — два расписания на одни файлы
+## Role `geoip`
+- [x] `geoipupdate` from the Ubuntu repository (6.1.0), `libmaxminddb0` was already there
+- [x] `assert` on empty keys: without them `geoipupdate` writes an error instead of the database,
+      and this is discovered only as a report without geography
+- [x] `/etc/GeoIP.conf` — `0600 root`, task `no_log`, otherwise the key goes into every run's
+      output
+- [x] A one-off download during the role run, not a wait for the timer (it may be a day away)
+- [x] systemd timer (daily) + oneshot service with `ProtectSystem=strict`
+- [x] The package's stock timer is disabled — two schedules over the same files
 
-## Роль `goaccess`
-- [x] `goaccess_geoip_database`, пустая по умолчанию — базу ставит не эта роль
-- [x] **Отказ, если файл базы не существует.** GoAccess при этом не запускается, встали бы все
-      отчёты, а построенные остались бы выглядеть свежими. Проверено: с несуществующим путём
-      прогон падает с указанием файла, до записи конфига
-- [x] Заголовок `cf=` по-прежнему пропускается: у GoAccess нет поля под готовый код страны
-- [x] Описание роли в `meta` исправлено — оно всё ещё обещало loopback и basic auth
+## Role `goaccess`
+- [x] `goaccess_geoip_database`, empty by default — the database is installed by a different role
+- [x] **Refusal if the database file does not exist.** GoAccess would not start in that case, all
+      reports would stall, and the built ones would keep looking fresh. Verified: with a
+      non-existent path the run fails naming the file, before the config is written
+- [x] The `cf=` header is still skipped: GoAccess has no field for a ready-made country code
+- [x] The role description in `meta` fixed — it still promised loopback and basic auth
 
-## Проект busel
-- [x] `geoip_account_id` / `geoip_license_key` из Bitwarden (Secure Note `maxmind`), разбор
-      регуляркой без учёта регистра — метки набраны руками
-- [x] Роль `geoip` в `site.yml` **перед** `goaccess`
-- [x] **Роль `goaccess` подключена к `site.yml`** — до сих пор её там не было вовсе, она стояла
-      на машине с ручного прогона
+## Project busel
+- [x] `geoip_account_id` / `geoip_license_key` from Bitwarden (Secure Note `maxmind`), parsed by a
+      case-insensitive regex — the labels were typed by hand
+- [x] The `geoip` role in `site.yml` **before** `goaccess`
+- [x] **The `goaccess` role wired into `site.yml`** — until now it was not there at all, it stood
+      on the machine from a manual run
 
-## Проверка на живой машине
-- [x] База `/var/lib/GeoIP/GeoLite2-Country.mmdb`, 8.4 МБ
+## Verification on a live machine
+- [x] Database `/var/lib/GeoIP/GeoLite2-Country.mmdb`, 8.4 MB
 - [x] `/etc/GeoIP.conf` — `600 root:root`
-- [x] `krot-geoipupdate.timer` активен, следующий запуск виден; `geoipupdate.timer` — `disabled`
-- [x] Панель в отчёте: Европа 139, Северная Америка 115, Азия 31
-- [x] По странам: США 114, Швейцария 68, Польша 30, Китай 27, Финляндия 26, Беларусь, Германия,
-      Нидерланды, Франция, Япония, Индонезия, Канада
-- [x] **Сверено с `cf=`**: порядок величин совпадает, значит real-IP работает и география
-      настоящая, а не датацентры Cloudflare
-- [x] Повторный прогон обеих ролей — `changed=0`
-- [x] `yamllint`, `ansible-lint` (profile production) чистые
+- [x] `krot-geoipupdate.timer` active, next run visible; `geoipupdate.timer` — `disabled`
+- [x] Panel in the report: Europe 139, North America 115, Asia 31
+- [x] By country: USA 114, Switzerland 68, Poland 30, China 27, Finland 26, Belarus, Germany,
+      Netherlands, France, Japan, Indonesia, Canada
+- [x] **Cross-checked against `cf=`**: the orders of magnitude match, so real-IP works and the
+      geography is genuine, not Cloudflare data centres
+- [x] Repeat run of both roles — `changed=0`
+- [x] `yamllint`, `ansible-lint` (profile production) clean
 
-## Ложные тревоги
-- [x] `grep -c '"geolocation"'` в HTML вернул 0 — ошибка шаблона поиска, панель на месте
-- [x] «Download the databases» за 1.38с показалась подозрительно быстрой для 4 МБ — на диске
-      оказалось 8.4 МБ, загрузка настоящая
+## False alarms
+- [x] `grep -c '"geolocation"'` in the HTML returned 0 — a faulty search pattern, the panel is
+      there
+- [x] "Download the databases" in 1.38s looked suspiciously fast for 4 MB — on disk it turned out
+      to be 8.4 MB, the download was genuine
 
-## Не сделано намеренно
-- [ ] `GeoLite2-City` — качать тяжелее, а города в 1.8.1 всё равно не показываются (появились
-      в 1.10). Вернуться к вопросу вместе с обновлением до 1.11
-- [ ] Брать страну из `CF-IPCountry` — потребовало бы занять колонку с другим смыслом, и панель
-      называлась бы «Virtual Hosts», показывая страны
+## Deliberately not done
+- [ ] `GeoLite2-City` — heavier to download, and cities are not shown in 1.8.1 anyway (they
+      appeared in 1.10). Revisit together with the upgrade to 1.11
+- [ ] Taking the country from `CF-IPCountry` — would require occupying a column with a different
+      meaning, and the panel would be called "Virtual Hosts" while showing countries

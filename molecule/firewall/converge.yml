@@ -1,0 +1,10 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    # Defaults, deliberately: firewall_cloudflare_only is false out of the box,
+    # and this scenario is what proves the default configuration is the safe one
+    # — SSH reachable, web ports open, incoming denied otherwise.
+    - name: Run the firewall role
+      ansible.builtin.include_role:
+        name: firewall

@@ -1,0 +1,169 @@
+---
+# Every check below reads the machine rather than Ansible's own report. A task
+# that says `changed` proves a file was written, not that systemd accepted it —
+# and this role exists because "reported fine, did nothing" is the failure it
+# was written to stop.
+#
+# ansible-lint wants `systemd_service` here instead of `systemctl`, and for a
+# role it would be right. The six warnings it raises on this file are left
+# visible rather than silenced, because the reason is worth reading.
+#
+# The module does return a `status` dictionary of `systemctl show` pairs, so
+# Result and ExecMainStatus can be read from it. The problem is when it is read:
+# systemd_service.py fills result['status'] before it acts (line 425) and never
+# refreshes it afterwards (the start/stop runs at line 571). Measured here — the
+# module started a stopped unit, reported `changed: true`, and in the same
+# return said `ActiveState=inactive` while `systemctl show` on the same machine
+# said `active`.
+#
+# So the module's status describes the machine as it was before the task, which
+# is precisely the wrong moment for a test: this file checks what a run left
+# behind. A verification built on it would read a stale snapshot and call it a
+# result.
+#
+# Second reason, narrower: the module fails outright when a unit does not reach
+# active — `Unable to start service krot-failing-job.service`. The failing job
+# below is meant to fail, so the check that its failure is visible cannot be
+# written with a module that treats that failure as its own error.
+#
+# Measurement and reproduction: wiki/research/systemd-service-status-is-stale.md
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Both timers are enabled and known to systemd
+      ansible.builtin.command: systemctl is-enabled krot-{{ item }}.timer
+      loop: [journal-job, workdir-job, file-job]
+      register: timer_enabled
+      changed_when: false
+      failed_when: timer_enabled.stdout != "enabled"
+
+    - name: Timers are actually queued, not merely installed
+      ansible.builtin.command: systemctl list-timers --all --no-pager krot-*.timer
+      register: timers
+      changed_when: false
+
+    - name: Every declared job appears in list-timers
+      ansible.builtin.assert:
+        that: "'krot-' ~ item ~ '.timer' in timers.stdout"
+        fail_msg: >-
+          krot-{{ item }}.timer is installed but absent from list-timers, which
+          is how a job that never runs still looks healthy.
+      loop: [journal-job, workdir-job, file-job]
+
+    # The units have to survive systemd's own parser. A unit file with a bad
+    # directive loads with a warning and runs anyway, minus the directive — so
+    # asking systemd, rather than reading the file, is the only real check.
+    - name: Units carry no systemd parse warnings
+      ansible.builtin.command: systemd-analyze verify krot-journal-job.service
+      register: verified
+      changed_when: false
+      failed_when: verified.rc != 0
+
+    # The measured defect this role was written for: a job runs, exits 0 and
+    # does nothing. Run it for real and read the exit status back.
+    - name: A job runs successfully when started by hand
+      ansible.builtin.systemd_service:
+        name: krot-journal-job.service
+        state: started
+      changed_when: false
+
+    - name: The run finished with status 0 and left output in the journal
+      ansible.builtin.command: systemctl show krot-journal-job.service -p Result -p ExecMainStatus
+      register: result
+      changed_when: false
+      failed_when: >-
+        'Result=success' not in result.stdout or
+        'ExecMainStatus=0' not in result.stdout
+
+    - name: The journal holds what the job printed
+      ansible.builtin.command: journalctl -u krot-journal-job.service --no-pager
+      register: journal
+      changed_when: false
+      failed_when: "'hello from the journal' not in journal.stdout"
+
+    # The negative case, and the one this role exists for. Everything above
+    # proves success works; none of it would notice a job whose failure is
+    # swallowed. Adding `-` to ExecStart makes systemd report success for any
+    # exit code, and without this block the scenario stays green while doing so
+    # — checked by deliberately breaking the template, which turned this task
+    # red and left the rest passing.
+    - name: A failing job is started
+      ansible.builtin.systemd_service:
+        name: krot-failing-job.service
+        state: started
+      changed_when: false
+      failed_when: false
+
+    - name: Its failure reaches systemctl, rather than being reported as success
+      ansible.builtin.command: systemctl show krot-failing-job.service -p Result -p ExecMainStatus
+      register: failing
+      changed_when: false
+      failed_when: >-
+        'Result=exit-code' not in failing.stdout or
+        'ExecMainStatus=1' not in failing.stdout
+
+    - name: And it is listed in systemctl --failed, where an operator would see it
+      ansible.builtin.command: systemctl --failed --no-legend
+      register: failed_list
+      changed_when: false
+      failed_when: "'krot-failing-job.service' not in failed_list.stdout"
+
+    # The % branch. Measured on busel: an undoubled % in ExecStart made
+    # `date +%Y-%m-%d` print the unit's credentials path and exit 0. The role
+    # doubles it; this proves the doubling survives templating, by reading what
+    # the command actually printed.
+    - name: A command containing % prints a date, not a unit path
+      ansible.builtin.systemd_service:
+        name: krot-percent-job.service
+        state: started
+      changed_when: false
+
+    - name: The journal shows the date the command was asked for
+      ansible.builtin.command: journalctl -u krot-percent-job.service --no-pager
+      register: percent_journal
+      changed_when: false
+      failed_when: >-
+        percent_journal.stdout is not search('\d{4}-\d{2}-\d{2}') or
+        'credentials' in percent_journal.stdout
+
+    # The file branch: the role owns both halves, because half of the pair
+    # reproduces the original defect — a log nobody rotates, or a rotation
+    # entry for a log nobody creates.
+    - name: The log file and its rotation entry both exist
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: files
+      failed_when: not files.stat.exists
+      loop:
+        - /var/log/krot/file-job.log
+        - /etc/logrotate.d/krot-cron
+
+    # logrotate refuses to process anything at all when two entries claim one
+    # log — not just the duplicate, every log on the machine. That is what cost
+    # busel three days of unrotated logs, so the scenario asks logrotate itself.
+    - name: Logrotate accepts the machine's full configuration
+      ansible.builtin.command: logrotate --debug /etc/logrotate.conf
+      register: logrotate_check
+      changed_when: false
+      # Both streams are checked, and separately from the exit code: logrotate
+      # prints the duplicate to stderr and exits 1, but a non-zero code alone
+      # says nothing about which of its complaints fired. The duplicate is the
+      # one that stops every log on the machine, so it is named explicitly.
+      failed_when: >-
+        logrotate_check.rc != 0 or
+        'duplicate log entry' in logrotate_check.stderr or
+        'duplicate log entry' in logrotate_check.stdout
+
+    # Nothing is failed except the job deliberately made to fail above. Stated
+    # as "only that one" rather than "none": the scenario now leaves a failed
+    # unit on purpose, and a check demanding an empty list would contradict the
+    # one proving failures are visible.
+    - name: Nothing else on the machine is in a failed state
+      ansible.builtin.command: systemctl --failed --no-legend
+      register: failed_units
+      changed_when: false
+      failed_when: >-
+        failed_units.stdout_lines
+        | reject('search', 'krot-failing-job.service')
+        | select('search', '\S')
+        | list | length > 0

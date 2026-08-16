@@ -1,0 +1,220 @@
+---
+- name: Prepare
+  hosts: all
+  # Facts are gathered by the first real task instead of on entry, so the wait
+  # below can run before anything needs the container to be responsive. Without
+  # it, Gathering Facts is the first thing to touch the container and it fails
+  # with UNREACHABLE while systemd is still coming up — observed on a machine
+  # busy with another project's containers, and a CI runner is no faster.
+  gather_facts: false
+  vars:
+    # Deliberately not the real Cloudflare ranges. Ten v4 plus two v6 makes
+    # twelve, and the role's sanity guard asserts `length >= 10` against the
+    # combined list — so this clears it with two to spare rather than exactly.
+    # The guard itself is NOT tested here: proving it holds needs a run where
+    # the endpoint serves too few ranges and the role refuses to touch the
+    # firewall, which is a separate scenario (recorded in the change).
+    #
+    # Documentation ranges (RFC 5737 / RFC 3849) rather than invented ones: if a
+    # rule ever escapes onto a real machine, it points at addresses reserved for
+    # examples instead of at someone's network.
+    fake_v4:
+      - 192.0.2.0/24
+      - 192.0.2.128/25
+      - 198.51.100.0/24
+      - 198.51.100.128/25
+      - 203.0.113.0/24
+      - 203.0.113.128/25
+      - 203.0.113.192/26
+      - 198.51.100.192/26
+      - 192.0.2.192/26
+      - 203.0.113.224/27
+    fake_v6:
+      - 2001:db8::/32
+      - 2001:db8:1::/48
+  tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
+    # iptables is for the verification to read netfilter with.
+    #
+    # curl is here because the container lacks it, not because a real machine
+    # would. The refresh script this role installs calls curl while
+    # meta/main.yml declares `dependencies: []` — an undeclared dependency,
+    # which is worth recording as hygiene. It is not a production defect:
+    # measured, curl ships in Ubuntu 24.04 itself (cloud image
+    # 8.5.0-2ubuntu10.11, live-server 8.5.0-2ubuntu10.6), and `common` installs
+    # it besides. Docker base images are the odd ones out — `ubuntu:24.04` has
+    # no curl, which is why the script failed here with "keeping current rules"
+    # and nowhere else.
+    - name: Packages this scenario needs, and one the role should declare itself
+      ansible.builtin.apt:
+        name:
+          - iptables
+          - curl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: A directory for the stand-in range lists
+      ansible.builtin.file:
+        path: /srv/fake-cloudflare
+        state: directory
+        mode: "0755"
+
+    # No trailing newline on the v4 file, matching Cloudflare's actual response.
+    # The role's vars/main.yml splits each body separately precisely because of
+    # that, so serving a tidier file here would leave that handling untested.
+    - name: The IPv4 list, without a trailing newline
+      ansible.builtin.copy:
+        content: "{{ fake_v4 | join('\n') }}"
+        dest: /srv/fake-cloudflare/ips-v4
+        mode: "0644"
+
+    - name: The IPv6 list
+      ansible.builtin.copy:
+        content: "{{ fake_v6 | join('\n') }}\n"
+        dest: /srv/fake-cloudflare/ips-v6
+        mode: "0644"
+
+    # python3 ships in the image, so this needs nothing installed. A unit rather
+    # than a backgrounded command: the role's own fetch runs later in the play,
+    # and systemd gives a defined "it is up" moment to wait for.
+    - name: A unit serving those files over HTTP
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/fake-cloudflare.service
+        content: |
+          [Unit]
+          Description=Stands in for www.cloudflare.com during this scenario
+
+          [Service]
+          ExecStart=/usr/bin/python3 -m http.server 8099 --bind 127.0.0.1 \
+            --directory /srv/fake-cloudflare
+        mode: "0644"
+
+    - name: Start it
+      ansible.builtin.systemd_service:
+        name: fake-cloudflare.service
+        state: started
+        daemon_reload: true
+
+    # Without this the role's fetch can race the server's startup and fail on a
+    # connection refused, which would read as a broken role rather than a test
+    # that started too early.
+    - name: Wait until it actually answers
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8099/ips-v4
+        return_content: true
+      register: fake_up
+      retries: 10
+      delay: 1
+      until: fake_up.status | default(0) == 200
+
+    - name: The stand-in serves what this scenario will assert against
+      ansible.builtin.assert:
+        that:
+          - fake_up.content.splitlines() | length == fake_v4 | length
+          - "'192.0.2.0/24' in fake_up.content"
+        fail_msg: >-
+          The stand-in Cloudflare endpoint is up but serving something other
+          than the prepared list. Every assertion in verify.yml is written
+          against that list, so they would be checking the wrong thing.
+        quiet: true
+
+    # Leave the machine wide open before the role runs.
+    #
+    # Without this the scenario starts from a host that was never open, so the
+    # role's "close the web ports" tasks have nothing to delete and their
+    # removal changes nothing observable — verified by deleting them, which left
+    # the whole scenario green. That is the wrong starting state: the locked
+    # branch exists to be applied to a machine already serving the internet.
+    #
+    # The application profile is here for the same reason. A rule added as
+    # "Nginx Full" is not matched by a port-based delete, so a role that only
+    # removed ports would leave 80/443 open to everyone while every other check
+    # passed. Re-verified after adding this: with the delete loop disabled, the
+    # scenario fails and names both ports.
+    - name: Install ufw ahead of the role, so it can be pre-loaded
+      ansible.builtin.apt:
+        name: ufw
+        state: present
+
+    - name: Open the web ports to the world, as an unlocked machine would have
+      community.general.ufw:
+        rule: allow
+        port: "{{ item }}"
+        proto: tcp
+      loop: [80, 443]
+
+    # The profile has to exist before ufw will accept a rule naming it. The
+    # image ships none — `ufw app list` is empty and /etc/ufw/applications.d/ is
+    # an empty directory — so an earlier version of this file just called `ufw
+    # allow "Nginx Full"` with failed_when: false and silently did nothing:
+    # ufw answered `ERROR: Could not find a profile matching 'Nginx Full'`, the
+    # suppressor swallowed it, and the branch this is meant to cover stayed
+    # untested while the comment claimed otherwise.
+    #
+    # Written by hand rather than installing nginx: this is a copy of the
+    # profile nginx ships, and pulling in a web server plus its dependencies to
+    # obtain one 4-line file would make the scenario slower for nothing.
+    - name: The Nginx application profile nginx would have installed
+      ansible.builtin.copy:
+        dest: /etc/ufw/applications.d/nginx
+        content: |
+          [Nginx HTTP]
+          title=Web Server (Nginx, HTTP)
+          description=Small, but very powerful and efficient web server
+          ports=80/tcp
+
+          [Nginx HTTPS]
+          title=Web Server (Nginx, HTTPS)
+          description=Small, but very powerful and efficient web server
+          ports=443/tcp
+
+          [Nginx Full]
+          title=Web Server (Nginx, HTTP + HTTPS)
+          description=Small, but very powerful and efficient web server
+          ports=80,443/tcp
+        mode: "0644"
+
+    - name: And open the web ports through that profile as well
+      community.general.ufw:
+        rule: allow
+        name: Nginx Full
+
+    # An application-profile rule is not matched by a port-based delete, so if
+    # the role only removed ports, 80/443 would stay open to the world through
+    # this rule while every other check passed. Asserting it exists before the
+    # role runs is what stops that from being assumed.
+    # Read from the rules file rather than `ufw status`: the role has not
+    # enabled ufw yet, and while it is inactive `ufw status` prints
+    # "Status: inactive" and nothing else — no rules at all. Asserting against
+    # that output here would fail on a rule that exists, which is exactly what
+    # it did before this was measured.
+    # `Nginx%20Full`, not `Nginx Full`: ufw percent-encodes the space when it
+    # writes the rule, so a grep for the readable name finds nothing while the
+    # rule is plainly there. Measured — the file contains
+    #   ### tuple ### allow tcp 80,443 0.0.0.0/0 any 0.0.0.0/0 Nginx%20Full - in
+    # The pattern below matches either spelling rather than betting on one.
+    - name: The profile rule really is in place before the role runs
+      ansible.builtin.command: grep -cE 'Nginx(%20| )Full' /etc/ufw/user.rules
+      register: pre_rules
+      changed_when: false
+      failed_when: pre_rules.rc not in [0, 1]
+
+    - name: The rules file records a rule naming the profile
+      ansible.builtin.assert:
+        that: pre_rules.stdout | int > 0
+        fail_msg: >-
+          The Nginx Full rule was not created, so the role's
+          firewall_app_profiles_to_remove branch has nothing to remove and goes
+          untested no matter what this scenario asserts afterwards.
+        quiet: true

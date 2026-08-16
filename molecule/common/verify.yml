@@ -1,0 +1,126 @@
+---
+# Read back from the machine, not from the files the role wrote. A template that
+# rendered and a setting that took effect are different facts, and only the
+# second one is what the role promises.
+- name: Verify
+  hosts: all
+  vars:
+    expected_hostname: krot-renamed
+    expected_timezone: Asia/Tbilisi
+  tasks:
+    - name: The machine calls itself what the role was told to call it
+      ansible.builtin.command: hostname
+      register: current_hostname
+      changed_when: false
+      failed_when: current_hostname.stdout | trim != expected_hostname
+
+    # The reason the role writes this line at all: after a rename, anything
+    # resolving the local name — sudo among them — waits on DNS instead. So the
+    # check is the resolution, not the file.
+    - name: The new name resolves locally, which is what the hosts entry is for
+      ansible.builtin.command: getent hosts {{ expected_hostname }}
+      register: resolved
+      changed_when: false
+      failed_when: resolved.rc != 0 or '127.0.1.1' not in resolved.stdout
+
+    - name: Exactly one 127.0.1.1 line, and the stale one is gone
+      ansible.builtin.command: grep -c '^127\.0\.1\.1[[:space:]]' /etc/hosts
+      register: mapping_count
+      changed_when: false
+
+    - name: A second mapping would resolve to whichever came first
+      ansible.builtin.assert:
+        that: mapping_count.stdout | trim | int == 1
+        fail_msg: >-
+          /etc/hosts has {{ mapping_count.stdout | trim }} lines starting
+          127.0.1.1. prepare planted one for an old name; the role is supposed
+          to rewrite that line, not add beside it. Two entries and the resolver
+          takes the first, which after a rename is the wrong one.
+        quiet: true
+
+    - name: The old hostname no longer appears anywhere in the file
+      ansible.builtin.command: grep -c krot-before-the-rename /etc/hosts
+      register: stale_name
+      changed_when: false
+      failed_when: stale_name.rc == 0
+
+    # timedatectl reports what the system is actually running on, which is the
+    # /etc/localtime symlink resolved — not the contents of /etc/timezone, which
+    # can disagree with it.
+    - name: The timezone in effect is the one asked for
+      ansible.builtin.command: timedatectl show --property=Timezone --value
+      register: timezone_now
+      changed_when: false
+      failed_when: timezone_now.stdout | trim != expected_timezone
+
+    # dpkg-query, not `which`: fd-find installs its binary as `fdfind` because
+    # the name fd is taken by another package, and a check for the command would
+    # fail on a correctly installed package. That quirk is called out in the
+    # role's defaults, so it is worth having a test that holds it.
+    - name: Every base package is installed
+      ansible.builtin.command: dpkg-query -W -f=${Status} {{ item }}
+      register: pkg
+      changed_when: false
+      failed_when: "'install ok installed' not in pkg.stdout"
+      loop:
+        - fd-find
+        - jq
+        - ncdu
+
+    - name: The fd-find binary is present under the name Debian gives it
+      ansible.builtin.stat:
+        path: /usr/bin/fdfind
+      register: fdfind
+      failed_when: not fdfind.stat.exists
+
+    # The package itself, not only the config beside it. prepare deliberately
+    # leaves it absent: with it pre-installed, review measured that the role's
+    # install task could be deleted outright and the scenario stayed green.
+    - name: The role installed unattended-upgrades
+      ansible.builtin.command: dpkg-query -W -f=${Status} unattended-upgrades
+      register: uu_pkg
+      changed_when: false
+      failed_when: "'install ok installed' not in uu_pkg.stdout"
+
+    - name: The unattended-upgrades config the role wrote is in place
+      ansible.builtin.stat:
+        path: /etc/apt/apt.conf.d/52-krot-unattended
+      register: unattended
+      failed_when: not (unattended.stat.exists and unattended.stat.mode == "0644")
+
+    # apt-config dump is apt parsing its own configuration directory in order,
+    # so this is the value that would actually be used — including the effect of
+    # sorting after 50unattended-upgrades, which is the whole reason for the 52
+    # prefix. Reading the file would prove only that it was written.
+    - name: Apt itself reports the settings the role intends
+      ansible.builtin.command: apt-config dump
+      register: apt_config
+      changed_when: false
+
+    - name: Reboots stay an operator decision, and only security origins apply
+      ansible.builtin.assert:
+        that:
+          - >-
+            'Unattended-Upgrade::Automatic-Reboot "false";'
+            in apt_config.stdout_lines
+          - >-
+            apt_config.stdout_lines
+            | select('search', 'Allowed-Origins::.*-security')
+            | list | length >= 1
+          - >-
+            apt_config.stdout_lines
+            | select('search', 'Allowed-Origins::')
+            | reject('search', 'security')
+            | list | length == 0
+        fail_msg: >-
+          apt is running with origins
+          {{ apt_config.stdout_lines | select('search', 'Allowed-Origins::') | list }}.
+          A non-security origin here means feature upgrades install themselves
+          on a machine serving live sites.
+        quiet: true
+
+    - name: Nothing on the machine is in a failed state
+      ansible.builtin.command: systemctl --failed --no-legend
+      register: failed_units
+      changed_when: false
+      failed_when: failed_units.stdout | trim | length > 0

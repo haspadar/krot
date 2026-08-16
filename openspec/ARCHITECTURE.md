@@ -1,183 +1,240 @@
-# Архитектура Krot
+# Krot architecture
 
-Ansible-коллекция `haspadar.krot` — переносимые роли, которыми провижинятся серверы сети.
-Крот роет под сервисами и чинит «подземку» незаметно.
+The `haspadar.krot` Ansible collection — portable roles for provisioning the network's servers.
+A mole (*krot*) digs under the services and fixes the plumbing unseen.
 
-Соседи по сети: **Matilda** (донор — парсит, нормализует, отдаёт профили по API) и **Busel**
-(реципиенты — сайты, берущие профили из Matilda API). Krot держит машины обоих.
+Neighbours on the network: **Matilda** (the donor — parses, normalises and serves profiles over an
+API) and **Busel** (the recipients — sites that take profiles from Matilda's API). Krot holds up
+the machines of both.
 
-## Что это такое
+## What this is
 
-Коллекция ролей, а не плейбук. В репозитории **нет inventory и нет site.yml** для конкретных
-машин: они живут в busel и matilda, каждый со своими хостами и переменными. Krot — источник
-ролей, проекты подключают его как зависимость:
+A collection of roles, not a playbook. The repository has **no inventory and no site.yml** for
+particular machines: those live in busel and matilda, each with its own hosts and variables. Krot
+is the source of roles, and projects wire it in as a dependency:
 
 ```yaml
-# requirements.yml проекта
+# the project's requirements.yml
 collections:
   - name: git+https://github.com/haspadar/krot.git
     type: git
-    version: main   # или тег, чтобы заморозить инфраструктуру
+    version: main   # or a tag, to freeze the infrastructure
 ```
 
-Это «composer-way»: `ansible-galaxy collection install` раскладывает коллекцию локально, как
-`composer install` в `vendor/`. Не submodule и не symlink — обновление роли это смена `version`.
+This is the "composer way": `ansible-galaxy collection install` lays the collection out locally the
+way `composer install` fills `vendor/`. Not a submodule and not a symlink — updating a role means
+changing `version`.
 
-Почему коллекция, а не набор ролей: `ansible-galaxy` умеет ставить git-источник как **одну
-роль**, а не как каталог ролей. Коллекция — единственная форма, в которой набор ролей ставится
-одной командой и версионируется целиком.
+Why a collection rather than a set of roles: `ansible-galaxy` can install a git source as **one
+role**, not as a directory of roles. A collection is the only form in which a set of roles installs
+with a single command and is versioned as a whole.
 
-## Главный принцип: роль знает про хост, но не про приложения на нём
+## The main principle: a role knows about the host, not about the applications on it
 
-Это не стилистика, а то, что удерживает роли переносимыми. Как только роль узнаёт имя сайта или
-базы, она перестаёт быть общей и превращается в конфиг одной машины.
+This is not a matter of style; it is what keeps the roles portable. The moment a role learns the
+name of a site or a database, it stops being general and turns into the config of one machine.
 
-| Слой | Что делает | Инструмент |
+| Layer | What it does | Tool |
 |------|-----------|-----------|
-| Провижининг **машины** | юзер, пакеты, firewall, fail2ban, (docker \| php+pg+nginx) | **Krot (Ansible)** |
-| Провижининг **сайта** | домен, CF-зона, vhost, БД сайта, Bearer к Matilda | **console-команды `recipient:*`** в busel |
-| Выкатка **кода** | релизы, symlink, reload | **Deployer** (`deploy.php`) в каждом проекте |
+| Provisioning the **machine** | user, packages, firewall, fail2ban, (docker \| php+pg+nginx) | **Krot (Ansible)** |
+| Provisioning the **site** | domain, CF zone, vhost, the site's database, Bearer token to Matilda | **`recipient:*` console commands** in busel |
+| Deploying the **code** | releases, symlink, reload | **Deployer** (`deploy.php`) in each project |
 
-Пересечение Ansible и Deployer ровно одно: Ansible создаёт юзера `km` и каталог
-`/var/www/<project>` с правами, куда Deployer потом кладёт релизы.
+Ansible and Deployer overlap in exactly one place: Ansible creates the `km` user and the
+`/var/www/<project>` directory with permissions, where Deployer later puts releases.
 
-### Что роли намеренно НЕ делают
+### What the roles deliberately do NOT do
 
-- **vhost'ы конкретных сайтов.** Их генерит console-команда busel. Роль `nginx` владеет только
-  каталогами `sites-available`/`sites-enabled` и их правами.
-- **`log_format` и real-IP.** Владелец — тот же генератор vhost'ов: он знает, какое имя формата
-  называют его конфиги, и обновляет CF-диапазоны при каждой генерации, а не раз в прогон Ansible.
-  Два писателя на одну настройку неизбежно разъезжаются, а устаревший `set_real_ip_from` молча
-  пишет в логи адрес CDN вместо посетителя.
-- **Базы конкретных приложений.** Роль `postgresql` ставит только сервер; БД и роль под сайт
-  создаёт провижининг сайта.
-- **Выкатку кода.** Роль `deploy` лишь запускает Deployer проекта — релизы, symlink и rollback
-  остаются в `deploy.php`.
+- **Vhosts for particular sites.** A busel console command generates them. The `nginx` role owns
+  only the `sites-available`/`sites-enabled` directories and their permissions.
+- **`log_format` and real-IP.** The owner is that same vhost generator: it knows which format name
+  its configs refer to, and refreshes the CF ranges on every generation rather than once per Ansible
+  run. Two writers on one setting inevitably drift apart, and a stale `set_real_ip_from` silently
+  logs the CDN's address instead of the visitor's.
+- **Databases of particular applications.** The `postgresql` role installs the server only; the
+  site's database and role are created by site provisioning.
+- **Code deployment.** The `deploy` role only launches the project's Deployer — releases, symlink
+  and rollback stay in `deploy.php`.
 
-## Роли
+## Roles
 
-| Роль | Что делает | Кому |
+| Role | What it does | For whom |
 |------|-----------|------|
-| `bootstrap` | Юзер + sudo, `authorized_keys`, `PermitRootLogin no`, выключение парольного входа | все |
-| `common` | hostname, timezone, базовые пакеты, unattended security-upgrades, лимит журнала systemd | все |
-| `firewall` | ufw; Cloudflare-замок и еженедельное обновление диапазонов | все |
-| `fail2ban` | fail2ban с джейлом `sshd` | все |
-| `php` | PHP-FPM из ondrej PPA; slowlog, access-log с таймингами | busel |
-| `postgresql` | PostgreSQL из pgdg, csvlog, `pg_stat_statements`. Только сервер | busel |
-| `nginx` | nginx.conf, права, ротация, basic auth | busel |
-| `docker` | Docker + compose-плагин, лимит на рост логов контейнеров | matilda |
-| `deploy_keys` | Отдельный SSH-ключ на каждый приватный репозиторий + host-алиасы | все |
-| `deploy` | Запускает Deployer проекта с control-машины | все |
+| `bootstrap` | User + sudo, `authorized_keys`, `PermitRootLogin no`, disabling password login | all |
+| `common` | hostname, timezone, base packages, unattended security upgrades, a cap on the systemd journal | all |
+| `firewall` | ufw; the Cloudflare lock and a weekly range refresh | all |
+| `fail2ban` | fail2ban with the `sshd` jail | all |
+| `php` | PHP-FPM from the ondrej PPA; slowlog, access log with timings | busel |
+| `postgresql` | PostgreSQL from pgdg, csvlog, `pg_stat_statements`. The server only | busel |
+| `nginx` | nginx.conf, permissions, log retention, basic auth | busel |
+| `docker` | Docker + the compose plugin, a cap on container log growth | matilda |
+| `deploy_keys` | A separate SSH key per private repository + host aliases | all |
+| `deploy` | Runs the project's Deployer from the control machine | all |
+| `cron` | Periodic application jobs as systemd timers; the job list is an inventory variable | all |
 
-Два набора: busel — `common + php + postgresql + nginx + firewall + fail2ban` (несколько сайтов
-на машине за Cloudflare); matilda — `common + docker + firewall + fail2ban` (голый хост под
-Docker Compose, воспроизводимость приложения там решена самим compose).
+Two sets: busel — `common + php + postgresql + nginx + firewall + fail2ban` (several sites on one
+machine behind Cloudflare); matilda — `common + docker + firewall + fail2ban` (a bare host for
+Docker Compose, where compose itself solves the application's reproducibility).
 
-Каждая роль атомарна и применима отдельно. Все параметры — в `roles/<role>/defaults/main.yml`.
+Every role is atomic and applicable on its own. All parameters live in
+`roles/<role>/defaults/main.yml`.
 
-## Решения, которые стоили ошибок
+## Decisions that cost mistakes
 
-Каждое ниже — не теория, а то, что сломалось или чуть не сломалось на живой машине.
+Each one below is not theory but something that broke, or nearly broke, on a live machine.
 
-### Origin спрятан за Cloudflare, и это касается двух ролей
+### The origin is hidden behind Cloudflare, and that concerns two roles
 
-У busel несколько сайтов на одной машине за Cloudflare, origin-IP скрыт с первого дня.
-`firewall_cloudflare_only` впускает 80/443 только с опубликованных диапазонов CF; список лежит
-в `/etc/krot/cloudflare-ranges.txt` и обновляется таймером `krot-cf-ranges.timer`.
+busel has several sites on one machine behind Cloudflare, with the origin IP hidden from day one.
+`firewall_cloudflare_only` admits 80/443 only from CF's published ranges; the list lives in
+`/etc/krot/cloudflare-ranges.txt` and is refreshed by the `krot-cf-ranges.timer` timer.
 
-Скрипт отказывается менять правила, если ответ CF пустой или подозрительно короткий: усечённый
-список молча отрезал бы сайты от мира.
+The script refuses to change the rules if CF's answer is empty or suspiciously short: a truncated
+list would silently cut the sites off from the world.
 
-Правило для SSH создаётся **до** включения ufw и до замка, иначе прогон отрезает сам себя от
-машины. Роль `bootstrap` по той же причине не выключает парольный вход, пока не убедится, что
-валидный ключ на месте.
+The SSH rule is created **before** ufw is enabled and before the lock, otherwise the run cuts itself
+off from the machine. For the same reason the `bootstrap` role does not disable password login until
+it has confirmed a valid key is in place.
 
-### Закрытое состояние сайта — умолчание
+### A locked site is the default state
 
-Сайт не должен быть доступен, проиндексирован или обойдён краулером, пока его не посмотрели.
-Krot ставит только механизм: `/etc/nginx/.htpasswd` (пароль из секретницы в рантайме) и сниппет
-`/etc/nginx/snippets/krot-auth.conf`. **Какие сайты закрыты — решает не Krot**, а генератор
-vhost'ов: он включает сниппет, пока сайт не помечен опубликованным. Так сайты открываются по
-одному, а не все разом.
+A site must not be reachable, indexed or crawled before someone has looked at it. Krot provides the
+mechanism only: `/etc/nginx/.htpasswd` (the password from the secret store at runtime) and the
+`/etc/nginx/snippets/krot-auth.conf` snippet. **Which sites are locked is not decided by Krot** but
+by the vhost generator: it includes the snippet while a site is not marked as published. This way
+sites open one at a time rather than all at once.
 
-### Мажорная версия PostgreSQL не поднимается сменой переменной
+### A major PostgreSQL version is not raised by changing a variable
 
-`postgresql_version` — версия, которую роль **ставит**, а не обновление уже работающей.
-PostgreSQL не читает каталог данных предыдущей мажорной версии, поэтому подъём переменной ставит
-второй кластер рядом. Дальше незаметное: `pg_createcluster` берёт первый порт, не занятый
-существующим кластером (5433),
-конфиг роли объявляет 5432 — новый кластер не стартует, приложение продолжает работать со старым,
-и всё выглядит исправным.
+`postgresql_version` is the version the role **installs**, not an upgrade of a running one.
+PostgreSQL does not read the data directory of a previous major version, so raising the variable
+installs a second cluster alongside. What follows goes unnoticed: `pg_createcluster` takes the first
+port not occupied by an existing cluster (5433), the role's config declares 5432 — the new cluster
+does not start, the application keeps working with the old one, and everything looks fine.
 
-Роль отказывается прогоняться рядом с кластером чужой версии и называет её. Удаление старых баз
-возможно только через явный `postgresql_remove_other_versions`: уничтожение данных не должно быть
-побочным эффектом правки номера версии.
+The role refuses to run alongside a cluster of a different version and names it. Removing the old
+databases is possible only through an explicit `postgresql_remove_other_versions`: destroying data
+must not be a side effect of editing a version number.
 
-Кластеры определяются по `pg_lsclusters`, а не по каталогам `/etc/postgresql` — пакет, чей
-postinst не смог создать кластер (порт занят), всё равно оставляет за собой конфиг-каталог.
+Clusters are identified through `pg_lsclusters` rather than through `/etc/postgresql` directories —
+a package whose postinst failed to create a cluster (the port was taken) still leaves a config
+directory behind.
 
-### `shared_preload_libraries` — список, за который дерутся
+### `shared_preload_libraries` is a list people fight over
 
-PostgreSQL берёт последнее присваивание целиком и не умеет дописывать. Поэтому роль пишет весь
-список разом из переменной: будущий `auto_explain`, добавленный вторым конфигом, молча вытеснил
-бы `pg_stat_statements`. Если преднагружать нечего, строка не пишется вовсе — параметр остаётся
-`default`, а не фиксируется как `''`, который затёр бы чужое значение.
+PostgreSQL takes the last assignment as a whole and cannot append. The role therefore writes the
+entire list at once from a variable: a future `auto_explain` added through a second config would
+silently evict `pg_stat_statements`. When there is nothing to preload, the line is not written at
+all — the parameter stays `default` rather than being pinned to `''`, which would overwrite someone
+else's value.
 
-### Один deploy key нельзя использовать в двух репозиториях GitHub
+### One deploy key cannot be used in two GitHub repositories
 
-Машина, тянущая несколько приватных репо, получает по ключу на каждый (`deploy_keys`) плюс
-host-алиас: клонировать надо с `git@<name>.github.com:owner/repo.git`. Без алиаса ssh предъявляет
-первый подошедший ключ, и GitHub отвечает за чужой репозиторий.
+A machine pulling several private repos gets a key for each (`deploy_keys`) plus a host alias: clone
+with `git@<name>.github.com:owner/repo.git`. Without the alias, ssh presents the first key that fits
+and GitHub answers for the wrong repository.
 
-### Проверка конфига в temp-каталоге не работает
+### A run you cannot learn has failed
 
-У шаблона nginx нет `validate:`: он тестировал бы файл из временного каталога Ansible, а nginx
-резолвит относительные include (`fastcgi_params` в сгенерированных vhost'ах) относительно
-каталога самого конфига — исправный конфиг падал бы. Вместо этого `backup: true` плюс хендлер,
-который проверяет собранный конфиг на месте и валит прогон до перезагрузки.
+On busel an hourly job did not run once in five days. Its output went to `/var/log/`, where `km` has
+no write permission: the redirection failed **before** PHP started, and the error message had
+nowhere to land.
 
-У php-fpm обратная история: `reloaded` **молча успевает** на сломанном пуле, поэтому хендлер
-сперва гоняет `php-fpm --test`.
+The defect is not the wrong path — a path is fixed in a minute. The defect is that there was no way
+to learn about it: `journalctl -u cron` printed `(km) CMD (...)` every hour, because cron reports
+that a line was **started** and does not know how it ended. There was no log, so there was nothing
+to read, and a missing file is indistinguishable from "nothing written yet".
 
-## Секреты
+Hence the `cron` role and its transport: a systemd timer records the exit code, puts the output in
+the journal under the unit's name, and surfaces failure in `systemctl --failed` — the command people
+type when looking at a machine for the first time. Verified on busel: the same permission failure,
+reproduced on the new mechanism, became visible three ways without sudo.
 
-Через **Bitwarden в рантайме** (`community.general.bitwarden`), в репозитории секретов нет.
-Ansible Vault не используется. Перед прогоном нужен разблокированный `bw` — иначе роль,
-которой нужен пароль, честно падает на `assert`, а не ставит пустой.
+The jobs themselves are declared by the inventory. A role that knew the name `colony:traffic` would
+stop being general by exactly the rule above.
 
-Разблокировать мало: **токен надо отдать плейбуку через окружение**.
+What this does not fix: a job that returns 0 having done nothing stays green under any transport.
+That is the job's responsibility, not the machine's.
+
+**The unit file itself can fail just as silently**, which is why the role escapes the command on the
+author's behalf. Measured on busel: `date +%Y-%m-%d` in `ExecStart` printed
+`/etc/systemd/system-<machine-id>-/run/credentials/<unit>` and exited with code 0 — a `%` in a unit
+file is a specifier and must be doubled. A single quote inside the command tears argv apart exactly
+the way argument joining does in `ssh`: `-c` receives the first word, the rest goes to `$0` and
+`$1`, the work is half done and the exit code is zero. The role closes both cases itself, because
+both are precisely the failure it was written for.
+
+### One log, one logrotate entry, or nothing rotates at all
+
+The `nginx` role used to install `/etc/logrotate.d/krot-nginx` with the same glob as the packaged
+nginx file. logrotate picks no winner: it prints `duplicate log entry`, exits with code 1 and
+**processes not a single file on the machine** — php and postgresql, entirely uninvolved, stop
+rotating too.
+
+On busel this lasted three days and was only discovered through `systemctl --failed`. The duplicate
+is determined by the resolved path rather than by the template text (verified by experiment: an
+explicit `access.log` against `*.log` gives the same error), so a differently worded glob does not
+help. The role now edits `rotate` in the packaged config and installs no file of its own.
+
+What this shares with the previous point: the cost lay not in the breakage itself but in its being
+visible only to a command nobody was typing.
+
+### Validating a config in a temp directory does not work
+
+The nginx template has no `validate:`: it would test the file from Ansible's temporary directory,
+while nginx resolves relative includes (`fastcgi_params` in generated vhosts) relative to the config
+file's own directory — a healthy config would fail. Instead there is `backup: true` plus a handler
+that checks the assembled config in place and fails the run before a reload.
+
+php-fpm is the opposite story: `reloaded` **silently succeeds** on a broken pool, so the handler runs
+`php-fpm --test` first.
+
+## Secrets
+
+Through **Bitwarden at runtime** (`community.general.bitwarden`); there are no secrets in the
+repository. Ansible Vault is not used. An unlocked `bw` is required before a run — otherwise a role
+that needs a password fails honestly on an `assert` rather than installing an empty one.
+
+Unlocking is not enough: **the token must be handed to the playbook through the environment**.
 
 ```bash
 BW_SESSION="$(cat /tmp/bw-$USER/session)" ansible-playbook site.yml
 ```
 
-Lookup-плагин запускает `bw` сам и про кеш сессии не знает, поэтому без переменной он видит
-хранилище запертым и валит прогон — даже когда `bw status --session` из того же кеша отвечает
-`unlocked`. Ошибка при этом жалуется на замок, а не на отсутствующую переменную, и уводит
-искать не там.
+The lookup plugin runs `bw` itself and knows nothing about the session cache, so without the variable
+it sees the vault as locked and fails the run — even when `bw status --session` from that same cache
+answers `unlocked`. The error then complains about the lock rather than the missing variable, and
+sends you looking in the wrong place.
 
-## Логи
+## Logs
 
-Настроены под сбор (Loki/Alloy и аналоги), но агент не ставится — это отдельная роль.
+Configured for collection (Loki/Alloy and the like), but no agent is installed — that is a separate
+role.
 
-- **nginx** — формат задаёт генератор vhost'ов; роль отвечает за ротацию и за то, что `conf.d`
-  подключается раньше зависящих от него vhost'ов.
-- **php-fpm** — `/var/log/php/`: access с таймингами, slowlog со стек-трейсом, отдельный error-log.
-- **postgresql** — csvlog, медленные запросы, `log_lock_waits`, `log_checkpoints`, плюс
-  `pg_stat_statements` для запросов, которые никогда не пересекают порог медленного лога.
+- **nginx** — the format is set by the vhost generator; the package owns rotation, and the role edits
+  only retention in its config and makes sure `conf.d` is included before the vhosts that depend on
+  it.
+- **php-fpm** — `/var/log/php/`: access with timings, slowlog with a stack trace, a separate error log.
+- **postgresql** — csvlog, slow queries, `log_lock_waits`, `log_checkpoints`, plus
+  `pg_stat_statements` for the queries that never cross the slow log's threshold.
 
-nginx и php ротируются через logrotate, PostgreSQL ротирует себя сам.
+- **periodic jobs** — the journal under the unit's name; a file only on an explicit `log_file`, and
+  then the role writes an entry in `/etc/logrotate.d/` as well.
 
-## Качество
+nginx and php are rotated through logrotate; PostgreSQL rotates itself. The `nginx` role edits the
+packaged rotation config rather than installing a second one: two configs for one log bring
+logrotate down entirely.
+
+## Quality
 
 ```bash
-yamllint .        # форматирование YAML
-ansible-lint      # профиль production — строжайший
+yamllint .        # YAML formatting
+ansible-lint      # the production profile — the strictest one
 ```
 
-CI (`.github/workflows/lint.yml`) гоняет оба на каждый PR плюс `ansible-galaxy collection build`.
+CI (`.github/workflows/lint.yml`) runs both on every PR, plus `ansible-galaxy collection build`.
 
-Все роли идемпотентны: повторный прогон даёт `changed=0`. Это не декларация — проверено прогоном
-на живой машине, и каждое изменение роли проверяется тем же способом.
+All roles are idempotent: a repeat run yields `changed=0`. This is not a declaration — it is
+verified by running against a live machine, and every role change is verified the same way.
 
-Целевая платформа — Ubuntu 24.04 (noble).
+The target platform is Ubuntu 24.04 (noble).

@@ -1,69 +1,72 @@
-# Proposal: посещаемость по логам nginx
+# Proposal: traffic statistics from nginx logs
 
 ## Why
 
-Нужна посещаемость: сколько людей приходит, откуда, что смотрят, сколько ботов.
+We need traffic statistics: how many people arrive, from where, what they look at, how many bots.
 
-**Счётчики-скрипты (GA, Метрика, Matomo с JS) исключены.** Это сеть сайтов под разными
-доменами, и общий счётчик — даже с разными ID — прямая улика связи между ними. Плюс сторонний
-скрипт на adult-тематике рискует аккаунтом вместе со всей историей.
+**Script-based counters (GA, Metrica, Matomo with JS) are excluded.** This is a network of sites
+on different domains, and a shared counter — even with different IDs — is direct evidence of a
+link between them. On top of that, a third-party script on adult content risks the account along
+with its entire history.
 
-Логи nginx уже содержат всё нужное. GoAccess читает их и рисует HTML — ни строки JS на сайтах,
-ни одного внешнего сервиса, данные не покидают машину.
+The nginx logs already contain everything needed. GoAccess reads them and renders HTML — not a
+line of JS on the sites, not a single external service, and the data never leaves the machine.
 
 ## What Changes
 
-### Роль `goaccess`
+### Role `goaccess`
 
-Пакет из репозитория Ubuntu (1.8.1), отдельный системный юзер в группе `adm` — этого хватает,
-чтобы читать `0640 www-data:adm` логи, не работая от root.
+The package from the Ubuntu repository (1.8.1), a separate system user in the `adm` group — that
+is enough to read `0640 www-data:adm` logs without running as root.
 
-### Отчёт на каждый сайт, никогда общий
+### One report per site, never a shared one
 
-Одна страница со всеми доменами — то самое место, где связь между сайтами сети становится
-видна тому, кто получит доступ. Поэтому `<домен>.html` на сайт и `autoindex off`: список
-файлов и есть список доменов.
+A single page with all domains is exactly the place where the link between the network's sites
+becomes visible to whoever gains access. Hence `<domain>.html` per site and `autoindex off`: the
+file listing is the domain listing.
 
-Сайты роль **находит сама** — по vhost'ам в `sites-enabled`. Перечислять домены в inventory
-значило бы положить список сайтов в конфигурацию машины, а он живёт в базе busel. Побочная
-выгода: глоб по `/var/log/nginx/*` подхватил бы логи удалённых и тестовых vhost'ов, а этот
-критерий — нет.
+The role **discovers the sites itself** — from the vhosts in `sites-enabled`. Listing the domains
+in the inventory would mean putting the site list into the machine's configuration, while it
+lives in the busel database. A side benefit: a glob over `/var/log/nginx/*` would pick up the
+logs of removed and test vhosts, whereas this criterion does not.
 
-### Роль строит отчёты, отдаёт их проект
+### The role builds the reports, the project serves them
 
-Первая версия отдавала отчёты сама: vhost на `127.0.0.1:8443` за basic auth, доступ через
-SSH-туннель. Логика была в том, что поддомен потребовал бы CF-зоны, DNS-записи и
-origin-сертификата, а список доменов с трафиком оказался бы в интернете за одним паролем.
+The first version served the reports itself: a vhost on `127.0.0.1:8443` behind basic auth,
+accessed through an SSH tunnel. The reasoning was that a subdomain would require a CF zone, a DNS
+record and an origin certificate, and the list of domains with traffic would end up on the
+internet behind a single password.
 
-**Отменено.** Туннель означает, что с телефона отчёт не открыть, а это ровно тот сценарий,
-ради которого статистика и нужна. В busel решение уже было принято и записано (`CLAUDE.md`):
-отчёт открывается внутри админки `busel.click` под её же логином, роутом `/traffic` — без
-второго пароля и без поддомена в публичном DNS. Роль об этом не знала, потому что в krot
-решение не переносили.
+**Cancelled.** A tunnel means the report cannot be opened from a phone, and that is exactly the
+scenario the statistics are needed for. In busel the decision had already been made and written
+down (`CLAUDE.md`): the report opens inside the `busel.click` admin panel under its own login, at
+the route `/traffic` — without a second password and without a subdomain in public DNS. The role
+did not know about this, because the decision was never carried over into krot.
 
-Теперь роль пишет файлы в `/var/www/goaccess` (`0750`, файлы `0640`, группа
-`goaccess_reader_group`) и на этом останавливается. Отдавать их самой ролью значило бы знать,
-какая машина держит админку, на каком домене она отвечает и как устроены её сессии — ничего из
-этого не верно для следующей машины. Разделение то же, что у `postgresql`: роль ставит сервер,
-базы per-site заводит busel.
+Now the role writes files into `/var/www/goaccess` (`0750`, files `0640`, group
+`goaccess_reader_group`) and stops there. Serving them from the role itself would mean knowing
+which machine holds the admin panel, which domain it answers on and how its sessions work — none
+of which holds true for the next machine. The separation is the same as with `postgresql`: the
+role installs the server, busel creates the per-site databases.
 
-Роль **удаляет** прежний vhost, а не просто перестаёт его ставить: на уже развёрнутых машинах
-nginx продолжал бы отдавать 8443 после обновления коллекции.
+The role **removes** the previous vhost rather than merely ceasing to install it: on machines
+already deployed, nginx would keep serving 8443 after the collection was updated.
 
-### Пересборка из логов, а не накопление в базе
+### Rebuild from the logs, not accumulation in a database
 
-Первая версия использовала `--persist/--restore`. Это оказалось **неверно**: GoAccess
-складывает поданное к накопленному и не помнит, какие строки уже видел, поэтому живой лог
-пересчитывался на каждом прогоне. Измерено на машине: три запроса дали 3, 5, 7, 9 за четыре
-сборки.
+The first version used `--persist/--restore`. This turned out to be **wrong**: GoAccess adds what
+it is fed to what it has accumulated and does not remember which lines it has already seen, so
+the live log was recounted on every run. Measured on the machine: three requests produced 3, 5,
+7, 9 across four builds.
 
-Теперь отчёт строится с нуля из всех логов на диске, включая ротированные `.gz`. Цифры зависят
-только от содержимого диска, глубина истории равна `rotate 14` в logrotate, а чтение двух недель
-логов одного сайта занимает доли секунды.
+Now the report is built from scratch from all logs on disk, including the rotated `.gz` ones. The
+figures depend only on the contents of the disk, the history depth equals `rotate 14` in
+logrotate, and reading two weeks of one site's logs takes a fraction of a second.
 
-### Времени в логах не было
+### There was no time in the logs
 
-Формат `recipient` нёс всё, кроме момента запроса. Это не «отчёт без динамики», а полный отказ:
+The `recipient` format carried everything except the moment of the request. This is not a "report
+without time series" but a complete failure:
 
 ```text
 Fatal error has occurred
@@ -71,15 +74,15 @@ Error occurred at: src/parser.c - parse_log - 2196
 No time format was found on your conf file.
 ```
 
-Значит выбора не было — `$time_local` добавлен, но **в busel** (haspadar/busel#13), потому что
-`busel-shared.conf` помечен «Generated by recipient:nginx:generate — do not edit by hand».
-Формат принадлежит проекту, роль его только читает.
+So there was no choice — `$time_local` was added, but **in busel** (haspadar/busel#13), because
+`busel-shared.conf` is marked "Generated by recipient:nginx:generate — do not edit by hand". The
+format belongs to the project; the role only reads it.
 
 ## Impact
 
-- Роль **требует** формата с `$time_local`; на логах без него отчёт не построится.
-- Строки, записанные до смены формата, отбрасываются на входе (`grep '^\['`). GoAccess не
-  умеет терпеть ошибки разбора: когда все прочитанные строки невалидны, он бросает файл целиком,
-  а не пропускает их. На busel это были 119 старых строк против 3 новых — без фильтра отчёта
-  не было бы вовсе, пока лог не ротируется.
-- Первые сутки после перехода отчёт неполон: старые строки не учитываются.
+- The role **requires** a format with `$time_local`; on logs without it the report will not build.
+- Lines written before the format change are discarded at the input (`grep '^\['`). GoAccess
+  cannot tolerate parse errors: when every line it reads is invalid, it drops the whole file
+  rather than skipping them. On busel this was 119 old lines against 3 new ones — without the
+  filter there would have been no report at all until the log rotated.
+- For the first day after the switch the report is incomplete: the old lines are not counted.

@@ -1,0 +1,202 @@
+---
+# What this branch promises is a negative: the origin stops answering the open
+# internet on 80/443. A negative is what a test most easily gets wrong, because
+# "no rule found" also happens when the rule was never looked for correctly.
+# So each check below states both halves — the open-to-anyone rule is gone AND
+# the Cloudflare-scoped rules are present, counted exactly.
+- name: Verify
+  hosts: all
+  vars:
+    expected_v4_count: 10
+    expected_v6_count: 2
+    web_ports: [80, 443]
+  tasks:
+    - name: The ufw service is active
+      ansible.builtin.command: ufw status verbose
+      register: ufw_status
+      changed_when: false
+
+    - name: The firewall is enforcing, not merely configured
+      ansible.builtin.assert:
+        that: "'Status: active' in ufw_status.stdout"
+        fail_msg: "ufw is inactive, so none of the rules below are enforced."
+        quiet: true
+
+    - name: Read the ruleset from the kernel
+      ansible.builtin.command: iptables -S
+      register: v4_rules
+      changed_when: false
+
+    - name: Read the IPv6 ruleset too
+      ansible.builtin.command: ip6tables -S
+      register: v6_rules
+      changed_when: false
+
+    # Same first check as the open branch, and for the same reason: a firewall
+    # role that locks out SSH is the one failure with no remote recovery.
+    - name: SSH survived
+      ansible.builtin.assert:
+        that: >-
+          v4_rules.stdout_lines
+          | select('search', 'dport 22 ')
+          | select('search', '-j ACCEPT')
+          | list | length > 0
+        fail_msg: >-
+          No ACCEPT rule for port 22. This play would be the last one to reach
+          the machine.
+        quiet: true
+
+    # The point of the branch. `ufw status` lists sources, so an entry allowing
+    # a web port from Anywhere is exactly what must not exist.
+    - name: No web port is open to the world
+      ansible.builtin.assert:
+        that: >-
+          ufw_status.stdout_lines
+          | select('search', '^' ~ item ~ '/tcp\s')
+          | select('search', 'Anywhere')
+          | reject('search', 'krot-cloudflare')
+          | list | length == 0
+        fail_msg: >-
+          Port {{ item }} still accepts traffic from Anywhere. The origin is
+          reachable directly, which is the single thing this branch exists to
+          prevent.
+        quiet: true
+      loop: "{{ web_ports }}"
+
+    # Counted, not merely present. A truncated fetch that produced two rules
+    # instead of twenty would satisfy "some CF rules exist" while quietly
+    # locking out most of Cloudflare — and with it, most visitors.
+    # prepare opened the web ports through the "Nginx Full" profile as well as
+    # by port. A profile rule survives a port-based delete, so this is a
+    # separate way for the ports to stay open to everyone — and the one the
+    # role's firewall_app_profiles_to_remove list exists for.
+    - name: No application-profile rule keeps the web ports open
+      ansible.builtin.assert:
+        that: "'Nginx' not in ufw_status.stdout"
+        fail_msg: >-
+          An Nginx application-profile rule is still present. It opens 80/443 to
+          everyone regardless of the Cloudflare rules beside it, and a
+          port-based delete does not touch it.
+        quiet: true
+
+    - name: Every prepared IPv4 range has a rule for every web port
+      ansible.builtin.assert:
+        that: >-
+          v4_rules.stdout_lines
+          | select('search', 'dport ' ~ item ~ ' ')
+          | select('search', '-j ACCEPT')
+          | list | length == expected_v4_count
+        fail_msg: >-
+          Expected {{ expected_v4_count }} Cloudflare ACCEPT rules for port
+          {{ item }}, found a different number. A short list means visitors
+          arriving through the missing ranges get nothing.
+        quiet: true
+      loop: "{{ web_ports }}"
+
+    - name: The IPv6 ranges made it in as well
+      ansible.builtin.assert:
+        that: >-
+          v6_rules.stdout_lines
+          | select('search', 'dport ' ~ item ~ ' ')
+          | select('search', '-j ACCEPT')
+          | list | length == expected_v6_count
+        fail_msg: >-
+          Expected {{ expected_v6_count }} IPv6 Cloudflare rules for port
+          {{ item }}. The role fetches v4 and v6 separately, so one family can
+          go missing while the other looks fine.
+        quiet: true
+      loop: "{{ web_ports }}"
+
+    # The v4 body is served without a trailing newline, mirroring Cloudflare.
+    # If the role concatenated the two responses before splitting, the last v4
+    # range would fuse onto the first v6 one and both would vanish. Naming the
+    # boundary addresses is what catches that.
+    - name: The ranges either side of the fetch boundary are intact
+      ansible.builtin.assert:
+        that: "item in ufw_status.stdout"
+        fail_msg: >-
+          {{ item }} has no rule. It sits at the join between the two fetched
+          bodies, where a concatenation bug eats exactly one range from each.
+        quiet: true
+      loop:
+        - 203.0.113.224/27
+        - 2001:db8::/32
+
+    - name: The applied ranges were recorded for the refresh script
+      ansible.builtin.slurp:
+        src: /etc/krot/cloudflare-ranges.txt
+      register: recorded
+
+    # The script diffs against this file to decide whether to act. A file that
+    # disagrees with the live ruleset makes the next refresh either a no-op when
+    # work is needed, or a rewrite when nothing changed.
+    - name: It lists exactly the ranges that were applied
+      ansible.builtin.assert:
+        that:
+          - >-
+            (recorded.content | b64decode | trim).splitlines() | length
+            == expected_v4_count + expected_v6_count
+          - "'203.0.113.224/27' in (recorded.content | b64decode)"
+          - "'2001:db8::/32' in (recorded.content | b64decode)"
+        fail_msg: >-
+          /etc/krot/cloudflare-ranges.txt does not match what was applied, so
+          the weekly refresh will compare against a false baseline.
+        quiet: true
+
+    - name: The refresh timer is enabled and queued
+      ansible.builtin.command: systemctl is-enabled krot-cf-ranges.timer
+      register: timer_enabled
+      changed_when: false
+      failed_when: timer_enabled.stdout != "enabled"
+
+    - name: Systemd actually scheduled it, rather than merely accepting it
+      ansible.builtin.command: systemctl list-timers --all --no-pager krot-cf-ranges.timer
+      register: timers
+      changed_when: false
+
+    - name: The timer appears in list-timers
+      ansible.builtin.assert:
+        that: "'krot-cf-ranges.timer' in timers.stdout"
+        fail_msg: >-
+          The timer is enabled but absent from list-timers, which is how a
+          refresh that never runs still looks healthy.
+        quiet: true
+
+    - name: The unit files carry no systemd parse warnings
+      ansible.builtin.command: systemd-analyze verify /etc/systemd/system/krot-cf-ranges.service
+      changed_when: false
+
+    # The script is what keeps the ruleset current for the other 6 days 23
+    # hours of the week, so a syntax error in it is a slow-motion outage.
+    - name: The refresh script is valid bash
+      ansible.builtin.command: bash -n /usr/local/sbin/krot-cf-ranges
+      changed_when: false
+
+    # Running it for real is the only way to know the whole path works: fetch,
+    # compare, decide. With the ranges unchanged since converge, it must decide
+    # to do nothing — and say so.
+    - name: Running the refresh script now is a no-op
+      ansible.builtin.command: /usr/local/sbin/krot-cf-ranges
+      register: refresh
+      changed_when: false
+      failed_when: >-
+        refresh.rc != 0 or 'ranges unchanged' not in refresh.stdout
+
+    - name: The rule count did not move after that run
+      ansible.builtin.command: iptables -S
+      register: v4_after
+      changed_when: false
+
+    - name: The ruleset is identical to before the script ran
+      ansible.builtin.assert:
+        that: v4_after.stdout == v4_rules.stdout
+        fail_msg: >-
+          The refresh script changed the ruleset although it reported the ranges
+          unchanged — the two disagree, and the ruleset is what visitors meet.
+        quiet: true
+
+    - name: Nothing on the machine is in a failed state
+      ansible.builtin.command: systemctl --failed --no-legend
+      register: failed_units
+      changed_when: false
+      failed_when: failed_units.stdout | trim | length > 0

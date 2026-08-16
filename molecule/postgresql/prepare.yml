@@ -1,0 +1,122 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
+    # Both packages are missing from the Docker image and present on a real
+    # machine — checked against the Ubuntu 24.04 cloud image manifest, which
+    # lists python3-debian 0.1.49ubuntu2. So this is the image being minimal,
+    # not the role forgetting a dependency, and installing them here keeps the
+    # scenario testing postgresql rather than the base image.
+    #
+    # ca-certificates: the role fetches its signing key over HTTPS from
+    # postgresql.org, and without it that fails with a certificate error that
+    # reads like an unreachable repository.
+    #
+    # python3-debian: ansible.builtin.deb822_repository refuses to run without
+    # it — "python3-debian is not installed, and install_python_debian is
+    # False". Three roles here use that module, so the same gap would appear in
+    # the php and docker scenarios.
+    - name: Packages the base image lacks and a real machine has
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - python3-debian
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    # A hand-rolled pgdg.list from an earlier manual install, pointing at a
+    # different keyring. apt refuses to read two sources for one repository, so
+    # the role removes this before adding its own — and with no such file
+    # present, that removal would be a no-op nothing could tell from a mistake.
+    # Bring the cluster up BEFORE the role writes its configuration, because a
+    # first install cannot tell restart from reload.
+    #
+    # Measured: on a bare machine the package's postinst creates the cluster,
+    # the role writes 99-krot.conf, and the server starts afterwards — reading
+    # the finished file on its very first boot. The restart handler then has
+    # nothing to prove, and swapping `state: restarted` for `state: reloaded`
+    # left the whole scenario green.
+    #
+    # On a server that is already running, the difference is exactly what the
+    # handler's comment claims: changing max_connections and reloading leaves
+    # the old value in effect (123 while the file says 177), while a restart
+    # applies it. Since a second provisioning run of an existing machine is the
+    # common case, that is the state this scenario starts from.
+    # postgresql-18 lives only in pgdg, and the repository is added by the role.
+    # An already-provisioned machine has it, so prepare adds it the same way —
+    # deb822, which is what the role writes too, so the role's own task lands on
+    # an identical file and stays idempotent.
+    - name: The pgdg signing key, as an earlier run would have left it
+      ansible.builtin.get_url:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        dest: /usr/share/keyrings/pgdg.asc
+        mode: "0644"
+
+    - name: The pgdg repository
+      ansible.builtin.deb822_repository:
+        name: pgdg
+        types: deb
+        uris: https://apt.postgresql.org/pub/repos/apt
+        suites: "{{ ansible_facts['distribution_release'] }}-pgdg"
+        components: main
+        signed_by: /usr/share/keyrings/pgdg.asc
+        state: present
+
+    - name: Install PostgreSQL and start it before the role configures anything
+      ansible.builtin.apt:
+        name: postgresql-18
+        state: present
+        update_cache: true
+
+    - name: The cluster is up, so the role's config lands on a running server
+      ansible.builtin.systemd_service:
+        name: postgresql@18-main
+        state: started
+
+    # A setting the role will have to change on the live server. Without this
+    # the config file is new rather than modified, and a reload would look as
+    # correct as a restart.
+    - name: A previous, different value for a postmaster-level setting
+      ansible.builtin.copy:
+        dest: /etc/postgresql/18/main/conf.d/99-krot.conf
+        content: |
+          # Left by an earlier provisioning run.
+          max_connections = 111
+        owner: postgres
+        group: postgres
+        mode: "0640"
+
+    - name: Make the server actually adopt that value
+      ansible.builtin.systemd_service:
+        name: postgresql@18-main
+        state: restarted
+
+    # Planted last, after every apt operation this file needs. A hand-rolled
+    # pgdg.list from an earlier manual install points at a different keyring,
+    # and apt refuses to read two sources for one repository — so the role
+    # removes it before adding its own. With no such file present that removal
+    # would be a no-op, indistinguishable from a mistake.
+    #
+    # One line, no continuation: a `\` inside a .list makes apt reject the file
+    # outright ("Malformed entry 1"), which breaks every later package
+    # operation on the machine rather than exercising the duplicate-source case
+    # this is here for.
+    - name: A legacy pgdg source list, as a manual install would have left it
+      ansible.builtin.copy:
+        dest: /etc/apt/sources.list.d/pgdg.list
+        content: |
+          deb [signed-by=/etc/apt/trusted.gpg.d/postgresql.gpg] https://apt.postgresql.org/pub/repos/apt noble-pgdg main
+        mode: "0644"

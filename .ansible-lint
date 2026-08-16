@@ -8,6 +8,12 @@ exclude_paths:
   - collections/
   - .venv/
   - .github/
+  # Probes attached to wiki measurements. They are illustrations of a tool's
+  # behaviour, not playbooks the collection runs, and some of them deliberately
+  # do the thing a rule forbids — a `systemctl show` next to the module call is
+  # the entire point of the systemd_service probe. Linting them would either
+  # fail the build or push the probe to stop demonstrating what it demonstrates.
+  - wiki/assets/
 
 # Roles here are consumed by busel/matilda via ansible-galaxy + git, so they are
 # never published to a Galaxy hub and need no namespace-prefixed name.

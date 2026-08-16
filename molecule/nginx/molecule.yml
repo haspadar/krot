@@ -1,0 +1,56 @@
+---
+# The server-level configuration, with basic auth off — the default. The auth
+# branch is a separate scenario: it is guarded by `when: nginx_auth_enabled`,
+# and its idempotence is hand-written (rc == 10 from a helper script) rather
+# than a module's, which is exactly the kind of thing that needs its own run.
+driver:
+  name: docker
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-nginx
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      roles_path: ../../roles
+  inventory:
+    host_vars:
+      krot-nginx:
+        nginx_auth_enabled: false
+        # Not 14. The nginx package ships `rotate 14` already — measured in this
+        # image — so running with the role's default would leave the file
+        # byte-identical whether the role edited it or did nothing at all, and
+        # the check that retention was applied would pass on a role that never
+        # touched it.
+        nginx_log_retention_days: 21
+        # Values that differ from the defaults for the same reason: a rendered
+        # setting has to be distinguishable from the one nginx ships.
+        nginx_worker_connections: 2048
+        nginx_client_max_body_size: 32M
+        nginx_deploy_root: /var/www/krot-test
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible

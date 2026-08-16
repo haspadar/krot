@@ -1,0 +1,71 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
+    # The extra jail points at nginx's error log. This is NOT because fail2ban
+    # refuses a jail whose logpath is missing — it does not: review measured a
+    # jail with `logpath = /var/log/nowhere/missing.log` and the directory
+    # deleted, and it stayed in `Jail list` with the service active and no
+    # warning. The original comment here claimed otherwise and was wrong.
+    #
+    # It is here so the scenario resembles the machine the jail is written for,
+    # where that log exists. Creating the file rather than installing nginx
+    # keeps this scenario about fail2ban.
+    # Without this the role's "Enable fail2ban" task is untestable — review
+    # measured that deleting it left the scenario green. The package enables
+    # the unit itself, and the role's Restart handler starts it, so neither
+    # is-enabled nor is-active was a fact about the task. A preset of `disable`
+    # makes dpkg leave the unit alone, and then `enabled` in verify can only
+    # have come from the role. Same reasoning as molecule/php/prepare.yml,
+    # where it is written out in full.
+    - name: The preset directory, which this image does not ship
+      ansible.builtin.file:
+        path: /etc/systemd/system-preset
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Stop the package from enabling fail2ban, so the role has to do it
+      ansible.builtin.copy:
+        dest: /etc/systemd/system-preset/00-krot-scenario.preset
+        content: |
+          # Scenario-only: see molecule/php/prepare.yml for why.
+          disable fail2ban.service
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: The log directory the extra jail watches
+      ansible.builtin.file:
+        path: /var/log/nginx
+        state: directory
+        owner: root
+        group: adm
+        mode: "0750"
+
+    - name: A log file with a line in it, so the jail has something to tail
+      ansible.builtin.copy:
+        dest: /var/log/nginx/error.log
+        content: |
+          2026/08/15 12:00:00 [error] 1#1: *1 open() failed, client: 10.0.0.1
+        owner: root
+        group: adm
+        mode: "0640"
+
+    # sshd is deliberately not installed. Its jail reads the systemd journal
+    # rather than a file, so fail2ban starts it regardless and simply matches
+    # nothing. What verify checks is that fail2ban parsed and activated the
+    # jail, not that it ever banned anyone.

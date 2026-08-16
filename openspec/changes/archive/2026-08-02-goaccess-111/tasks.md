@@ -1,39 +1,40 @@
-# Tasks: GoAccess 1.11 и города
+# Tasks: GoAccess 1.11 and cities
 
-## Роль `goaccess`
-- [x] `goaccess_upstream_repository`, включено по умолчанию; ключ вшит в `files/`
-- [x] Отпечаток ключа сверен до того, как класть в репозиторий:
-      `C03B4888 7D5E56B0 46715D32 97BD1A01 33449C3D`, Gerardo Orellana — автор GoAccess
-- [x] `state: latest` только пока репозиторий включён
-- [x] Выключение убирает репозиторий; версию не понижает — записано в defaults и README
+## Role `goaccess`
+- [x] `goaccess_upstream_repository`, enabled by default; the key embedded in `files/`
+- [x] The key fingerprint verified before putting it into the repository:
+      `C03B4888 7D5E56B0 46715D32 97BD1A01 33449C3D`, Gerardo Orellana — the author of GoAccess
+- [x] `state: latest` only while the repository is enabled
+- [x] Disabling removes the repository; it does not downgrade the version — written down in
+      defaults and README
 
-## Роль `geoip`
-- [x] `GeoLite2-City` вместо `GeoLite2-Country` (издание несёт оба уровня)
-- [x] Удаление баз, которых нет в `geoip_editions`
+## Role `geoip`
+- [x] `GeoLite2-City` instead of `GeoLite2-Country` (the edition carries both levels)
+- [x] Removal of databases that are not in `geoip_editions`
 
-## Проверка на живой машине
-- [x] Репозиторий отдаёт `1:1.11-noble` для noble — проверено до правок
+## Verification on a live machine
+- [x] The repository serves `1:1.11-noble` for noble — checked before the changes
 - [x] `goaccess --version` → 1.11
-- [x] **Города в настоящих отчётах**: Лондон 6, Амстердам 5, Варшава 5, Минск 4, Берлин 2,
-      Франкфурт 2, Гамбург 2
-- [x] Страны на месте, фильтр краулеров цел (`GoogleOther` отфильтрован)
-- [x] Старая Country-база удалена прогоном, осталась одна City
-- [x] Указание на удалённую базу останавливает прогон с внятным сообщением
-- [x] Выключение репозитория убирает его файл; 1.11 остаётся — ожидаемо
-- [x] Повторный прогон обеих ролей — `changed=0`
-- [x] `yamllint`, `ansible-lint` (profile production) чистые
+- [x] **Cities in real reports**: London 6, Amsterdam 5, Warsaw 5, Minsk 4, Berlin 2,
+      Frankfurt 2, Hamburg 2
+- [x] Countries in place, the crawler filter intact (`GoogleOther` filtered out)
+- [x] The old Country database removed by the run, one City database left
+- [x] Pointing at a removed database stops the run with a clear message
+- [x] Disabling the repository removes its file; 1.11 remains — as expected
+- [x] Repeat run of both roles — `changed=0`
+- [x] `yamllint`, `ansible-lint` (profile production) clean
 
-## Найдено прогоном
-- [x] **`state: present` не обновлял версию.** Репозиторий добавился, роль отчиталась успехом,
-      а `goaccess --version` показывал 1.8.1 при кандидате 1.11. Тихий провал: всё «прошло»,
-      но обновления не случилось
-- [x] **`-o json` со stdin в 1.11 отдаёт ноль байт.** Скрипты замера, читавшие JSON, перестали
-      работать; на отчёты не влияет — проверка переведена на HTML
-- [x] **Разметка HTML изменилась**: прежние шаблоны поиска перестали находить цифры и панели.
-      Отчёты при этом целы — `unique_visitors: 40`, страны и города на месте
-- [x] Отчёты выросли с ~620 КБ до ~2 МБ — новая разметка и тёмная тема
+## Found by a run
+- [x] **`state: present` did not update the version.** The repository was added, the role reported
+      success, and `goaccess --version` showed 1.8.1 with 1.11 as the candidate. A silent failure:
+      everything "went through", but no upgrade happened
+- [x] **`-o json` from stdin in 1.11 returns zero bytes.** The measurement scripts that read JSON
+      stopped working; the reports are unaffected — the check was moved to HTML
+- [x] **The HTML markup changed**: the previous search patterns stopped finding the numbers and
+      panels. The reports are intact though — `unique_visitors: 40`, countries and cities in place
+- [x] The reports grew from ~620 KB to ~2 MB — new markup and a dark theme
 
-## Не подтверждено
-- [ ] **Ускорение разбора на 35% и памяти на 20%** из changelog. Замер на 1.11 есть (1.3 с на
-      2673 строки, 12 МБ пик), сопоставимого замера на 1.8.1 нет — там было «меньше секунды»
-      на 1919 строках без данных о памяти. Ни подтвердить, ни опровергнуть
+## Not confirmed
+- [ ] **A 35% parsing speed-up and 20% less memory** from the changelog. There is a measurement on
+      1.11 (1.3 s on 2673 lines, 12 MB peak), there is no comparable measurement on 1.8.1 — there
+      it was "under a second" on 1919 lines with no memory data. Neither confirmed nor refuted

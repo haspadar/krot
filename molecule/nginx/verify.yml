@@ -1,0 +1,185 @@
+---
+# Two things this file refuses to do, both learned from the defects the role
+# exists for.
+#
+# It does not ask nginx whether it is happy — it asks the machine. `systemctl
+# is-active nginx` stays green across a reload that silently kept the old
+# config, so the config on disk is tested with `nginx -t` and the settings are
+# read out of the running configuration with `nginx -T`.
+#
+# And it does not check logrotate by reading its config. logrotate is run in
+# debug mode against the machine's whole configuration, because the failure
+# being guarded against — two entries claiming one log — does not break the
+# entry, it aborts the entire run for every service on the box.
+- name: Verify
+  hosts: all
+  tasks:
+    - name: The config on disk is valid
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: The nginx service is enabled at boot
+      ansible.builtin.command: systemctl is-enabled nginx
+      register: nginx_enabled
+      changed_when: false
+      failed_when: nginx_enabled.stdout != "enabled"
+
+    - name: It is actually up, not merely enabled
+      ansible.builtin.command: systemctl is-active nginx
+      register: nginx_active
+      changed_when: false
+      failed_when: nginx_active.stdout != "active"
+
+    # `nginx -T` dumps the configuration nginx has loaded, includes resolved.
+    # Reading nginx.conf instead would prove a file was written, not that nginx
+    # accepted what it says.
+    - name: Read the configuration nginx has actually loaded
+      ansible.builtin.command: nginx -T
+      register: loaded
+      changed_when: false
+
+    # Matched as directives, not as substrings. `nginx -T` reproduces each file
+    # verbatim, comments included, and the packaged nginx.conf carries the line
+    #   # server_tokens off;
+    # so a substring test for "server_tokens off" passes on a machine where this
+    # role never ran — measured, on a container with the untouched package
+    # config. The regex requires the line to start with the directive, so a
+    # commented one no longer counts.
+    - name: The rendered settings reached the running configuration
+      ansible.builtin.assert:
+        that: >-
+          loaded.stdout_lines
+          | select('search', '^\s*' ~ item ~ '\s*;\s*$')
+          | list | length > 0
+        fail_msg: >-
+          No uncommented "{{ item }};" directive in the loaded configuration, so
+          the template either did not render it or nginx did not pick the file
+          up. A commented-out line does not count: nginx -T prints those too.
+        quiet: true
+      loop:
+        - worker_connections 2048
+        - client_max_body_size 32M
+        - server_tokens off
+
+    # The leftovers prepare planted. Each one is a file an older version of this
+    # role shipped, and each is now owned by the site generator instead — two
+    # writers for one setting drift apart, and a stale set_real_ip_from logs
+    # every visitor as the CDN.
+    - name: The settings the site generator now owns are gone
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: leftovers
+      failed_when: leftovers.stat.exists
+      loop:
+        - /etc/nginx/conf.d/krot-real-ip.conf
+        - /etc/nginx/conf.d/krot-log-format.conf
+        - /etc/nginx/sites-enabled/default
+
+    - name: No real_ip directive survives anywhere in the loaded config
+      ansible.builtin.assert:
+        that: "'set_real_ip_from' not in loaded.stdout"
+        fail_msg: >-
+          A set_real_ip_from directive is still loaded. The file may be gone
+          while an include elsewhere keeps it alive, which is the version of
+          this defect that survives a file-existence check.
+        quiet: true
+
+    # The rotation half. The role edits the package's own file rather than
+    # shipping a second one, so both halves matter: ours must be absent, and the
+    # packaged one must carry the retention that was asked for.
+    - name: The rotation config this role used to ship is gone
+      ansible.builtin.stat:
+        path: /etc/logrotate.d/krot-nginx
+      register: own_rotation
+      failed_when: own_rotation.stat.exists
+
+    - name: The packaged config carries the requested retention
+      ansible.builtin.command: grep -E '^\s*rotate\s+21\s*$' /etc/logrotate.d/nginx
+      register: retention
+      changed_when: false
+      failed_when: retention.rc != 0
+
+    # The measured defect: logrotate reports "duplicate log entry", exits 1 and
+    # rotates NOTHING on the machine — postgresql and php included. Asking
+    # logrotate itself is the only check that sees it; the config files each
+    # look fine on their own.
+    - name: Logrotate accepts the machine's whole configuration
+      ansible.builtin.command: logrotate --debug /etc/logrotate.conf
+      register: logrotate_check
+      changed_when: false
+      failed_when: >-
+        logrotate_check.rc != 0 or
+        'duplicate log entry' in logrotate_check.stderr or
+        'duplicate log entry' in logrotate_check.stdout
+
+    - name: The vhost directories exist with the modes the role promises
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: vhost_dirs
+      failed_when: >-
+        not vhost_dirs.stat.exists or
+        not vhost_dirs.stat.isdir or
+        vhost_dirs.stat.mode != "0755"
+      loop:
+        - /etc/nginx/sites-available
+        - /etc/nginx/sites-enabled
+
+    # prepare left this at 0666. A vhost any local account can rewrite decides
+    # where the site proxies and what it serves.
+    - name: The world-writable vhost was tightened
+      ansible.builtin.stat:
+        path: /etc/nginx/sites-enabled/krot-test-site.conf
+      register: vhost
+
+    - name: It is now 0644 and owned by root
+      ansible.builtin.assert:
+        that:
+          - vhost.stat.exists
+          - vhost.stat.mode == "0644"
+          - vhost.stat.pw_name == "root"
+          - vhost.stat.gr_name == "root"
+        fail_msg: >-
+          The vhost is still {{ vhost.stat.mode | default('missing') }} owned by
+          {{ vhost.stat.pw_name | default('nobody') }}. Anyone with a local
+          account could repoint the site.
+        quiet: true
+
+    - name: The deploy root was created for the deploy user
+      ansible.builtin.stat:
+        path: /var/www/krot-test
+      register: deploy_root
+
+    # 0750, not 0755: php-fpm reads the release through the group, and a
+    # group-writable root would let a web process alter the code it serves.
+    - name: It carries the ownership and mode the role promises
+      ansible.builtin.assert:
+        that:
+          - deploy_root.stat.exists
+          - deploy_root.stat.isdir
+          - deploy_root.stat.mode == "0750"
+          - deploy_root.stat.pw_name == "km"
+          - deploy_root.stat.gr_name == "www-data"
+        fail_msg: >-
+          The deploy root is wrong: mode {{ deploy_root.stat.mode | default('-') }},
+          owner {{ deploy_root.stat.pw_name | default('-') }},
+          group {{ deploy_root.stat.gr_name | default('-') }}.
+        quiet: true
+
+    # Basic auth is off in this scenario, so none of its artefacts may exist.
+    # Stated rather than assumed: the branch is guarded by a `when`, and a
+    # guard that stopped working would leave a password file on a machine that
+    # never asked for one.
+    - name: No basic-auth artefacts on a machine that did not ask for them
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: auth_files
+      failed_when: auth_files.stat.exists
+      loop:
+        - /etc/nginx/.htpasswd
+        - /etc/nginx/snippets/krot-auth.conf
+
+    - name: Nothing on the machine is in a failed state
+      ansible.builtin.command: systemctl --failed --no-legend
+      register: failed_units
+      changed_when: false
+      failed_when: failed_units.stdout | trim | length > 0

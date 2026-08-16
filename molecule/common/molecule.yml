@@ -1,0 +1,63 @@
+---
+# The base role: hostname, /etc/hosts, timezone, packages, unattended upgrades.
+#
+# The `common_unattended_upgrades: false` branch is not covered here. It is a
+# genuine second state rather than a variable flip — the package goes from
+# present to absent while the template must NOT be written — so it belongs in a
+# scenario of its own, recorded in the change.
+driver:
+  name: docker
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-common
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      roles_path: ../../roles
+  inventory:
+    host_vars:
+      krot-common:
+        # Deliberately not the inventory name. common_hostname defaults to
+        # inventory_hostname, so leaving it out would have the role write the
+        # name the container already has — and a rename that renames nothing
+        # passes whether the task works or not.
+        common_hostname: krot-renamed
+        # Not Europe/Minsk, the role's own default, and not Etc/UTC, the
+        # container's: a value that matches either end would be reached without
+        # the role doing anything.
+        common_timezone: Asia/Tbilisi
+        # Trimmed to three, because this scenario is not testing apt. One of
+        # them (fd-find) installs its binary under a different name, which is
+        # the part of this list worth a check.
+        common_base_packages:
+          - fd-find
+          - jq
+          - ncdu
+        common_unattended_upgrades: true
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible

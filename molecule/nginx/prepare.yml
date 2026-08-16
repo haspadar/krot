@@ -1,0 +1,98 @@
+---
+- name: Prepare
+  hosts: all
+  # See molecule/firewall/prepare.yml: gathering facts on entry makes that the
+  # first thing to touch a container whose systemd is still starting.
+  gather_facts: false
+  tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
+    # nginx has to be present before the leftovers below can be planted, and the
+    # role installing it a second time is a no-op.
+    # logrotate for the same reason as in the cron scenario: the role edits
+    # /etc/logrotate.d/nginx but never installs logrotate itself, because on a
+    # real Ubuntu it is already there. The Docker image ships without it, and
+    # `logrotate --debug` then exits 2 with no output at all — which reads like
+    # a broken configuration rather than a missing binary.
+    - name: Install nginx and logrotate ahead of the role
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - logrotate
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    # nginx_deploy_user defaults to `km`, which the bootstrap role creates and
+    # this one only uses. On a real machine bootstrap has always run first; in a
+    # bare container it has not, and the role fails with "failed to look up user
+    # km" — an environment gap, not a defect. Creating the account here keeps
+    # the scenario testing nginx rather than the absence of bootstrap.
+    - name: The deploy user bootstrap would have created
+      ansible.builtin.user:
+        name: km
+        shell: /bin/bash
+        create_home: true
+
+    # Everything below recreates a machine the role is meant to clean up. A
+    # scenario starting from a pristine install would leave every removal task
+    # with nothing to remove — the same blind spot found in the firewall lock,
+    # where deleting the role's cleanup changed nothing observable.
+    - name: The conf.d settings the site generator now owns
+      ansible.builtin.copy:
+        dest: /etc/nginx/conf.d/krot-real-ip.conf
+        content: |
+          # Left by an older version of this role. Stale CF ranges here log
+          # every visitor as the CDN.
+          set_real_ip_from 103.21.244.0/22;
+          real_ip_header CF-Connecting-IP;
+        mode: "0644"
+
+    - name: A log format file from the same era
+      ansible.builtin.copy:
+        dest: /etc/nginx/conf.d/krot-log-format.conf
+        content: |
+          log_format krot '$remote_addr - $status';
+        mode: "0644"
+
+    # The defect this role was rewritten for: a second logrotate config claiming
+    # /var/log/nginx/*.log. logrotate then rotates nothing at all, machine-wide.
+    - name: A second rotation config claiming the same logs
+      ansible.builtin.copy:
+        dest: /etc/logrotate.d/krot-nginx
+        content: |
+          /var/log/nginx/*.log {
+              daily
+              rotate 7
+              missingok
+          }
+        mode: "0644"
+
+    - name: The packaged default site, enabled
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/default
+        dest: /etc/nginx/sites-enabled/default
+        state: link
+      failed_when: false
+
+    # 0666, as the site generator used to create them: any local account could
+    # rewrite where a vhost proxies and what it serves.
+    - name: A world-writable vhost, as the generator used to leave them
+      ansible.builtin.copy:
+        dest: /etc/nginx/sites-enabled/krot-test-site.conf
+        content: |
+          server {
+              listen 8080;
+              server_name krot-test.invalid;
+              root /var/www/html;
+          }
+        mode: "0666"

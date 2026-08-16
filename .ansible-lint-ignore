@@ -1,0 +1,28 @@
+# Rule exemptions scoped to a single file, rather than a global skip_list entry
+# that would also silence the rule where it is right.
+#
+# Molecule verification playbooks read facts back off the machine — `systemctl
+# show -p Result`, `systemctl list-timers`, `systemctl --failed`. systemd_service
+# does return those pairs in its `status`, but it captures them BEFORE it acts
+# and never refreshes them: measured, the module started a stopped unit, said
+# `changed: true`, and reported `ActiveState=inactive` while the machine already
+# said `active`. A test built on that reads the state a run was supposed to
+# change, not the state it produced.
+#
+# The measurement, and how to repeat it, are in
+# wiki/research/systemd-service-status-is-stale.md.
+#
+# Listing each file here keeps the warnings visible and marked `# ignored`
+# rather than silencing them: a global skip_list would also mute the rule in
+# roles/, where preferring the module is correct. A count is not given on
+# purpose — it would need updating with every scenario, and a stale number in a
+# comment about honesty is a poor look.
+molecule/common/verify.yml command-instead-of-module
+molecule/cron/verify.yml command-instead-of-module
+molecule/fail2ban/verify.yml command-instead-of-module
+molecule/firewall/verify.yml command-instead-of-module
+molecule/firewall_cloudflare/verify.yml command-instead-of-module
+molecule/nginx/verify.yml command-instead-of-module
+molecule/nginx_auth/verify.yml command-instead-of-module
+molecule/php/verify.yml command-instead-of-module
+molecule/postgresql/verify.yml command-instead-of-module

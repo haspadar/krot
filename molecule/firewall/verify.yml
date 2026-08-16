@@ -1,0 +1,155 @@
+---
+# The checks below read netfilter, not `ufw status`. ufw prints the rules it
+# believes it has; iptables prints what the kernel will actually enforce. On a
+# firewall those two disagreeing is the whole failure mode — a rule that ufw
+# lists and the kernel never got means a port everyone thinks is closed.
+#
+# Measured in this image before the scenario was written: `ufw enable` really
+# does produce INPUT policy DROP and 63 ufw-* chains inside a privileged
+# container, so these reads are meaningful here rather than a container-shaped
+# imitation of a firewall.
+- name: Verify
+  hosts: all
+  tasks:
+    - name: The ufw service is installed and running
+      ansible.builtin.command: ufw status verbose
+      register: ufw_status
+      changed_when: false
+
+    - name: The firewall is actually active, not merely configured
+      ansible.builtin.assert:
+        that: "'Status: active' in ufw_status.stdout"
+        fail_msg: >-
+          ufw is installed but inactive. Every rule below would be present in
+          its config and enforced by nothing.
+        quiet: true
+
+    # The single most dangerous outcome this role can produce: a default deny
+    # policy that took SSH with it. On a real machine that is a lockout with no
+    # way back in, so it is checked first and from the kernel's side.
+    - name: SSH survived the deny policy
+      ansible.builtin.command: iptables -S
+      register: iptables_rules
+      changed_when: false
+
+    - name: A rule accepting the SSH port reached netfilter
+      ansible.builtin.assert:
+        that: >-
+          iptables_rules.stdout_lines
+          | select('search', 'dport 22 ')
+          | select('search', '-j ACCEPT')
+          | list | length > 0
+        fail_msg: >-
+          No ACCEPT rule for port 22 in netfilter. The play that installed this
+          firewall would be the last one to reach the machine.
+        quiet: true
+
+    - name: Incoming traffic is denied by default
+      ansible.builtin.command: iptables -L INPUT -n
+      register: input_chain
+      changed_when: false
+
+    - name: The INPUT chain's policy is DROP
+      ansible.builtin.assert:
+        that: "'Chain INPUT (policy DROP)' in input_chain.stdout"
+        fail_msg: >-
+          INPUT policy is not DROP, so everything not explicitly denied is
+          allowed — the inverse of what this role promises.
+        quiet: true
+
+    # The open branch: both web ports reachable from anywhere. Read per port
+    # rather than as one assertion, so a failure names which port is wrong.
+    #
+    # `reject('search', ' -s ')` is what makes this check mean what its name
+    # says. A source-restricted rule prints as
+    #   -A ufw-user-input -s 192.0.2.0/24 -p tcp -m tcp --dport 80 -j ACCEPT
+    # and satisfies both "dport 80" and "-j ACCEPT" — so without the reject, a
+    # machine that had wrongly gone down the Cloudflare branch, reachable only
+    # from someone else's ranges, would pass a check titled "from anywhere".
+    - name: Both web ports accept traffic from anywhere
+      ansible.builtin.assert:
+        that: >-
+          iptables_rules.stdout_lines
+          | select('search', 'dport ' ~ item ~ ' ')
+          | select('search', '-j ACCEPT')
+          | reject('search', ' -s ')
+          | list | length > 0
+        fail_msg: >-
+          Port {{ item }} has no unrestricted ACCEPT rule in netfilter. Either
+          it is closed, or it is open only to specific sources — and this
+          scenario runs with firewall_cloudflare_only false, where neither is
+          what the role promises.
+        quiet: true
+      loop: [80, 443]
+
+    # The negative half, and the one a passing test most easily hides: with the
+    # Cloudflare lock off, there must be no source-restricted web rules. If the
+    # branch were leaking, 80/443 would be ACCEPTed only from CF ranges while
+    # every check above still passed.
+    - name: No Cloudflare-scoped rules exist in this branch
+      ansible.builtin.command: ufw status
+      register: ufw_plain
+      changed_when: false
+
+    - name: The Cloudflare comment appears nowhere
+      ansible.builtin.assert:
+        that: "'krot-cloudflare' not in ufw_plain.stdout"
+        fail_msg: >-
+          A krot-cloudflare rule is present although firewall_cloudflare_only is
+          false — the open branch did not clean up after the locked one.
+        quiet: true
+
+    - name: The Cloudflare state file was removed
+      ansible.builtin.stat:
+        path: /etc/krot/cloudflare-ranges.txt
+      register: cf_state
+
+    - name: No stale range file is left behind
+      ansible.builtin.assert:
+        that: not cf_state.stat.exists
+        fail_msg: >-
+          /etc/krot/cloudflare-ranges.txt still exists. The refresh script diffs
+          against it, so a stale copy makes a future refresh believe the current
+          rules are already correct.
+        quiet: true
+
+    # The refresh timer belongs to the other branch. Left enabled, it would
+    # rewrite this machine's rules on a schedule nobody asked for.
+    - name: The refresh timer is not enabled here
+      ansible.builtin.command: systemctl is-enabled krot-cf-ranges.timer
+      register: timer_state
+      changed_when: false
+      failed_when: false
+
+    - name: Its state is anything but enabled
+      ansible.builtin.assert:
+        that: timer_state.stdout != "enabled"
+        fail_msg: >-
+          krot-cf-ranges.timer is enabled while the Cloudflare lock is off. It
+          would apply CF-only rules to a machine that is not behind CF.
+        quiet: true
+
+    # The script is installed unconditionally by main.yml, so it must be present
+    # and runnable even in the branch that has nothing for it to do.
+    - name: The refresh script is installed and executable
+      ansible.builtin.stat:
+        path: /usr/local/sbin/krot-cf-ranges
+      register: script
+
+    - name: It exists with the mode the role promises
+      ansible.builtin.assert:
+        that:
+          - script.stat.exists
+          - script.stat.mode == "0755"
+        fail_msg: "/usr/local/sbin/krot-cf-ranges is missing or not 0755."
+        quiet: true
+
+    - name: The script is syntactically valid
+      ansible.builtin.command: bash -n /usr/local/sbin/krot-cf-ranges
+      changed_when: false
+
+    - name: Nothing on the machine is in a failed state
+      ansible.builtin.command: systemctl --failed --no-legend
+      register: failed_units
+      changed_when: false
+      failed_when: failed_units.stdout | trim | length > 0

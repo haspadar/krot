@@ -1,61 +1,64 @@
-# Tasks: второй отчёт «только люди»
+# Tasks: second "humans only" report
 
-## Роль
-- [x] `goaccess_humans_report` (по умолчанию **включено**) и `goaccess_humans_subdir`
-- [x] Переменные уходят в юнит (`Environment=`) и в разовую сборку роли — иначе таймер и
-      Ansible собирали бы разное
-- [x] Каталог `humans/` создаёт сборщик под `REPORT_DIR`, наследуя setgid и группу
-- [x] Разобранные строки пишутся во временный файл и подаются обоим прогонам — логи читаются
-      один раз
-- [x] Полный отчёт встаёт на место первым, человеческий следом: свежая страница «люди» рядом с
-      вчерашним полным провоцирует ровно неверное сравнение
-- [x] Выключение флага удаляет каталог — иначе страницы замерли бы на дне выключения, продолжая
-      отдаваться
+## Role
+- [x] `goaccess_humans_report` (**enabled** by default) and `goaccess_humans_subdir`
+- [x] The variables go into the unit (`Environment=`) and into the role's one-off build —
+      otherwise the timer and Ansible would build different things
+- [x] The `humans/` directory is created by the builder under `REPORT_DIR`, inheriting setgid and
+      the group
+- [x] The parsed lines are written to a temporary file and fed to both runs — the logs are read
+      once
+- [x] The full report is put in place first, the humans one after it: a fresh "humans" page next
+      to yesterday's full one invites exactly the wrong comparison
+- [x] Switching the flag off removes the directory — otherwise the pages would freeze at the day
+      it was switched off while still being served
 
-## Удаление (главный риск задания)
-- [x] Цикл очистки снятых доменов обходит **оба** каталога. Проверено: подложенные
-      `retired.example.html` в обоих убраны, шесть настоящих не тронуты
-- [x] `parseable = 0` и `report failed` убирают пару целиком. Проверено: у stadtdame.de унесён
-      лог — исчезли обе страницы, после возврата обе вернулись
-- [x] Неудача только второго прогона не роняет полный отчёт: он собран из тех же строк и не под
-      сомнением, удаляется лишь человеческий
+## Deletion (the main risk of this task)
+- [x] The cleanup loop for removed domains walks **both** directories. Verified: planted
+      `retired.example.html` files in both were removed, the six real ones untouched
+- [x] `parseable = 0` and `report failed` remove the pair as a whole. Verified: stadtdame.de's log
+      was taken away — both pages disappeared, and after it was returned both came back
+- [x] A failure of only the second run does not bring down the full report: it is built from the
+      same lines and is not in doubt, only the humans one is deleted
 
-## Проверка на живой машине
-- [x] Цифры сходятся с заданием: berlindame 94/37 (57 краулеров), stadtdame 47/25
-- [x] `humans/` — `drwxrwsr-x goaccess:www-data`, файлы `0640`; `www-data` читает, `nobody`
-      получает отказ
-- [x] Сборка через systemd-юнит: `Result=success`, `ExecMainStatus=0`, все шесть отчётов одним
-      временем — `RestrictSUIDSGID` и `ProtectSystem=strict` новому каталогу не мешают
-- [x] Повторный прогон роли — `changed=0`
-- [x] `shellcheck`, `yamllint`, `ansible-lint` (profile production) чистые
+## Verification on a live machine
+- [x] The figures match the task: berlindame 94/37 (57 crawlers), stadtdame 47/25
+- [x] `humans/` — `drwxrwsr-x goaccess:www-data`, files `0640`; `www-data` reads, `nobody` is
+      refused
+- [x] Build via the systemd unit: `Result=success`, `ExecMainStatus=0`, all six reports at one
+      timestamp — `RestrictSUIDSGID` and `ProtectSystem=strict` do not hinder the new directory
+- [x] Repeat role run — `changed=0`
+- [x] `shellcheck`, `yamllint`, `ansible-lint` (profile production) clean
 
-## Решения
-- [x] **Подкаталог вместо суффикса `-humans`.** Busel разбирает имена глобом `*.html`; при
-      суффиксе второй файл стал бы отдельной строкой-«сайтом», а домен, оканчивающийся на
-      `-humans`, сломал бы разбор. Подкаталог в глоб не попадает — код busel правок не требует
-- [ ] `--unknowns-as-crawlers` — отклонено: один визит разницы из 37 не стоит переменной,
-      значение которой придётся выяснять
-- [ ] Отдельный конфиг парсера для второго отчёта — отклонено: два конфига разъедутся, а
-      `--ignore-crawlers` фильтрует строки, а не разделы
+## Decisions
+- [x] **A subdirectory instead of a `-humans` suffix.** Busel parses the names with the glob
+      `*.html`; with a suffix the second file would become a separate "site" row, and a domain
+      ending in `-humans` would break the parsing. A subdirectory does not match the glob — the
+      busel code needs no changes
+- [ ] `--unknowns-as-crawlers` — rejected: one visit of difference out of 37 is not worth a
+      variable whose meaning would have to be worked out
+- [ ] A separate parser config for the second report — rejected: two configs would drift apart,
+      and `--ignore-crawlers` filters lines, not sections
 
-## По ревью (codex)
-- [x] **Каталог `humans/` был открыт на чтение всем.** `mkdir` отдавал режим на откуп umask —
-      `2775` под сборщиком, `2755` на хосте с типовым `022`, — тогда как родитель закрыт `0750`
-      именно чтобы имена файлов (то есть список доменов) не читал никто посторонний. Каталог
-      создаёт Ansible с `2750`
-- [x] **При обновлении отчёты не появлялись до таймера.** На машине со старой версией полные
-      отчёты на месте и список сайтов не менялся, поэтому разовая сборка пропускалась, а
-      `humans/` не было ещё до часа — при том что фича включена по умолчанию. В условие добавлен
-      отдельный поиск человеческих отчётов. Проверено: каталог снесён, прогон роли собрал его
-      сразу (2.26с)
-- [x] **Правка по первому замечанию оказалась хуже дефекта.** `chmod 2750` из сборщика бит не
-      ставил, а **снимал унаследованный**: пользователь не в группе-владельце, и ядро сбрасывает
-      `S_ISGID` при любом `chmod`, возвращая успех. Измерено: `chmod o-rwx`, который бита не
-      называет вовсе, превратил `2750` в `750`. Отчёты после этого писались бы в группу, которую
-      никто не читает. Режим ставит только Ansible, от root
+## From review (codex)
+- [x] **The `humans/` directory was world-readable.** `mkdir` left the mode to the umask —
+      `2775` under the builder, `2755` on a host with the typical `022` — whereas the parent is
+      closed with `0750` precisely so that the file names (that is, the domain list) are not read
+      by anyone from outside. The directory is created by Ansible with `2750`
+- [x] **On an update the reports did not appear until the timer.** On a machine with the old
+      version the full reports were in place and the site list had not changed, so the one-off
+      build was skipped and `humans/` was absent for up to an hour — even though the feature is
+      enabled by default. A separate search for the humans reports was added to the condition.
+      Verified: the directory was destroyed, a role run rebuilt it immediately (2.26s)
+- [x] **The fix for the first point turned out to be worse than the defect.** `chmod 2750` from
+      the builder did not set the bit but **cleared the inherited one**: the user is not in the
+      owning group, and the kernel drops `S_ISGID` on any `chmod`, returning success. Measured:
+      `chmod o-rwx`, which does not name the bit at all, turned `2750` into `750`. After that the
+      reports would have been written into a group nobody reads. The mode is set only by Ansible,
+      as root
 
-## Ложные тревоги при проверке
-- [x] «Настоящие отчёты исчезли» — ошибка теста: `sudo ls *.html` не разворачивает глоб, шаблон
-      ушёл буквально. Файлы были на месте
-- [x] Опасение, что `RestrictSUIDSGID=true` в юните помешает наследованию setgid — не
-      подтвердилось: директива запрещает **ставить** бит, а не наследовать его от каталога
+## False alarms during verification
+- [x] "The real reports have disappeared" — a test error: `sudo ls *.html` does not expand the
+      glob, the pattern went through literally. The files were in place
+- [x] The worry that `RestrictSUIDSGID=true` in the unit would prevent setgid inheritance — not
+      confirmed: the directive forbids **setting** the bit, not inheriting it from a directory

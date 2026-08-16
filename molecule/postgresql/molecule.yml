@@ -1,0 +1,64 @@
+---
+# The server role: repository, cluster, configuration, pg_stat_statements.
+#
+# The upgrade-guard branch (postgresql_remove_other_versions) is not covered
+# here and is not simply a variable flip: exercising it means installing a
+# second major version, letting its cluster take port 5433, and watching the
+# role refuse. That is a scenario of its own, recorded in the change.
+driver:
+  name: docker
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-postgresql
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      roles_path: ../../roles
+  inventory:
+    host_vars:
+      krot-postgresql:
+        # Values chosen to differ from both PostgreSQL's built-in defaults and
+        # the role's own, so a setting read back from the running server proves
+        # the role put it there. max_connections at the role default of 100 is
+        # PostgreSQL's default too — it would be identical on a server nothing
+        # ever configured.
+        #
+        # The first two are load-bearing beyond that: they are the only settings
+        # in this scenario that are postmaster-level AND differ from what prepare
+        # left running, which is what makes a reloading handler fail verify.
+        # Remove them, or set them to the value already in effect, and the
+        # scenario goes green against the bug it exists to catch. The reasoning
+        # is spelled out in verify.yml.
+        postgresql_max_connections: 123
+        postgresql_shared_buffers: 192MB
+        postgresql_work_mem: 6MB
+        postgresql_log_min_duration_ms: 400
+        postgresql_stat_statements: true
+        postgresql_stat_statements_max: 4000
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible

@@ -12,13 +12,6 @@
       leave no way back in. Unlock Bitwarden (/bw-unlock) and re-run.
     quiet: true
 
-- name: Install the operator's login shell
-  ansible.builtin.apt:
-    name: fish
-    state: present
-    update_cache: true
-    cache_valid_time: 3600
-
 - name: Create the operator account
   ansible.builtin.user:
     name: "{{ bootstrap_user }}"

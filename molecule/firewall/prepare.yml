@@ -1,0 +1,28 @@
+---
+- name: Prepare
+  hosts: all
+  # See the same block in firewall_cloudflare/prepare.yml: gathering facts on
+  # entry makes that the first thing to touch a container whose systemd is still
+  # starting, and it fails with UNREACHABLE rather than waiting.
+  gather_facts: false
+  tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
+    # iptables is what the verification reads the real ruleset through. The role
+    # does not install it — ufw pulls in its own backend — so without this the
+    # checks would fail on a missing command rather than on a missing rule.
+    - name: Install iptables, so the verification can read netfilter directly
+      ansible.builtin.apt:
+        name: iptables
+        state: present
+        update_cache: true
+        cache_valid_time: 3600

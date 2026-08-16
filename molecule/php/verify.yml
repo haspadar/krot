@@ -1,0 +1,208 @@
+---
+# Settings are read from a running interpreter, never from the ini files. A
+# template that rendered and a value that is in effect are different facts, and
+# only the second is what the role promises — php.ini has a load order, and a
+# file can be present and overridden.
+- name: Verify
+  hosts: all
+  vars:
+    php_version: "8.5"
+    fpm_pool: krot-test
+  tasks:
+    # This means something only because prepare stopped the package from
+    # enabling the unit — see the reasoning there. Left to itself, dpkg leaves
+    # FPM `enabled` and this check passes whether the role ran or not, which is
+    # exactly how review found the role's Enable task deleted and the scenario
+    # still green.
+    - name: The FPM service is enabled at boot
+      ansible.builtin.command: systemctl is-enabled php{{ php_version }}-fpm
+      register: fpm_enabled
+      changed_when: false
+      failed_when: fpm_enabled.stdout != "enabled"
+
+    - name: It is actually up, not merely enabled
+      ansible.builtin.command: systemctl is-active php{{ php_version }}-fpm
+      register: fpm_active
+      changed_when: false
+      failed_when: fpm_active.stdout != "active"
+
+    # Enablement as systemd records it, not as `is-enabled` summarises it.
+    # Measured: after `systemctl disable` this property goes empty, so it
+    # reflects the actual link rather than the unit's [Install] section.
+    - name: The unit systemd would pull in at boot is wanted by the target
+      ansible.builtin.command: >-
+        systemctl show php{{ php_version }}-fpm.service
+        --property=WantedBy --value
+      register: wanted_by
+      changed_when: false
+      failed_when: "'multi-user.target' not in wanted_by.stdout"
+
+    # The version the role claims to install, from the interpreter itself. A
+    # repository that resolved to the distro's PHP rather than ondrej's would
+    # leave every other check passing.
+    - name: The CLI is the version the role was asked for
+      ansible.builtin.command: php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;'
+      register: cli_version
+      changed_when: false
+      failed_when: cli_version.stdout | trim != php_version
+
+    # ini_get, not a grep of the file: conf.d has a load order, and a value can
+    # be written and then overridden by something that sorts later.
+    - name: The CLI runs with the settings the scenario asked for
+      ansible.builtin.command: php -r 'echo ini_get("{{ item.key }}");'
+      register: cli_ini
+      changed_when: false
+      failed_when: cli_ini.stdout | trim != item.value
+      loop:
+        - {key: memory_limit, value: 192M}
+        - {key: post_max_size, value: 24M}
+        - {key: upload_max_filesize, value: 20M}
+        - {key: expose_php, value: ""}
+        - {key: display_errors, value: ""}
+      loop_control:
+        label: "{{ item.key }}={{ item.value }}"
+
+    # max_execution_time is asked of FPM, not the CLI. The CLI SAPI forces it
+    # to 0 no matter what the ini says — measured: the file reads 45, ini_get
+    # and get_cfg_var both answer 0 — because a command-line script is not
+    # meant to be cut off mid-run. FPM is where the limit does its job, and
+    # `php-fpm -i` reports it as "45 => 45": the value from the ini, in effect.
+    #
+    # Checking this in the CLI would have meant either a false failure or, if
+    # the expected value were quietly changed to 0, a test asserting the
+    # opposite of what the role configures.
+    - name: FPM runs with the execution limit the scenario asked for
+      ansible.builtin.command: php-fpm{{ php_version }} -i
+      register: fpm_info
+      changed_when: false
+
+    - name: The limit is in effect in the SAPI that enforces it
+      ansible.builtin.assert:
+        that: >-
+          fpm_info.stdout_lines
+          | select('match', '^max_execution_time\s*=>\s*45\s*=>\s*45')
+          | list | length == 1
+        fail_msg: >-
+          php-fpm -i reports
+          "{{ fpm_info.stdout_lines | select('search', '^max_execution_time') | list }}".
+        quiet: true
+
+    # opcache is not loaded in the CLI by default, so its settings are read
+    # from the ini as parsed rather than from a running engine. `php --ri` would
+    # report the module; this asks the configuration layer, which is where the
+    # role's values live.
+    - name: The opcache settings are the scenario's values
+      ansible.builtin.command: >-
+        php -d opcache.enable_cli=1 -r 'echo ini_get("{{ item.key }}");'
+      register: opcache_ini
+      changed_when: false
+      failed_when: opcache_ini.stdout | trim != item.value
+      loop:
+        - {key: opcache.memory_consumption, value: "96"}
+        - {key: opcache.max_accelerated_files, value: "15000"}
+        # "0", not "" — unlike expose_php and display_errors above, which are
+        # booleans and come back as an empty string when Off. Measured both.
+        - {key: opcache.validate_timestamps, value: "0"}
+      loop_control:
+        label: "{{ item.key }}={{ item.value }}"
+
+    - name: The extension the scenario asked for is loaded
+      ansible.builtin.command: php -m
+      register: modules
+      changed_when: false
+      failed_when: "'pgsql' not in modules.stdout_lines"
+
+    # The socket is the contract with nginx: its path, owner and mode are what
+    # a vhost depends on, and FPM being "active" says nothing about them.
+    - name: The FPM socket exists where the pool says it does
+      ansible.builtin.stat:
+        path: /run/php/php{{ php_version }}-fpm.sock
+      register: fpm_socket
+
+    - name: It is a socket, 0660, owned by the pool user
+      ansible.builtin.assert:
+        that:
+          - fpm_socket.stat.exists
+          - fpm_socket.stat.issock
+          - fpm_socket.stat.mode == "0660"
+          - fpm_socket.stat.pw_name == "www-data"
+          - fpm_socket.stat.gr_name == "www-data"
+        fail_msg: >-
+          The FPM socket is
+          {{ fpm_socket.stat.mode | default('missing') }}
+          {{ fpm_socket.stat.pw_name | default('-') }}:{{ fpm_socket.stat.gr_name | default('-') }}.
+          nginx connects to this path; wrong ownership is a 502 on every
+          request, and the service is "active" either way.
+        quiet: true
+
+    # The pool config as FPM itself parses it. --test is what the role's handler
+    # runs before reloading, so this also proves the config it validates is the
+    # one on disk.
+    - name: FPM accepts its own configuration
+      ansible.builtin.command: php-fpm{{ php_version }} --test
+      register: fpm_test
+      changed_when: false
+      failed_when: fpm_test.rc != 0
+
+    - name: The pool is the one the scenario named, not the default www
+      ansible.builtin.stat:
+        path: /etc/php/{{ php_version }}/fpm/pool.d/{{ fpm_pool }}.conf
+      register: pool_file
+      failed_when: not pool_file.stat.exists
+
+    - name: The log directory exists with the ownership FPM needs
+      ansible.builtin.stat:
+        path: /var/log/php
+      register: log_dir
+
+    - name: 0750 www-data:adm, writable by FPM and readable by the adm group
+      ansible.builtin.assert:
+        that:
+          - log_dir.stat.exists
+          - log_dir.stat.isdir
+          - log_dir.stat.mode == "0750"
+          - log_dir.stat.pw_name == "www-data"
+          - log_dir.stat.gr_name == "adm"
+        fail_msg: >-
+          /var/log/php is {{ log_dir.stat.mode | default('missing') }}
+          {{ log_dir.stat.pw_name | default('-') }}:{{ log_dir.stat.gr_name | default('-') }}.
+          FPM refuses to start when it cannot write its logs.
+        quiet: true
+
+    # logrotate parses its whole configuration directory, so a broken stanza
+    # here breaks rotation for every log on the machine, not only PHP's. `-d`
+    # is a dry run: it reports what it would do and exits non-zero on a parse
+    # error, without rotating anything.
+    - name: The logrotate config the role wrote parses
+      ansible.builtin.command: logrotate -d /etc/logrotate.conf
+      register: logrotate_check
+      changed_when: false
+
+    # Matched against the line logrotate actually prints, which is
+    # "rotating pattern: /var/log/php/*.log  after 1 days (21 rotations)" —
+    # not "rotate 21" as the config file spells it. Measured; the config's own
+    # wording appears nowhere in the dry run, so asserting on it would have
+    # failed against a working rotation.
+    #
+    # The output goes to stderr even on success. Also measured: stdout is
+    # empty.
+    - name: The PHP logs are in the rotation, for the retention asked for
+      ansible.builtin.assert:
+        that: >-
+          logrotate_check.stderr_lines
+          | select('search', 'rotating pattern: /var/log/php/\*\.log')
+          | select('search', '\(21 rotations\)')
+          | list | length == 1
+        fail_msg: >-
+          logrotate -d does not list the PHP logs with 21 rotations. Its
+          relevant output was
+          {{ logrotate_check.stderr_lines | select('search', 'var/log/php') | list }}.
+          A stanza that fails to parse takes the rest of the machine's rotation
+          with it.
+        quiet: true
+
+    - name: Nothing on the machine is in a failed state
+      ansible.builtin.command: systemctl --failed --no-legend
+      register: failed_units
+      changed_when: false
+      failed_when: failed_units.stdout | trim | length > 0

@@ -1,0 +1,142 @@
+---
+# Everything here asks fail2ban-client, not the file. jail.local can be perfect
+# on disk while the daemon never loaded it — a jail with a bad filter or a
+# missing logpath is skipped, and the file gives no sign of it.
+- name: Verify
+  hosts: all
+  tasks:
+    - name: The service is enabled at boot
+      ansible.builtin.command: systemctl is-enabled fail2ban
+      register: enabled
+      changed_when: false
+      failed_when: enabled.stdout != "enabled"
+
+    - name: It is actually up, not merely enabled
+      ansible.builtin.command: systemctl is-active fail2ban
+      register: active
+      changed_when: false
+      failed_when: active.stdout != "active"
+
+    # The daemon answering at all means it parsed jail.local. A syntax error
+    # there and fail2ban exits during startup, so this is the first real check.
+    - name: The daemon answers, which means it parsed its configuration
+      ansible.builtin.command: fail2ban-client ping
+      register: ping
+      changed_when: false
+      failed_when: "'pong' not in ping.stdout"
+
+    - name: The jails it is running are the ones the role configured
+      ansible.builtin.command: fail2ban-client status
+      register: jails
+      changed_when: false
+
+    # Both must be live. sshd is the jail the role always writes; the second
+    # comes from fail2ban_extra_jails, whose Jinja loop is the part of the
+    # template most likely to render something fail2ban silently skips.
+    - name: Both sshd and the extra jail are active
+      ansible.builtin.assert:
+        that:
+          - "'sshd' in jails.stdout"
+          - "'nginx-http-auth' in jails.stdout"
+        fail_msg: >-
+          fail2ban-client status lists "{{ jails.stdout | trim }}". A jail that
+          is in jail.local but not here was skipped at load, and a bad filter
+          name does exactly that: the daemon stays active while the jail
+          silently disappears. (An unreadable logpath does not — measured, the
+          jail stays listed. The earlier claim that it did was wrong.)
+        quiet: true
+
+    # `get` reads the value from the running daemon, which is the only place
+    # that answers what is in effect. All four differ from the role's defaults,
+    # so a value matching here cannot have come from the package.
+    - name: The sshd jail is running with the scenario's settings
+      ansible.builtin.command: fail2ban-client get sshd {{ item.key }}
+      register: setting
+      changed_when: false
+      # Equality, not `in`. Review measured the difference: with `in`, a
+      # maxretry of 30 satisfies a check for 3, and 72000 satisfies 7200 — so
+      # the assertion that these values differ from the defaults was worth far
+      # less than it read. fail2ban-client answers with the bare number on its
+      # own line, so an exact match is what the output supports.
+      failed_when: setting.stdout | trim != item.value
+      loop:
+        # bantime 2h and findtime 15m are reported in seconds.
+        - {key: bantime, value: "7200"}
+        - {key: findtime, value: "900"}
+        - {key: maxretry, value: "3"}
+      loop_control:
+        label: "{{ item.key }}={{ item.value }}"
+
+    # The port comes from firewall_ssh_port, which belongs to a different role
+    # and reaches this template through `| default(22)`. Set to 2222 in the
+    # scenario precisely so this proves the lookup works: at 22 the default and
+    # the value are the same string, and a broken reference would still pass.
+    #
+    # Asked of the action rather than the jail. `get <jail> port` does not
+    # exist — measured, fail2ban-client answers "Invalid command (no get action
+    # or not yet implemented)" — because the port belongs to the action that
+    # writes the firewall rule, not to the jail.
+    #
+    # The action's name is not hardcoded. On this image it is nftables, set by
+    # the Debian package in jail.d/defaults-debian.conf, while jail.conf itself
+    # still says iptables-multiport — so the name is a property of the
+    # distribution, not of this role, and pinning it would make the test fail on
+    # a machine that bans differently for a reason that has nothing to do with
+    # the port.
+    - name: Whichever action this jail bans with
+      ansible.builtin.command: fail2ban-client get sshd actions
+      register: jail_actions
+      changed_when: false
+
+    - name: The sshd jail's action bans on the port the firewall role defines
+      ansible.builtin.command: >-
+        fail2ban-client get sshd action
+        {{ jail_actions.stdout_lines[-1] | trim | split(',') | first | trim }}
+        port
+      register: jail_port
+      changed_when: false
+      failed_when: jail_port.stdout | trim != "2222"
+
+    # The extra jail's own options, not the defaults: maxretry is 2 here while
+    # the DEFAULT section says 3, so this also proves per-jail options override
+    # rather than being ignored.
+    - name: The extra jail kept its own maxretry, overriding the default
+      ansible.builtin.command: fail2ban-client get nginx-http-auth maxretry
+      register: extra_maxretry
+      changed_when: false
+      failed_when: extra_maxretry.stdout | trim != "2"
+
+    - name: The ignore list includes the range the scenario added
+      ansible.builtin.command: fail2ban-client get sshd ignoreip
+      register: ignoreip
+      changed_when: false
+      # This one is a list rather than a value — fail2ban-client prints a
+      # tree ("|- 127.0.0.0/8", "`- ::1") — so the match is anchored to a whole
+      # entry instead of comparing the output as a whole.
+      failed_when: >-
+        ignoreip.stdout_lines
+        | select('search', '(^|[|`]- )10\.44\.0\.0/16$')
+        | list | length != 1
+
+    - name: The jail config has the ownership and mode the role promises
+      ansible.builtin.stat:
+        path: /etc/fail2ban/jail.local
+      register: jail_local
+
+    - name: 0644 root:root
+      ansible.builtin.assert:
+        that:
+          - jail_local.stat.exists
+          - jail_local.stat.mode == "0644"
+          - jail_local.stat.pw_name == "root"
+          - jail_local.stat.gr_name == "root"
+        fail_msg: >-
+          jail.local is {{ jail_local.stat.mode | default('missing') }}
+          {{ jail_local.stat.pw_name | default('-') }}:{{ jail_local.stat.gr_name | default('-') }}.
+        quiet: true
+
+    - name: Nothing on the machine is in a failed state
+      ansible.builtin.command: systemctl --failed --no-legend
+      register: failed_units
+      changed_when: false
+      failed_when: failed_units.stdout | trim | length > 0
