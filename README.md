@@ -55,7 +55,7 @@ ansible-playbook bootstrap.yml -u root -k
 | Role | What it does |
 |------|-----------|
 | `bootstrap` | Operator user + sudo, `authorized_keys`, `PermitRootLogin no`, `PasswordAuthentication no` |
-| `common` | hostname, timezone, base packages (including `btop`, `ncdu`, `ripgrep`, `fd-find`, `jq`), unattended security upgrades |
+| `common` | hostname, timezone, base packages (including `btop`, `ncdu`, `ripgrep`, `fd-find`, `jq`), unattended security upgrades, a cap on the systemd journal |
 | `firewall` | ufw; with `firewall_cloudflare_only` it admits 80/443 only from Cloudflare ranges and refreshes them on a weekly timer |
 | `fail2ban` | fail2ban with the `sshd` jail |
 | `php` | PHP-FPM from the ondrej PPA; slowlog, access log with timings. A packaged `www.conf` on the same socket is renamed aside, since two pools cannot share one |
@@ -253,6 +253,32 @@ role.
   `pg_stat_statements` (see below).
 
 nginx and php are rotated through logrotate; PostgreSQL rotates itself.
+
+**The systemd journal is capped at 500 MB** (`common_journal_max_use`, the drop-in
+`/etc/systemd/journald.conf.d/krot-journal.conf`). Uncapped, journald takes 10% of the partition
+but no more than 4 GB — on busel's 77 GB disk it is that ceiling which applies, since 10% would
+be 7.6 GB — and it keeps everything: the journal had grown to 1 GB, holding every message since
+the machine was installed a month and a half earlier.
+
+It is the size that is capped, not the retention window: a ceiling holds the price of the journal
+however talkative the machine gets, whereas a window bounds age and lets a single bad day fill the
+disk. At busel's rate, 500 MB is about three weeks.
+
+**The role shrinks future records only, not a journal that has already grown.** A change of limit
+is applied by restarting journald, and the restart does not touch what is accumulated — the old
+records go at the next rotation. To cut it immediately:
+
+```bash
+# the same size as in common_journal_max_use
+sudo journalctl --rotate --vacuum-size=500M
+```
+
+`--rotate` is not decoration here: vacuum deletes archived files only, so the one the journal is
+being written to right now stays whatever its size. Rotation closes it into the archive, and only
+then does it fall under the same command.
+
+The role does not do this itself, because deleting history on a machine that still has room is the
+operator's call, not a side effect of a run.
 
 **One log, one logrotate entry.** The `nginx` role no longer installs its own file: the package
 owns nginx rotation, and the role edits only the number on the `rotate` line in its config. Two

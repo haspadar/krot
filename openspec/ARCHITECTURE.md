@@ -61,7 +61,7 @@ Ansible and Deployer overlap in exactly one place: Ansible creates the `km` user
 | Role | What it does | For whom |
 |------|-----------|------|
 | `bootstrap` | User + sudo, `authorized_keys`, `PermitRootLogin no`, disabling password login | all |
-| `common` | hostname, timezone, base packages, unattended security upgrades | all |
+| `common` | hostname, timezone, base packages, unattended security upgrades, a cap on the systemd journal | all |
 | `firewall` | ufw; the Cloudflare lock and a weekly range refresh | all |
 | `fail2ban` | fail2ban with the `sshd` jail | all |
 | `php` | PHP-FPM from the ondrej PPA; slowlog, access log with timings | busel |

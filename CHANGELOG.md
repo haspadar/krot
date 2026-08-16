@@ -3,6 +3,32 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 5.3.0
+
+### Added
+
+- **Role `common` caps the systemd journal** — `common_journal_max_use`, `500M` by default,
+  through the drop-in `/etc/systemd/journald.conf.d/krot-journal.conf` rather than an edit to
+  `journald.conf`, which the package rewrites on upgrade. Uncapped, journald takes 10% of the
+  partition but no more than 4 GB — on busel's 77 GB disk it is that 4 GB ceiling that applies,
+  since 10% would be 7.6 GB — and it keeps everything: the journal had grown to 1 GB, holding
+  every message since the machine was installed a month and a half earlier. That was 1.1 GB of
+  the 1.2 GB in all of `/var/log`, while nginx (4.8 MB) and php (2 MB) rotated as they should.
+
+  A size cap, not a retention window: a ceiling holds the price of the journal however talkative
+  the machine gets, whereas a retention window bounds age and lets a single bad day fill the
+  disk. At busel's rate, 500 MB is about three weeks.
+
+  The limit is read at start-up, so the handler restarts journald — a reload would leave the old
+  ceiling in place.
+
+  **The role shrinks future records only.** The restart applies the cap to new entries; what has
+  already accumulated goes at the next rotation. To cut it immediately:
+  `journalctl --rotate --vacuum-size=500M` — without `--rotate`, vacuum removes archived files
+  only and leaves the one currently being written to, whatever its size. The role does not do
+  this on its own: deleting history on a machine that still has room is the operator's call, not
+  a side effect of a run.
+
 ## 5.2.0
 
 ### Fixed
