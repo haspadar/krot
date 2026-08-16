@@ -94,6 +94,15 @@
 - [x] **The legs run in parallel, not queued** — all nine started within one second of each other
       on the same run, so the wall clock is the slowest scenario rather than a runner queue
 
+      > True of that run, and **not true in general** — measured on the very next one
+      > (31975109782, the archiving branch): eight legs started at 22:00:14 and the ninth, `cron`,
+      > at **22:05:14**, waiting five minutes for a free runner. Wall clock 7m21s rather than
+      > 3m43s, set by the leg that queued longest instead of the slowest scenario. The scenarios
+      > themselves also ran slower that time (`firewall_cloudflare` 272s against 177s), so the
+      > runners were slower throughout. What the matrix buys is "sum" → "maximum **plus runner
+      > wait**", and the second term is not ours to control. The earlier measurement stands as
+      > taken; this is what the next one showed.
+
 ## Review (two passes, different angles — Codex is out of service until 2026-08-18)
 
 - [x] **Accepted: `cache: pip` was broken** — found by both passes and by the run itself. Above
