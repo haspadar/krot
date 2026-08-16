@@ -441,7 +441,7 @@ pip install molecule 'molecule-plugins[docker]' ansible-core
 ansible-galaxy collection install -r molecule/requirements.yml
 ansible-galaxy collection install -r requirements.yml
 
-molecule test --all          # everything, as CI runs it
+molecule test --all          # every scenario in turn; CI runs them in parallel
 molecule test -s php         # one scenario
 molecule converge -s php     # run the role and leave the container up
 molecule verify -s php       # re-run just the checks against it
