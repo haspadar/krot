@@ -6,6 +6,19 @@ name: lint
     branches: [main]
   pull_request:
 
+# Grouped by ref rather than by SHA: a SHA-based group never matches across two
+# pushes and would therefore cancel nothing, while looking like a working
+# setting. Measured before Molecule existed, this saved 58 seconds out of 3419
+# (1.7%) — it is here for what Molecule made of a run, not for that figure: a
+# burst of pushes now queues minutes rather than seconds.
+#
+# The flip side, recorded in the Molecule change: a scenario cancelled halfway
+# leaves its container behind. On a throwaway runner that costs nothing; run
+# `molecule destroy --all` if it ever happens locally.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # Nothing here writes anything back: these jobs read the tree, run linters and a
 # container. Stated explicitly because the default token is far broader, and a
 # workflow that never declares its permissions silently keeps whatever the
@@ -37,9 +50,19 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
+          cache: pip
 
       - name: Install linters
         run: pip install ansible-lint yamllint
+
+      # Keyed on the hash of requirements.yml, so changing a dependency
+      # invalidates the cache. A key that ignored the file would give a green CI
+      # on a dependency the consumer cannot actually install.
+      - name: Cache collections
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.ansible/collections
+          key: collections-${{ runner.os }}-${{ hashFiles('requirements.yml') }}
 
       # ansible-lint resolves modules from these, so a missing collection would
       # show up as a false "unknown module" failure.
@@ -92,14 +115,61 @@ jobs:
       - name: Every role is named as covered, planned or excluded
         run: python3 scripts/coverage.py
 
-  # A separate job, so a red role run stays distinguishable from a red linter at
-  # a glance. Note this does NOT gate merges on its own: main's protection names
-  # the required check by job name, and only "lint" is in that list — adding
-  # "molecule" there is a deliberate, separate step.
-  molecule:
+  # The matrix is read from the directory rather than listed here. A hand-kept
+  # list has to be edited twice when a scenario is added, and the half that gets
+  # forgotten is this one — where a missing entry means the scenario silently
+  # never runs, which looks exactly like a scenario that passes.
+  scenarios:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      list: ${{ steps.find.outputs.list }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Collect the scenario names
+        id: find
+        run: |
+          list=$(find molecule -mindepth 2 -maxdepth 2 -name molecule.yml \
+            | xargs -n1 dirname | xargs -n1 basename | sort | jq -R . | jq -sc .)
+          echo "list=$list" >> "$GITHUB_OUTPUT"
+          echo "$list"
+          # An empty matrix is not an error to GitHub — it skips the job and
+          # reports green, so a broken find would read as "all scenarios pass".
+          [ "$list" != "[]" ] || { echo "no scenarios found under molecule/"; exit 1; }
+
+  # One job per scenario, so the wait is the slowest scenario rather than their
+  # sum. Measured on the run of 2026-08-16: nine scenarios, 783s in total, the
+  # slowest (firewall_cloudflare) 136s. The machine time is unchanged — it is
+  # the person who stops waiting for it, and on a public repository those
+  # minutes are free.
+  #
+  # A red role run stays distinguishable from a red linter at a glance, and now
+  # also names the role that broke.
+  #
+  # These legs are NOT what gates merges. Main's protection requires the checks
+  # `lint` and `molecule` (verified through the API, not assumed), and a matrix
+  # reports one check per leg — `molecule (php)` and so on. Nothing would ever
+  # report plain `molecule` again, and a required check that never arrives
+  # blocks every PR permanently, with `enforce_admins: true` leaving no way
+  # round it. The `molecule` name is therefore kept alive by the gate job at the
+  # bottom of this file; do not rename either without changing the protection
+  # settings first.
+  molecule-scenario:
+    needs: scenarios
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      # One broken scenario should not hide the state of the other eight: the
+      # point of splitting them up is to learn which ones are red in one run.
+      fail-fast: false
+      matrix:
+        scenario: ${{ fromJSON(needs.scenarios.outputs.list) }}
+    name: molecule (${{ matrix.scenario }})
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
@@ -108,9 +178,20 @@ jobs:
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.13"
+          cache: pip
 
       - name: Install Molecule
         run: pip install molecule 'molecule-plugins[docker]' ansible-core
+
+      # Both requirements files in the key: a scenario needs the collection's
+      # own dependencies as well as the driver's.
+      - name: Cache collections
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.ansible/collections
+          key: >-
+            collections-${{ runner.os }}-${{
+            hashFiles('requirements.yml', 'molecule/requirements.yml') }}
 
       # community.docker drives the container itself, so a missing one fails
       # `create` before any role code runs — an error that reads like a broken
@@ -124,4 +205,32 @@ jobs:
       # `test` rather than `converge`: the sequence includes idempotence, which
       # is the promise this whole job exists to keep honest.
       - name: molecule test
-        run: molecule test --all
+        run: molecule test --scenario-name ${{ matrix.scenario }}
+
+  # The check main's protection actually requires. It exists because a matrix
+  # cannot report under a single name, and it holds the name the protection
+  # already knows.
+  #
+  # `if: always()` plus an explicit look at the results, rather than `needs`
+  # alone: a needed job that fails **skips** its dependents, and a skipped
+  # required check is not a red one — GitHub waits for it forever instead. The
+  # same is true of a cancelled run, which is exactly what `concurrency` above
+  # produces on every second push. So this job must run in all cases and decide
+  # for itself.
+  molecule:
+    needs: [scenarios, molecule-scenario]
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Every scenario passed
+        run: |
+          echo "scenarios: ${{ needs.scenarios.result }}"
+          echo "molecule-scenario: ${{ needs.molecule-scenario.result }}"
+          # 'success' is the only acceptable result for either. Note that a
+          # matrix rolls its legs up into one result here, and 'skipped' has to
+          # be rejected as well: an empty matrix skips the legs and would
+          # otherwise pass the gate without running a single scenario.
+          [ "${{ needs.scenarios.result }}" = "success" ] \
+            && [ "${{ needs.molecule-scenario.result }}" = "success" ]

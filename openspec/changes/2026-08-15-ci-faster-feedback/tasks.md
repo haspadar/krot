@@ -27,14 +27,36 @@
 - [x] busel's `paths-ignore` is not carried over: krot's CI reads `wiki/` (`wiki-lint.py` plus the
       `wiki/index/` reconciliation), and wiki pages are `.md`
 
+## Measured again, after Molecule landed (run 31960857886, 2026-08-16)
+
+- [x] The premise of the "16s out of 34s" breakdown is **superseded, not refuted**: it described
+      a run without Molecule. `lint` still takes 1m4s, but the run now waits on `molecule`, which
+      took **14m7s** — the dependency install it was about is no longer what anyone waits for
+- [x] Per scenario, from the `[<scenario> > <action>]` markers in the job log: nine scenarios,
+      **783s in total**, slowest `firewall_cloudflare` **136s**, fastest `fail2ban` 61s. The other
+      seven: common 90, php 90, postgresql 101, cron 80, firewall 68, nginx 78, nginx_auth 77
+- [x] `molecule test --all` runs them **sequentially in one job**, so the wait is the sum. One job
+      per scenario makes it the maximum instead: **~136s plus the install steps** rather than 14m
+- [x] Container names differ per scenario (`krot-common`, `krot-firewall-cf`, …) and each matrix
+      leg gets its own runner, so nothing is shared to collide over
+
 ## Work
-- [ ] `cache: pip` in `actions/setup-python`
-- [ ] A cache of the collections directory keyed on the hash of `requirements.yml`
-- [ ] `concurrency` grouped by `ref` with `cancel-in-progress: true`
-- [ ] A comment in the workflow: `concurrency` is introduced in advance for Molecule, its
+- [x] `cache: pip` in `actions/setup-python` — in both jobs
+- [x] A cache of the collections directory keyed on the hash of `requirements.yml`; the Molecule
+      job keys on both requirements files, since a scenario needs the driver's collections too
+- [x] `concurrency` grouped by `ref` with `cancel-in-progress: true`
+- [x] A comment in the workflow: `concurrency` is introduced in advance for Molecule, its
       contribution today is 1.7% — so the next reader does not mistake it for a savings measure
-- [ ] `.openspec.yaml` with `skip_specs: true`
-- [ ] `CHANGELOG.md` — decide how to version a change that alters no role
+- [x] **One job per scenario instead of `--all`** — not in the original plan, added once Molecule
+      made the wait 14 minutes. The matrix is read from `molecule/` by a preceding `scenarios`
+      job rather than listed in the workflow: a hand-kept list is edited twice when a scenario is
+      added, and a forgotten entry means the scenario never runs while CI stays green
+- [x] `fail-fast: false`, so one red scenario does not hide the state of the other eight
+- [x] `.openspec.yaml` with `skip_specs: true` — already present
+- [x] `CHANGELOG.md` — **decided: no entry and no version bump.** The changelog is read by whoever
+      installs the collection, and `galaxy.yml`'s `build_ignore` keeps `.github` out of the
+      artefact: nothing here reaches a consumer, so a version bump would announce a change they
+      cannot observe. CI arrangements are recorded in the wiki instead
 
 ## Verification
 - [ ] The cache takes effect on the second run: the install steps are faster than 8s
@@ -44,6 +66,12 @@
       config: a SHA-based group cancels nothing, and the mistake looks like a working setting
 - [ ] An edit to `wiki/` alone still runs `wiki-lint` (a check that `paths-ignore` did not slip in)
 - [ ] `push: [main]` is in place and a run happens after a merge
+- [ ] **All nine scenarios appear as matrix legs** and each is green. The failure this guards
+      against is a shortened list that still reports success — count the legs, do not read the
+      colour
+- [ ] **The wall clock of the run drops to roughly 2–3 minutes** from 14m7s
+- [ ] `scenarios` fails outright when the list comes back empty, rather than skipping the matrix
+      and reporting green
 
 ## Not done here
 - Removing `push: [main]` — considered and rejected: there is nothing to save, and the direct
