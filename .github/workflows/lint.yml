@@ -61,6 +61,13 @@ jobs:
       #
       # The key hangs on this workflow file, which is where the installed
       # package names live. Editing the pip line therefore invalidates it.
+      #
+      # Worth little, and measured rather than assumed: with the cache hit,
+      # `Install linters` went 8s -> 7s, while the collections cache below went
+      # 9s -> 1s. What is cached here are the downloaded wheels, and downloading
+      # was never the slow part — unpacking and installing them is. Kept because
+      # a second of a public repository's free minutes costs nothing; do not
+      # expect more of it.
       - name: Cache pip
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:

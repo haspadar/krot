@@ -66,7 +66,13 @@
       cannot observe. CI arrangements are recorded in the wiki instead
 
 ## Verification
-- [ ] The cache takes effect on the second run: the install steps are faster than 8s
+- [x] The cache takes effect on the second run — **partly, and the split is worth recording.**
+      Run 31974685244 against 31974272512, `lint` job: `Install collections` **9s → 1s**, but
+      `Install linters` **8s → 7s**. Both caches were hit (all four entries exist and show a
+      `last_accessed_at` inside the second run), so this is not a miss — `~/.cache/pip` holds the
+      downloaded wheels, and downloading was never the slow part; unpacking and installing them
+      is. The original item expected "faster than 8s" from both and would have been ticked on the
+      collections figure alone, which is how a half-working cache passes for a working one
 - [ ] Changing `requirements.yml` **invalidates** the collections cache — otherwise a stale cache
       gives a green CI on a broken dependency
 - [ ] A second push to a branch **cancels** an unfinished run — verified in fact, not by the
