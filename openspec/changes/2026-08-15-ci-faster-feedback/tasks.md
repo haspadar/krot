@@ -73,12 +73,20 @@
       config: a SHA-based group cancels nothing, and the mistake looks like a working setting
 - [ ] An edit to `wiki/` alone still runs `wiki-lint` (a check that `paths-ignore` did not slip in)
 - [ ] `push: [main]` is in place and a run happens after a merge
-- [ ] **All nine scenarios appear as matrix legs** and each is green. The failure this guards
-      against is a shortened list that still reports success — count the legs, do not read the
-      colour
-- [ ] **The wall clock of the run drops to roughly 2–3 minutes** from 14m7s
-- [ ] `scenarios` fails outright when the list comes back empty, rather than skipping the matrix
-      and reporting green
+- [x] **All nine scenarios appear as matrix legs** and each is green — counted on run
+      31974272512: common, cron, fail2ban, firewall, firewall_cloudflare, nginx, nginx_auth, php,
+      postgresql, plus the `molecule` gate reporting separately. Counted rather than read off the
+      colour, which is what this item was for
+- [x] **The wall clock drops** — 14m07s → **3m43s** (run 31974272512). More than the ~2.5 minutes
+      predicted, and not because of matrix overhead: dependency installation in the slowest leg
+      took 25s, while `firewall_cloudflare` itself ran **177s against the 136s** measured a day
+      earlier. Scenario-to-scenario spread is of the same order as what is left to win here
+- [x] `scenarios` fails outright when the list comes back empty — the guard was exercised locally
+      against a directory with no scenarios in it: the pipeline yields `[]` with rc=0, and the
+      guard turns that into exit 1. Checked because the failure it prevents (an empty matrix
+      skipping the legs and reporting green) is invisible in a passing run
+- [x] **The legs run in parallel, not queued** — all nine started within one second of each other
+      on the same run, so the wall clock is the slowest scenario rather than a runner queue
 
 ## Review (two passes, different angles — Codex is out of service until 2026-08-18)
 
