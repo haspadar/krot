@@ -28,6 +28,7 @@ Ansible-коллекция `haspadar.krot` — переносимые роли, 
 | Раздел | О чём |
 |---|---|
 | [Отказы, которые не видно](operations/silent-failures.md) | код 0 при несделанной работе; читать, когда «всё зелёное, а результата нет» |
+| [Тесты ролей](operations/testing-roles.md) | Molecule: как гонять, почему сценарий начинают с грязной машины, что покрыто |
 | [Периодические задачи](operations/cron-jobs.md) | systemd-таймеры вместо crontab, как смотреть, что объявлять явно |
 | [Логи и ротация](operations/logging.md) | где что лежит, почему один лог — одна запись logrotate |
 | [PostgreSQL](operations/postgresql.md) | мажорная версия, `pg_stat_statements`, рестарт против reload |

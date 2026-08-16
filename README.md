@@ -58,7 +58,7 @@ ansible-playbook bootstrap.yml -u root -k
 | `common` | hostname, timezone, base packages (including `btop`, `ncdu`, `ripgrep`, `fd-find`, `jq`), unattended security upgrades |
 | `firewall` | ufw; with `firewall_cloudflare_only` it admits 80/443 only from Cloudflare ranges and refreshes them on a weekly timer |
 | `fail2ban` | fail2ban with the `sshd` jail |
-| `php` | PHP-FPM from the ondrej PPA; slowlog, access log with timings |
+| `php` | PHP-FPM from the ondrej PPA; slowlog, access log with timings. A packaged `www.conf` on the same socket is renamed aside, since two pools cannot share one |
 | `postgresql` | PostgreSQL from pgdg, csvlog with a slow-query log, `pg_stat_statements`. The server only, no databases |
 | `nginx` | nginx.conf, permissions, log retention, basic auth. Leaves per-site vhosts, log_format and real-IP alone |
 | `docker` | Docker + the compose plugin, a cap on container log growth |
@@ -432,12 +432,16 @@ usual fix when `create` fails complaining about the socket.
 
 **A scenario is only worth what it catches.** Every one here was checked by deliberately breaking
 the role it covers — a correct scenario keeps `converge` and `idempotence` green while `verify`
-goes red. Three defects in the roles were found this way (the wiki has the measurements); so were
-several checks of mine that passed against a machine the role had never touched.
+goes red. Three defects in the roles were found this way, and six in the checks themselves.
 
 `scripts/coverage.py` prints which roles have a scenario and fails if a role appears in no list at
 all, or if coverage drops below the floor recorded in it. Raising that floor is a manual edit, on
 purpose.
+
+Before writing a scenario, read [тесты ролей](wiki/operations/testing-roles.md) in the wiki: which
+traps have already been measured — starting from a clean machine, values that match the defaults,
+checks that ask the filesystem instead of the daemon — and why each one made a scenario pass
+against a role that had never run.
 
 All roles are idempotent: a repeat run yields `changed=0`. This is not a declaration — it is
 verified by running against a live machine.
