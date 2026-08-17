@@ -1,0 +1,14 @@
+---
+# krot has no openspec/specs/ and is not meant to: its unit of knowledge is a
+# role, not a capability. Without this file `openspec archive` refuses with "No
+# deltas found".
+#
+# `schema: spec-driven` is not optional decoration — it is what makes the marker
+# below count. Written with `skip_specs` alone, this file parses as invalid
+# change metadata and openspec 1.9.0 says so plainly while refusing to archive:
+# "skip_specs is set but .openspec.yaml is not valid change metadata, so the
+# marker is not honored". The same lesson was already recorded in
+# 2026-08-15-molecule-role-tests; it was learned twice because this file was
+# written from memory rather than copied from that one.
+schema: spec-driven
+skip_specs: true

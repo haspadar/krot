@@ -2,7 +2,7 @@
 kind: guide
 title: Соглашения вики
 owner: haspadar
-verified: 2026-08-15
+verified: 2026-08-17
 roles: []
 ---
 
@@ -159,6 +159,28 @@ python3 scripts/wiki-after-archive.py <name>
 Вторая команда ничего не правит сама — она печатает задание: какие страницы открыть и что с каждой
 сделать, по правилу выше (описания править, замеры не переписывать). Правки идут **в тот же PR**,
 что и архивация: документация ревьюится вместе с кодом.
+
+### `.openspec.yaml` без `schema` не работает
+
+У krot нет `openspec/specs/`, поэтому архивация без маркера отказывается: «No deltas found».
+Маркер кладётся в `.openspec.yaml` самого change — но **одного `skip_specs: true` мало**:
+
+```yaml
+---
+schema: spec-driven
+skip_specs: true
+```
+
+Без строки `schema` файл не считается валидными метаданными, и openspec 1.9.0 говорит об этом
+прямо, продолжая отказывать: «skip_specs is set but .openspec.yaml is not valid change metadata,
+so the marker is not honored». Заметить легко — команда падает, — но чинится не там, где ищут:
+выглядит как отсутствующие спеки, а не как неполный файл на две строки.
+
+Проверено на пустом change: со строкой `schema: spec-driven` — «Change 'probe' is valid», с
+`schema: change` — «unknown schema 'change'», такой схемы в этой версии нет.
+
+Замерено дважды, и второй раз потому, что файл написали по памяти вместо копирования из
+соседнего change. Копировать: `openspec/changes/archive/2026-08-15-molecule-role-tests/`.
 
 Связь «change → страница» восстанавливается по **тронутым ролям**, а не по объявленным
 capability: changes здесь не заводят `specs/`, зато их коммиты правят `roles/<role>/`. Тронутый
