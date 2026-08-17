@@ -2,7 +2,7 @@
 kind: guide
 title: Периодические задачи
 owner: haspadar
-verified: 2026-08-15
+verified: 2026-08-17
 roles: [cron]
 ---
 
@@ -79,7 +79,7 @@ systemctl --failed                  # что на машине сломано в
 
 Это место описывалось наоборот — будто умолчание блуждающее, а фиксированный сдвиг включают по
 необходимости. Расхождение было заведено как отложенное в
-`openspec/changes/2026-08-13-cron-assert-silent-skip/proposal.md`; здесь и в корневом `README.md`
+`openspec/changes/archive/2026-08-13-cron-assert-silent-skip/proposal.md`; здесь и в `README.md`
 оно исправлено по `roles/cron/defaults/main.yml` и шаблону `job.timer.j2`.
 
 ## `working_directory` и неудачный деплой

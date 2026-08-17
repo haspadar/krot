@@ -415,8 +415,9 @@ python3 scripts/wiki-triage.py                  # sort out wiki/raw/
 python3 scripts/wiki-after-archive.py <change>  # after archiving — what went stale
 ```
 
-No dependencies: python3 only. The first two commands run in CI. The conventions are in
-[`wiki/CONVENTIONS.md`](wiki/CONVENTIONS.md).
+No dependencies: python3 only. The first two run in CI, along with `secret-lint.py` (the same
+patterns over everything git tracks) and `coverage.py` (which role has a scenario). The conventions
+are in [`wiki/CONVENTIONS.md`](wiki/CONVENTIONS.md).
 
 ## Development
 
@@ -429,19 +430,23 @@ yamllint .        # YAML formatting
 ansible-lint      # the production profile — the strictest one
 ```
 
-CI (`.github/workflows/lint.yml`) runs both on every PR.
+CI (`.github/workflows/lint.yml`) runs both on every PR, alongside the collection build,
+`wiki-lint`, `secret-lint`, a check that `wiki/index/` still matches its sources, and
+`coverage.py`. The role tests are separate jobs — see below.
 
 ### Running the role tests
 
-Roles are tested with Molecule, one scenario per role under `molecule/<name>/`. Each brings up a
-systemd container, runs the role, runs it again to check idempotence, then verifies the machine.
+Roles are tested with Molecule; scenarios live under `molecule/<name>/`, and a role may have more
+than one (`firewall` has `firewall` and `firewall_cloudflare`, whose configurations contradict each
+other). Each brings up a systemd container, runs the role, runs it again to check idempotence, then
+verifies the machine.
 
 ```bash
 pip install molecule 'molecule-plugins[docker]' ansible-core
 ansible-galaxy collection install -r molecule/requirements.yml
 ansible-galaxy collection install -r requirements.yml
 
-molecule test --all          # every scenario in turn; CI runs them in parallel
+molecule test --all          # every scenario in turn, locally; CI does not run this
 molecule test -s php         # one scenario
 molecule converge -s php     # run the role and leave the container up
 molecule verify -s php       # re-run just the checks against it

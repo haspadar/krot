@@ -12,7 +12,7 @@ roles: [common, cron, fail2ban, firewall, nginx, php, postgresql]
 systemd, прогоняет роль, прогоняет её второй раз ради идемпотентности и читает машину обратно.
 
 ```bash
-molecule test --all          # все сценарии подряд; CI гоняет их параллельно
+molecule test --all          # все сценарии подряд, локально; CI эту команду не вызывает
 molecule test -s php         # один сценарий
 molecule converge -s php     # прогнать роль и оставить контейнер
 molecule verify -s php       # погонять проверки по нему ещё раз

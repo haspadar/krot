@@ -152,7 +152,9 @@ base64.
 Момент архивации — единственный, когда точно известно, **что именно** устарело.
 
 ```bash
-openspec archive <name>
+# --skip-specs нужен, пока в change нет .openspec.yaml с маркером — см. ниже.
+# С маркером флаг не нужен; сейчас файл лежит у 2 changes из 12.
+openspec archive <name> --skip-specs --yes
 python3 scripts/wiki-after-archive.py <name>
 ```
 
