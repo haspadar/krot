@@ -128,6 +128,19 @@
               {{ ansible_failed_result.msg | default('(no message)') }}
             quiet: true
 
+    # ⚠️ NOT checked here, and the gap is recorded rather than papered over: that a
+    # rebuild restarts the service. This scenario runs with `umami_build: false` on
+    # purpose — a build would be testing pnpm — so the build block never runs and
+    # there is nothing for a restart to follow. A check written anyway would pass by
+    # construction and prove nothing.
+    #
+    # What it would have caught, measured 2026-08-20 on a live machine: a rebuild
+    # that moved the panel under a path left the service answering at the old one.
+    # Started 18:09, built 18:42, and every report short of asking the running
+    # process said the role had succeeded. Fixed by registering the build block and
+    # restarting on it; verified by hand on that machine, which is where this
+    # repository's other measurements come from too.
+
     - name: Read the unit's state
       ansible.builtin.systemd_service:
         name: umami

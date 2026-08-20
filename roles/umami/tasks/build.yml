@@ -20,6 +20,15 @@
 # and leave a panel whose assets 404 with nothing anywhere saying why.
 - name: Build Umami {{ umami_version }}
   when: (umami_stamp.content | default('') | b64decode | trim) != umami_build_signature
+  # ⚠️ Recorded so the service can be restarted for it. A rebuild changes what the
+  # machine EXECUTES while leaving the unit and the environment file untouched, so
+  # nothing else in this role notices — ansible reports success, the stamp records
+  # the new signature, and the process keeps serving the tree it loaded at boot.
+  #
+  # Measured 2026-08-20: after a rebuild that moved the panel under a path, the
+  # service still answered at the root. Started 18:09, built 18:42, and every check
+  # short of asking the running process said it had worked.
+  register: umami_built
   block:
     - name: Create the release directory
       ansible.builtin.file:
