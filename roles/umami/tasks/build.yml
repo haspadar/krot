@@ -1,0 +1,156 @@
+---
+# The build is the expensive half of this role: a Next.js production build of an
+# application with 88 dependencies, on a machine that is serving sites while it
+# runs. Everything here is arranged around doing it once per version and never
+# again.
+
+# Read the machine, not Ansible's memory of a previous play. The stamp lives
+# inside the release directory, so a half-built tree removed by hand takes its
+# stamp with it — a stamp kept outside would outlive the tree it describes and
+# claim a build that is no longer there.
+- name: Look for a completed build of this version
+  ansible.builtin.stat:
+    path: "{{ umami_build_stamp }}"
+  register: umami_stamp
+
+- name: Build Umami {{ umami_version }}
+  when: not umami_stamp.stat.exists
+  block:
+    - name: Create the release directory
+      ansible.builtin.file:
+        path: "{{ umami_release_dir }}"
+        state: directory
+        owner: "{{ umami_user }}"
+        group: "{{ umami_group }}"
+        mode: "0755"
+
+    # The tag's tarball, because upstream publishes no built artifact at all:
+    # measured 2026-08-20, the latest release carries `"assets": []` and offers
+    # source only — what it publishes instead is a Docker image, which these
+    # machines do not run.
+    #
+    # extra_opts strips the single top-level directory GitHub wraps every
+    # tarball in, so the tree lands at the release path rather than one level
+    # under a directory named after a commit.
+    - name: Fetch and unpack the release
+      ansible.builtin.unarchive:
+        src: >-
+          https://github.com/umami-software/umami/archive/refs/tags/v{{ umami_version }}.tar.gz
+        dest: "{{ umami_release_dir }}"
+        remote_src: true
+        owner: "{{ umami_user }}"
+        group: "{{ umami_group }}"
+        extra_opts:
+          - --strip-components=1
+        creates: "{{ umami_release_dir }}/package.json"
+
+    # Two tasks, not one, and only the second carries the connection string:
+    # fetching dependencies needs no database, and an environment is easiest to
+    # keep out of a place by never putting it there.
+    #
+    # As umami_user, not root: files built as root under a directory the service
+    # cannot write are the ordinary way a Next.js application ends up unable to
+    # write its own cache, and that surfaces at the first request rather than
+    # here.
+    # ⚠️ `timeout:` and NOT `async:`/`poll:`, and the difference is a password on
+    # disk. An async task writes its result — including the resolved
+    # environment — to `~/.ansible_async/<jobid>` under the CONNECTION user,
+    # mode 0644, and nothing ever removes it. `no_log` suppresses the console
+    # and not that file, so one failed build would leave DATABASE_URL in
+    # plaintext, world-readable, permanently — on a machine running nine sites
+    # whose whole point is that a compromised one reads nothing. Measured
+    # 2026-08-20: files from five days earlier were still sitting there at 0644.
+    #
+    # Nothing is lost by dropping it: `poll: 15` blocked the play anyway, so the
+    # asynchrony bought no concurrency, only the leak.
+    - name: Install dependencies and build
+      ansible.builtin.command:
+        cmd: >-
+          nice -n {{ umami_build_nice }}
+          pnpm install --frozen-lockfile --prod=false
+        chdir: "{{ umami_release_dir }}"
+      become: true
+      become_user: "{{ umami_user }}"
+      environment:
+        # Node sizes its default heap from TOTAL system memory rather than from
+        # what is free, so on a box already serving sites the build climbs until
+        # the OOM killer intervenes — and the killer picks by its own score,
+        # which on a database machine is as likely to land on postgres as on the
+        # build. The ceiling makes the build fail as the build.
+        NODE_OPTIONS: "--max-old-space-size={{ umami_build_memory_mb }}"
+        # Sends nothing to Vercel from a machine whose whole purpose is not
+        # reporting to third parties.
+        NEXT_TELEMETRY_DISABLED: "1"
+        # pnpm otherwise writes its store under the invoking user's home, and
+        # this account has none — the failure is a permission error inside a
+        # package manager, naming a path nobody set.
+        PNPM_HOME: "{{ umami_release_dir }}/.pnpm"
+        HOME: "{{ umami_release_dir }}"
+      # Ansible has no notion of what this changed; the stamp below is what
+      # makes the step skippable, so reporting is left honest and blunt.
+      changed_when: true
+      timeout: "{{ umami_build_timeout | int }}"
+
+    - name: Compile the application
+      ansible.builtin.command:
+        cmd: nice -n {{ umami_build_nice }} pnpm run build
+        chdir: "{{ umami_release_dir }}"
+      become: true
+      become_user: "{{ umami_user }}"
+      environment:
+        NODE_OPTIONS: "--max-old-space-size={{ umami_build_memory_mb }}"
+        NEXT_TELEMETRY_DISABLED: "1"
+        PNPM_HOME: "{{ umami_release_dir }}/.pnpm"
+        HOME: "{{ umami_release_dir }}"
+        # ⚠️ A PLACEHOLDER, not the real connection string, and that is the whole
+        # point. `prisma generate` refuses to run without the variable being
+        # present but connects to nothing here — the schema is applied later, by
+        # migrate.yml, against a database that exists. Handing it the real
+        # password would buy nothing and cost the build's own output: with a
+        # secret in the environment the task needs `no_log`, and then an OOM at
+        # the heap ceiling reports itself as `{"censored": ...}` on a
+        # fifteen-minute step.
+        #
+        # Which would defeat the ceiling's whole reason for existing — it is
+        # there so the build fails AS the build, and a censored failure names
+        # nothing at all.
+        DATABASE_URL: postgresql://build:build@127.0.0.1:5432/build
+        # Skips the connection check the build would otherwise make. Without it
+        # a build on a machine whose database is not up yet fails for a reason
+        # that has nothing to do with building — and with the placeholder above
+        # it would fail on every machine.
+        SKIP_DB_CHECK: "1"
+      changed_when: true
+      timeout: "{{ umami_build_timeout | int }}"
+
+    # `output: standalone` (next.config.ts:223 of v3.3.0) writes a
+    # self-contained server, but it traces only what it can see: the static
+    # assets and public/ are left where they were, and Next expects to find them
+    # relative to the standalone tree. Without these two the server starts,
+    # answers, and serves a page with no styles and no scripts — which looks
+    # like a broken application rather than a missing copy step.
+    - name: Place the static assets inside the standalone tree
+      ansible.builtin.command:
+        cmd: cp -a {{ item.src }} {{ item.dest }}
+        creates: "{{ item.dest }}"
+      loop:
+        - src: "{{ umami_release_dir }}/.next/static"
+          dest: "{{ umami_release_dir }}/.next/standalone/.next/static"
+        - src: "{{ umami_release_dir }}/public"
+          dest: "{{ umami_release_dir }}/.next/standalone/public"
+      loop_control:
+        label: "{{ item.dest | basename }}"
+
+    # Last, and only if everything above succeeded — that is what makes it a
+    # record of a finished build rather than of an attempted one. A stamp
+    # written earlier would let a failed build be skipped on the next run, and
+    # the machine would keep a broken tree forever while every play stayed
+    # green.
+    - name: Record that this version is built
+      ansible.builtin.copy:
+        content: |
+          {{ umami_version }}
+        dest: "{{ umami_build_stamp }}"
+        owner: "{{ umami_user }}"
+        group: "{{ umami_group }}"
+        mode: "0644"

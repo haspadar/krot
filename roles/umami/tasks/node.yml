@@ -1,0 +1,112 @@
+---
+# Ubuntu 24.04 ships Node 18.19.1, and this application does not build on it —
+# upstream's own Dockerfile uses node:22. So the distribution package is not a
+# candidate, and the only question is which third-party source. The collection
+# has answered that twice already: php takes the ondrej PPA, postgresql takes
+# pgdg, both through deb822_repository with the key under /usr/share/keyrings.
+# NodeSource is the same shape.
+
+- name: Look for a Node already on the machine
+  ansible.builtin.command: node --version
+  register: umami_node_present
+  changed_when: false
+  # A machine with no Node is the normal case, not an error: this file is about
+  # to install one.
+  failed_when: false
+  # Otherwise skipped under --check, and a dry run would decide what to install
+  # from an empty answer.
+  check_mode: false
+
+- name: Assert an unmanaged Node is new enough
+  # Both conditions, and neither alone is enough. The floor exists because the
+  # application does not COMPILE on Node 18, so it applies only where a build is
+  # going to happen — a machine handed a ready-built tree runs perfectly well on
+  # the distribution's own Node, and refusing it there rejects a working
+  # arrangement for a reason that does not apply.
+  when:
+    - not (umami_manage_node | bool)
+    - umami_build | bool
+  ansible.builtin.assert:
+    that:
+      - umami_node_present.rc == 0
+      - umami_node_present.stdout | regex_replace('^v([0-9]+).*$', '\1') | int
+        >= umami_node_required_major | int
+    fail_msg: >-
+      umami_manage_node is false, so this role expects Node
+      {{ umami_node_required_major }} or newer to be on the machine already.
+      Found: {{ umami_node_present.stdout | default('nothing on PATH') }}.
+      Ubuntu 24.04's own package is 18.19.1, which this application does not
+      build on.
+    quiet: true
+
+- name: Install Node from NodeSource
+  when: umami_manage_node | bool
+  block:
+    # Vendored rather than fetched, following php rather than postgresql: a
+    # provisioning run should not depend on a key server being reachable, nor on
+    # what it hands back. Fingerprint 6F71F525282841EEDAF851B42F59B5F99B1BE0B4.
+    - name: Add the NodeSource signing key
+      ansible.builtin.copy:
+        content: "{{ lookup('ansible.builtin.file', 'nodesource.asc') }}"
+        dest: /usr/share/keyrings/nodesource.asc
+        owner: root
+        group: root
+        mode: "0644"
+
+    # A hand-rolled nodesource.list from an earlier manual install points at a
+    # different keyring path; apt refuses to read both, and the error names the
+    # repository rather than the leftover file. Same defect the postgresql role
+    # already carries a task for.
+    - name: Drop a legacy NodeSource source list
+      ansible.builtin.file:
+        path: /etc/apt/sources.list.d/nodesource.list
+        state: absent
+
+    # The suite is `nodistro`, not the distribution codename: NodeSource builds
+    # one set of packages for every Debian and Ubuntu release rather than one per
+    # codename. Passing ansible_distribution_release here — which is what every
+    # other repository in this collection does — yields a 404 on a repository
+    # that exists, and the error reads as NodeSource being down.
+    - name: Add the NodeSource repository
+      ansible.builtin.deb822_repository:
+        name: nodesource
+        types: deb
+        uris: "https://deb.nodesource.com/node_{{ umami_node_version }}.x"
+        suites: nodistro
+        components: main
+        signed_by: /usr/share/keyrings/nodesource.asc
+        state: present
+      register: umami_node_repo
+
+    - name: Install Node.js {{ umami_node_version }}
+      ansible.builtin.apt:
+        name: nodejs
+        state: present
+        update_cache: true
+        # Force a refresh when the repository was just added, otherwise the new
+        # package is not in the cache yet.
+        cache_valid_time: "{{ umami_node_repo.changed | ternary(0, 3600) }}"
+
+    # Umami's lockfile is pnpm-lock.yaml. Installing with npm would resolve a
+    # different dependency tree than the one upstream tested and locked, and the
+    # difference appears as a runtime defect in a dependency nobody chose.
+    #
+    # corepack ships inside the NodeSource package, so this needs no second
+    # source. `--force` because it refuses to overwrite shims from an earlier
+    # enable, which makes a rerun fail on a machine the role itself set up.
+    - name: Enable pnpm through corepack
+      ansible.builtin.command: corepack enable pnpm
+      args:
+        creates: /usr/bin/pnpm
+
+    # Building native modules needs a compiler. Prisma's engines arrive
+    # precompiled, but the dependency tree is 88 packages deep and any one of
+    # them may carry a node-gyp build; without these the failure arrives from
+    # inside a package's install script, naming a missing header rather than a
+    # missing toolchain.
+    - name: Install the build toolchain
+      ansible.builtin.apt:
+        name:
+          - build-essential
+          - python3
+        state: present

@@ -2,7 +2,7 @@
 kind: index
 title: Роли коллекции
 owner: generated
-verified: 2026-08-16
+verified: 2026-08-20
 roles: []
 ---
 
@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-Всего **11**. Источник — `roles/`. Роль отвечает на вопрос «что ставится на машину»; страница вики — «как с этим работать и что кусается».
+Всего **12**. Источник — `roles/`. Роль отвечает на вопрос «что ставится на машину»; страница вики — «как с этим работать и что кусается».
 
 | Роль | Ручек в `defaults` | Объясняет страница |
 |---|---|---|
@@ -26,3 +26,4 @@ roles: []
 | [`nginx`](../../roles/nginx/) | 12 | [operations/cloudflare.md](../operations/cloudflare.md), [operations/logging.md](../operations/logging.md), [operations/secrets.md](../operations/secrets.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md) |
 | [`php`](../../roles/php/) | 20 | [operations/logging.md](../operations/logging.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [research/fpm-pools-cannot-share-a-socket.md](../research/fpm-pools-cannot-share-a-socket.md) |
 | [`postgresql`](../../roles/postgresql/) | 17 | [operations/logging.md](../operations/logging.md), [operations/postgresql.md](../operations/postgresql.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md) |
+| [`umami`](../../roles/umami/) | 17 | [operations/analytics-counter.md](../operations/analytics-counter.md) |

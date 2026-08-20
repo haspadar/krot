@@ -1,0 +1,104 @@
+---
+# The role's expensive half is a Next.js build of an application with 88
+# dependencies, and this scenario deliberately does NOT run it: `umami_build`
+# is false below. Two reasons, and the first is not about time.
+#
+# A build here would test upstream's build, not this role. What the role owns is
+# everything around it — the asserts, the account, the versioned tree and the
+# symlink, the environment file, the unit and its bind address, the migration
+# step. A scenario that spends fifteen minutes compiling and then checks a unit
+# file has tested npm.
+#
+# The second reason is that CI would carry those minutes on every PR, plus a
+# dependency on a dependency tree resolving the same way twice — the most
+# brittle thing that could be put in a required check.
+#
+# What is lost: nothing here proves the build produces a runnable tree. That is
+# a real gap and it is recorded as such in the change, not papered over. It is
+# closed by a run on a live machine, which is where every other measurement in
+# this repository's wiki comes from too.
+#
+# `prepare.yml` therefore plants a stand-in tree at the release path — a real
+# Node server that listens, so that the unit, the bind address and the port are
+# checked against a process rather than against a file.
+driver:
+  name: docker
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-umami
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      roles_path: ../../roles
+  inventory:
+    host_vars:
+      krot-umami:
+        # Off, per the reasoning at the top: the tree is planted by prepare.yml.
+        # This is also the branch a machine too small to build on would use, so
+        # it is not a testing-only path.
+        umami_build: false
+        # Nothing to build means nothing needing Node from NodeSource; prepare
+        # installs the distribution's own, which is enough to run a server that
+        # only has to listen.
+        umami_manage_node: false
+
+        # No database in this container, so the schema step has nothing to talk
+        # to. The connection string is still set and still asserted — it is what
+        # reaches the environment file, and verify reads it back from there.
+        #
+        # ⚠️ This differs from every real machine, where it defaults to TRUE, and
+        # the difference hid a defect: with no build there is no prisma binary,
+        # and the run died naming a path rather than the decision behind it. The
+        # role now refuses that combination out loud, and `prepare.yml` plants a
+        # stand-in binary so the refusal itself is exercised — see the second
+        # scenario below.
+        umami_migrate: false
+
+        # Every value differs from the role's default, so a setting read back
+        # from the running unit proves the role put it there rather than
+        # matching a default by accident. Port 3000 in particular would be
+        # indistinguishable from a server that ignored PORT entirely.
+        umami_port: 3111
+        umami_bind_host: 127.0.0.1
+        umami_user: umami-test
+        umami_group: umami-test
+        umami_root: /opt/umami-test
+        umami_version: "9.9.9-scenario"
+
+        umami_database_url: postgresql://scenario:scenario@127.0.0.1:5432/scenario
+        # Not a secret, and long enough on purpose: the role asserts 32
+        # characters, so a shorter literal here would fail the scenario on the
+        # role's own rule rather than on anything under test. Names itself as
+        # fake for secret-lint's sake.
+        # secret-lint: allow — throwaway, destroyed with the container
+        umami_app_secret: scenario-not-a-real-secret-only-for-molecule
+
+        umami_environment:
+          DISABLE_TELEMETRY: "1"
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible
