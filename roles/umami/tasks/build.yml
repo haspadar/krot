@@ -8,13 +8,18 @@
 # inside the release directory, so a half-built tree removed by hand takes its
 # stamp with it — a stamp kept outside would outlive the tree it describes and
 # claim a build that is no longer there.
-- name: Look for a completed build of this version
-  ansible.builtin.stat:
-    path: "{{ umami_build_stamp }}"
+- name: Read what was last built
+  ansible.builtin.slurp:
+    src: "{{ umami_build_stamp }}"
   register: umami_stamp
+  failed_when: false
 
+# Compared by CONTENT, not by existence: the base path is compiled into the
+# build, so a machine that built under one prefix and is now asked for another
+# has a stamp that is present and wrong. Existence alone would skip the rebuild
+# and leave a panel whose assets 404 with nothing anywhere saying why.
 - name: Build Umami {{ umami_version }}
-  when: not umami_stamp.stat.exists
+  when: (umami_stamp.content | default('') | b64decode | trim) != umami_build_signature
   block:
     - name: Create the release directory
       ansible.builtin.file:
@@ -102,6 +107,9 @@
         NEXT_TELEMETRY_DISABLED: "1"
         PNPM_HOME: "{{ umami_release_dir }}/.pnpm"
         HOME: "{{ umami_release_dir }}"
+        # Compiled into every link and asset path the application emits, which is
+        # why it belongs to the build rather than to the service.
+        BASE_PATH: "{{ umami_base_path }}"
         # ⚠️ A PLACEHOLDER, not the real connection string, and that is the whole
         # point. `prisma generate` refuses to run without the variable being
         # present but connects to nothing here — the schema is applied later, by
@@ -149,7 +157,7 @@
     - name: Record that this version is built
       ansible.builtin.copy:
         content: |
-          {{ umami_version }}
+          {{ umami_build_signature }}
         dest: "{{ umami_build_stamp }}"
         owner: "{{ umami_user }}"
         group: "{{ umami_group }}"

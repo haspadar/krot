@@ -10,6 +10,12 @@ umami_release_dir: "{{ umami_root }}/{{ umami_version }}"
 # building it.
 umami_build_stamp: "{{ umami_release_dir }}/.build-complete"
 
+# What the stamp records, so a change of any of it rebuilds. The base path is in
+# here because Next compiles it into every emitted path: a machine that already
+# built under one prefix would otherwise keep serving the old one forever, and
+# the symptom is a panel whose assets 404 with no explanation anywhere.
+umami_build_signature: "{{ umami_version }}:{{ umami_base_path }}"
+
 # The lowest Node this application runs on. next@16 requires >=20.9 and
 # prisma@7 requires ^20.19 || ^22.12 || >=24; upstream's own Dockerfile uses 22.
 umami_node_required_major: 20
