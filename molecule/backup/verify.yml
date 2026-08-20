@@ -142,3 +142,36 @@
         | selectattr('key', 'search', 'molecule_one.dump')
         | map(attribute='size')
         | first | default(0) | int == 0
+
+# The refusal is exercised, not assumed. An assert that never fires is
+# indistinguishable from one whose condition is wrong — and this one guards the
+# case where the copies are written into a bucket the application already reads,
+# which would give them the site's key and make a compromised site hand over
+# both.
+#
+# Here rather than in converge.yml, because applying the role a second time
+# there would break the idempotence step that runs between them.
+- name: The role refuses a bucket the application already uses
+  hosts: krot-backup
+  gather_facts: false
+  tasks:
+    - name: Point the backups at an application bucket
+      block:
+        - name: Apply the role with a colliding bucket
+          ansible.builtin.include_role:
+            name: backup
+          vars:
+            backup_application_buckets:
+              - molecule-backups
+              - donor-photos
+
+        - name: It did not refuse
+          ansible.builtin.fail:
+            msg: >-
+              The role accepted a backup bucket the application already uses.
+              The copies would share a key with the site, and a compromised
+              site would hand over both.
+      rescue:
+        - name: It refused, as it must
+          ansible.builtin.debug:
+            msg: The role refused the colliding bucket.

@@ -22,12 +22,12 @@
 - name: Assert the storage key is not the application's
   ansible.builtin.assert:
     that:
-      - backup_s3_bucket != backup_shared_photo_bucket
+      - backup_s3_bucket not in backup_application_buckets
     fail_msg: >-
-      The backups are pointed at the bucket the sites read photos from. Give the
+      The backups are pointed at a bucket the application already uses. Give the
       copies their own bucket and their own key.
     quiet: true
-  when: backup_shared_photo_bucket | length > 0
+  when: backup_application_buckets | length > 0
 
 - name: Install the tools the copies need
   ansible.builtin.apt:

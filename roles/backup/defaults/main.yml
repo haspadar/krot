@@ -64,10 +64,14 @@ backup_verify_schedule: "*-*-01 04:00:00"
 # obviously disposable if a failed run ever leaves it behind.
 backup_verify_database: krot_restore_check
 
-# The bucket the application reads its own data from, named here only so this
-# role can refuse to write backups into it. Empty means the check is skipped —
-# a machine with no such bucket has nothing to collide with.
-backup_shared_photo_bucket: ""
+# The buckets the application reads its own data from, named here only so this
+# role can refuse to write backups into one of them. Empty means the check is
+# skipped — a machine with no such bucket has nothing to collide with.
+#
+# ⚠️ A LIST, not one name. It started as a single photo bucket and the very
+# first machine turned out to have two (donor-photos and donor-videos), so a
+# scalar would have checked one of them and silently blessed the other.
+backup_application_buckets: []
 
 # Where the scripts and the credentials live. Under /usr/local rather than /opt
 # because they are executables of this machine, and the path shows up in unit
