@@ -1,0 +1,122 @@
+---
+# Checked before anything is installed, the way the cron role checks its jobs
+# and for the same reason: a service that looks provisioned and does not work is
+# worse than a play that refuses. Both of these have failure modes that hide.
+- name: Assert the counter has somewhere to keep its data
+  ansible.builtin.assert:
+    that:
+      - umami_database_url | length > 0
+      - umami_database_url is match('^postgres(ql)?://')
+    fail_msg: >-
+      umami_database_url must be a postgres:// connection string. The role does
+      not guess one: a wrong guess points the service at a database belonging to
+      something else, and nothing here can tell the difference.
+    quiet: true
+
+- name: Assert the counter has its own signing secret
+  ansible.builtin.assert:
+    that:
+      - umami_app_secret | length >= 32
+    fail_msg: >-
+      umami_app_secret must be set, and long. Umami does not require it — it
+      hashes DATABASE_URL instead (src/lib/crypto.ts) — so a machine without one
+      works perfectly until the database password is rotated, at which point
+      every session dies and the symptom names the wrong cause.
+    quiet: true
+
+# The address is asserted rather than defaulted-and-hoped, because the failure
+# is invisible: bound to 0.0.0.0 the service answers normally, and nothing on
+# the machine reports that it is also answering the internet.
+- name: Assert the service stays on the loopback
+  ansible.builtin.assert:
+    that:
+      - umami_bind_host in ['127.0.0.1', '::1', 'localhost']
+    fail_msg: >-
+      umami_bind_host is {{ umami_bind_host }}. This service is reached through
+      the site's nginx over the loopback; bound to anything else it is exposed
+      directly, and a machine behind a Cloudflare-only firewall would be exposed
+      without any sign of it.
+    quiet: true
+
+- name: Assert the port is a port
+  ansible.builtin.assert:
+    that:
+      - umami_port | int > 0
+      - umami_port | int < 65536
+    fail_msg: "umami_port must be a port number, got {{ umami_port }}."
+    quiet: true
+
+- name: Create the service group
+  ansible.builtin.group:
+    name: "{{ umami_group }}"
+    system: true
+    state: present
+
+# No login shell and no home: this account exists to own files and run one
+# process. HOME is handed to the build explicitly, which is why its absence here
+# costs nothing.
+- name: Create the service account
+  ansible.builtin.user:
+    name: "{{ umami_user }}"
+    group: "{{ umami_group }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ umami_root }}"
+    create_home: false
+    state: present
+
+- name: Create the root directory
+  ansible.builtin.file:
+    path: "{{ umami_root }}"
+    state: directory
+    owner: "{{ umami_user }}"
+    group: "{{ umami_group }}"
+    mode: "0755"
+
+- name: Install Node
+  ansible.builtin.include_tasks: node.yml
+
+# Skippable, because a machine may receive its tree another way — see
+# umami_build. The unit, the environment file and the account are installed
+# either way: they are what this role owns, and a tree without them is not a
+# service.
+- name: Build the application
+  ansible.builtin.include_tasks: build.yml
+  when: umami_build | bool
+
+# The environment file before the unit, because the unit reads it: written the
+# other way round, the first start of a fresh machine finds no file and fails
+# for a reason that has nothing to do with the application.
+#
+# 0640 and owned by the service account — it holds the database password, and
+# `systemctl cat` prints a unit to anybody who asks.
+- name: Write the environment file
+  ansible.builtin.template:
+    src: umami.env.j2
+    dest: "{{ umami_root }}/umami.env"
+    owner: root
+    group: "{{ umami_group }}"
+    mode: "0640"
+  notify: Restart umami
+
+- name: Apply pending database migrations
+  ansible.builtin.include_tasks: migrate.yml
+  when: umami_migrate | bool
+
+- name: Install the service unit
+  ansible.builtin.template:
+    src: umami.service.j2
+    dest: /etc/systemd/system/umami.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart umami
+
+- name: Start the counter
+  ansible.builtin.systemd_service:
+    name: umami
+    enabled: true
+    state: started
+    daemon_reload: true

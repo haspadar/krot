@@ -1,0 +1,113 @@
+---
+- name: Verify
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Ask the running process what reached it
+      ansible.builtin.uri:
+        url: http://127.0.0.1:3111/
+        return_content: true
+      register: answer
+      retries: 10
+      delay: 2
+      until: answer is not failed
+
+    # The port first, because it is the one value a wrong role could match by
+    # accident: the role's own default is 3000, so a unit that ignored PORT
+    # entirely would still answer there. 3111 answers only if the setting
+    # travelled.
+    - name: The unit handed the process the port the inventory asked for
+      ansible.builtin.assert:
+        that:
+          - answer.json.port == '3111'
+        fail_msg: >-
+          The process is listening, but on {{ answer.json.port }}. The unit did
+          not pass PORT, and a service on the wrong port is one nginx cannot
+          reach — while every check on the machine reports it running.
+        quiet: true
+
+    # The address is the failure with no symptom: bound to 0.0.0.0 the service
+    # answers this request exactly as it does now, and nothing reports that it
+    # is also answering the internet.
+    - name: The process is on the loopback and nowhere else
+      ansible.builtin.assert:
+        that:
+          - answer.json.host == '127.0.0.1'
+        fail_msg: >-
+          The process bound {{ answer.json.host }}. Umami's own default is
+          0.0.0.0, so this is what an unset HOSTNAME looks like — a healthy
+          service, published to every interface.
+        quiet: true
+
+    - name: The secrets reached the process through the environment file
+      ansible.builtin.assert:
+        that:
+          - answer.json.database == 'set'
+          - answer.json.secret == 'set'
+        fail_msg: >-
+          DATABASE_URL or APP_SECRET did not arrive. Umami does not require the
+          second — it hashes the first instead — so a missing one is invisible
+          until the database password is rotated.
+        quiet: true
+
+    - name: Extra settings reach the process too
+      ansible.builtin.assert:
+        that:
+          - answer.json.extra == '1'
+        fail_msg: >-
+          umami_environment was declared and did not arrive, so anything the
+          inventory adds later would be silently dropped.
+        quiet: true
+
+    - name: Read the environment file back
+      ansible.builtin.stat:
+        path: /opt/umami-test/umami.env
+      register: envfile
+
+    # The mode matters as much as the contents: `systemctl cat` prints a unit to
+    # any account on the machine, which is why the password lives in a separate
+    # file — and a separate file readable by everyone would defeat the split.
+    - name: The environment file does not hand the password to the machine
+      ansible.builtin.assert:
+        that:
+          - envfile.stat.exists
+          - envfile.stat.mode == '0640'
+          - envfile.stat.pw_name == 'root'
+          - envfile.stat.gr_name == 'umami-test'
+        fail_msg: >-
+          {{ envfile.stat.path }} is {{ envfile.stat.mode | default('absent') }}.
+          It holds the database password, and 0644 would publish it to every
+          account on the machine.
+        quiet: true
+
+    - name: The service account cannot log in
+      ansible.builtin.command: getent passwd umami-test
+      register: account
+      changed_when: false
+
+    - name: An account that owns files does not need a shell
+      ansible.builtin.assert:
+        that:
+          - "'/usr/sbin/nologin' in account.stdout"
+        fail_msg: >-
+          The service account has a login shell. It exists to own files and run
+          one process; a shell on it is an unnecessary way onto the machine.
+        quiet: true
+
+    - name: Read the unit's state
+      ansible.builtin.systemd_service:
+        name: umami
+      register: unit
+      changed_when: false
+
+    - name: The unit is running and survives a reboot
+      ansible.builtin.assert:
+        that:
+          - unit.status.ActiveState == 'active'
+          - unit.status.UnitFileState == 'enabled'
+        fail_msg: >-
+          umami is {{ unit.status.ActiveState }} and
+          {{ unit.status.UnitFileState }}. A counter that does not come back
+          after a reboot stops measuring on the quietest possible signal — no
+          error anywhere, just a gap in the figures nobody is watching.
+        quiet: true

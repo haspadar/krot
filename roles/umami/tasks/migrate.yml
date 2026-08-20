@@ -1,0 +1,28 @@
+---
+# Umami's own container entrypoint runs `node scripts/check-db.js` before the
+# server, and that script ends in `prisma migrate deploy`. Doing it here rather
+# than inside the unit is deliberate: a migration run from ExecStartPre fails
+# the service, and systemd then restarts it, which runs the migration again — a
+# schema problem turns into a restart loop that reports itself as a crashing
+# application.
+#
+# Run from the release tree, as the service user, against the same connection
+# string the service will use. `migrate deploy` applies pending migrations and
+# never generates or resets: it is the one Prisma command safe to run
+# unattended, which is why the role runs this and not `migrate dev`.
+- name: Apply pending database migrations
+  ansible.builtin.command:
+    cmd: ./node_modules/.bin/prisma migrate deploy
+    chdir: "{{ umami_release_dir }}"
+  become: true
+  become_user: "{{ umami_user }}"
+  environment:
+    DATABASE_URL: "{{ umami_database_url }}"
+    HOME: "{{ umami_release_dir }}"
+  register: umami_migration
+  # Prisma says so itself, and saying it here keeps a routine run from reporting
+  # a change every time it touches a database that is already current.
+  changed_when: "'No pending migrations' not in umami_migration.stdout"
+  # The connection string is in the environment, and a failure prints the
+  # environment it ran with.
+  no_log: true

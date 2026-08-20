@@ -1,0 +1,85 @@
+---
+# The Umami release to run, WITHOUT the leading v — the download URL adds it
+# (`.../tags/v{{ umami_version }}.tar.gz`). Writing "v3.3.0" here builds a URL
+# with two of them and answers 404, which reads as a withdrawn release rather
+# than a typo.
+#
+# Pinned rather than tracking a branch: the build applies database migrations,
+# so "whatever is on master today" would mean a schema change arriving on an
+# unrelated provisioning run.
+umami_version: "3.3.0"
+
+# Where the checkout and its build live. One directory owned by the service
+# account: the build writes into node_modules/ and .next/ as the same user that
+# later runs the application, so there is no permission handover half way
+# through.
+umami_root: /opt/umami
+
+# The account the service runs as, and the owner of the checkout. A system
+# account with no login shell — the role creates it when missing.
+umami_user: umami
+umami_group: umami
+
+# Loopback only, and not negotiable by accident. Umami's own start script
+# defaults to 0.0.0.0, so leaving this unset opens the service to the world
+# while everything looks healthy — the failure has no symptom until somebody
+# scans the machine. The site's nginx reaches it over the loopback.
+umami_bind_host: 127.0.0.1
+umami_port: 3000
+
+# Where the counter keeps its data. No default: a wrong guess would point the
+# service at a database belonging to something else, and the role has no way to
+# tell the difference. Asserted in tasks/main.yml.
+umami_database_url: ""
+
+# Signs sessions and encrypts stored tokens. No default for the same reason,
+# plus one of its own: Umami falls back to hashing DATABASE_URL when this is
+# absent, so a machine without it works perfectly until the database password is
+# rotated and every session on it dies at once. The symptom names the wrong
+# cause, which is why this is required rather than defaulted.
+umami_app_secret: ""
+
+# Anything else the application should read, as plain key/value. Empty by
+# default: a setting nobody asked for is a setting nobody can explain later.
+umami_environment: {}
+
+# Whether the role installs Node itself. Ubuntu 24.04 ships 18.19.1 and this
+# application does not build on it, so the answer is normally yes — but a
+# machine that already manages Node its own way should not have a second source
+# added behind its back.
+umami_manage_node: true
+umami_node_version: 22
+
+# How long the build may take, in seconds, and how much heap it may use.
+#
+# Twenty minutes because this is a Next.js production build of 88 dependencies
+# on a shared machine; the poll interval is what keeps the play from blocking on
+# it entirely.
+umami_build_timeout: 1200
+
+# Node sizes its default heap from TOTAL system memory rather than free memory,
+# so on a box already serving sites the build climbs until the OOM killer
+# intervenes — and the killer picks by its own score, which on a database
+# machine lands on postgres as readily as on the build. A ceiling makes the
+# build fail as the build.
+#
+# 1024 fits a 4GB machine with sites and a database on it. Raise it on a bigger
+# box; do not remove it.
+umami_build_memory_mb: 1024
+
+# The build runs beside live sites, so it yields to them. Not a limit on how
+# long it takes — a limit on whose requests get slower while it does.
+umami_build_nice: 10
+
+# Whether to apply pending migrations. On by default: a build without its schema
+# is a service that starts and answers errors.
+umami_migrate: true
+
+# Whether the role builds the application at all. On by default, because a
+# machine with no build has nothing to run.
+#
+# Turned off, the role expects a tree to be at the release path already — put
+# there by a build host, an image, or a copy from elsewhere. That is a real
+# arrangement on a machine too small to compile on, not only a testing hook: the
+# build wants a gigabyte of heap and fifteen minutes beside live sites.
+umami_build: true

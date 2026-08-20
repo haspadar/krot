@@ -1,0 +1,12 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+# Restarted rather than reloaded: the application reads its environment at
+# start, and a running process cannot pick up a rotated secret or a changed port
+# any other way.
+- name: Restart umami
+  ansible.builtin.systemd_service:
+    name: umami
+    state: restarted

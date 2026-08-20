@@ -34,6 +34,7 @@ Ansible-коллекция `haspadar.krot` — переносимые роли, 
 | [PostgreSQL](operations/postgresql.md) | мажорная версия, `pg_stat_statements`, рестарт против reload |
 | [Cloudflare-замок](operations/cloudflare.md) | 80/443 только с CF, real-IP, закрытые сайты |
 | [Docker на хосте matilda](operations/docker.md) | что ставит роль и где кончается её зона |
+| [Счётчик посещаемости](operations/analytics-counter.md) | почему свой, а не арендованный; сборка на машине, петля, `APP_SECRET` |
 | [Секреты](operations/secrets.md) | Bitwarden в рантайме, `BW_SESSION`, почему роль падает |
 | [Выкатка и ключи](operations/deploy.md) | Deployer с control-машины, ключ на репозиторий |
 

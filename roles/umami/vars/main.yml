@@ -1,0 +1,15 @@
+---
+# Derived paths, here rather than in defaults because they are not choices: an
+# inventory that overrode one of these would have to keep it consistent with
+# umami_root by hand, and the two would eventually disagree.
+umami_release_dir: "{{ umami_root }}/{{ umami_version }}"
+
+# Inside the release directory on purpose. A stamp kept outside would outlive
+# the tree it describes: a half-built release removed by hand would leave a
+# stamp claiming a build that is no longer there, and the next run would skip
+# building it.
+umami_build_stamp: "{{ umami_release_dir }}/.build-complete"
+
+# The lowest Node this application runs on. next@16 requires >=20.9 and
+# prisma@7 requires ^20.19 || ^22.12 || >=24; upstream's own Dockerfile uses 22.
+umami_node_required_major: 20

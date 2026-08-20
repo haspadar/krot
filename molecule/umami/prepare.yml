@@ -1,0 +1,63 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
+    # The distribution's own Node, not NodeSource. Nothing here is built, so the
+    # version that cannot build the application can perfectly well run a server
+    # that only has to listen — and installing it this way keeps the scenario
+    # from depending on a third-party repository being up.
+    - name: Install a Node to run the stand-in with
+      ansible.builtin.apt:
+        name: nodejs
+        state: present
+        update_cache: true
+
+    # The tree the role would otherwise have built. Planted rather than
+    # compiled, per the reasoning in molecule.yml: what is under test is the
+    # unit, the address it binds and the file it reads, and those need a process
+    # that starts — not upstream's build.
+    - name: Create the release tree the unit expects
+      ansible.builtin.file:
+        path: /opt/umami-test/9.9.9-scenario/.next/standalone
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # A real server, because a file cannot prove a bind address. It answers on
+    # exactly what the unit hands it, so verify can ask the running process
+    # rather than reading back the template that configured it.
+    - name: Plant a server that listens on what the unit says
+      ansible.builtin.copy:
+        dest: /opt/umami-test/9.9.9-scenario/.next/standalone/server.js
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          const http = require('http');
+          const host = process.env.HOSTNAME;
+          const port = process.env.PORT;
+          http.createServer((req, res) => {
+            res.writeHead(200, {'Content-Type': 'application/json'});
+            // Echoed back so the scenario can check what actually reached the
+            // process, rather than what the template meant to send it.
+            res.end(JSON.stringify({
+              host: host,
+              port: port,
+              database: process.env.DATABASE_URL ? 'set' : 'missing',
+              secret: process.env.APP_SECRET ? 'set' : 'missing',
+              extra: process.env.DISABLE_TELEMETRY || 'missing',
+            }));
+          }).listen(port, host);

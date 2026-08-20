@@ -100,7 +100,7 @@ Deployer потом кладёт выкатки.
 
 | Проект | Роли | Почему так |
 |---|---|---|
-| busel | `common + php + postgresql + nginx + firewall + fail2ban` | несколько сайтов на машине за Cloudflare, всё системное |
+| busel | `common + php + postgresql + nginx + umami + firewall + fail2ban` | несколько сайтов на машине за Cloudflare, всё системное |
 | matilda | `common + docker + firewall + fail2ban` | голый хост под Docker Compose |
 
 Разница не в предпочтениях. У matilda тяжёлое специфичное окружение (playwright, flaresolverr,

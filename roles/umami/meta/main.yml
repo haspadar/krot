@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    Umami analytics as a system service: built from source on the machine,
+    bound to the loopback, reached through the site's own nginx.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - analytics
+    - web
+
+dependencies: []
