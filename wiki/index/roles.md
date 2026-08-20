@@ -26,4 +26,4 @@ roles: []
 | [`nginx`](../../roles/nginx/) | 12 | [operations/cloudflare.md](../operations/cloudflare.md), [operations/logging.md](../operations/logging.md), [operations/secrets.md](../operations/secrets.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md) |
 | [`php`](../../roles/php/) | 20 | [operations/logging.md](../operations/logging.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [research/fpm-pools-cannot-share-a-socket.md](../research/fpm-pools-cannot-share-a-socket.md) |
 | [`postgresql`](../../roles/postgresql/) | 17 | [operations/logging.md](../operations/logging.md), [operations/postgresql.md](../operations/postgresql.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md) |
-| [`umami`](../../roles/umami/) | 17 | [operations/analytics-counter.md](../operations/analytics-counter.md) |
+| [`umami`](../../roles/umami/) | 18 | [operations/analytics-counter.md](../operations/analytics-counter.md) |
