@@ -57,6 +57,7 @@
               host: host,
               port: port,
               database: process.env.DATABASE_URL ? 'set' : 'missing',
+              // secret-lint: allow — reports whether the variable arrived, never its value
               secret: process.env.APP_SECRET ? 'set' : 'missing',
               extra: process.env.DISABLE_TELEMETRY || 'missing',
             }));

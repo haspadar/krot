@@ -84,6 +84,7 @@ provisioner:
         # characters, so a shorter literal here would fail the scenario on the
         # role's own rule rather than on anything under test. Names itself as
         # fake for secret-lint's sake.
+        # secret-lint: allow — throwaway, destroyed with the container
         umami_app_secret: scenario-not-a-real-secret-only-for-molecule
 
         umami_environment:
