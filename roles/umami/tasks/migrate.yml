@@ -10,6 +10,27 @@
 # string the service will use. `migrate deploy` applies pending migrations and
 # never generates or resets: it is the one Prisma command safe to run
 # unattended, which is why the role runs this and not `migrate dev`.
+# ⚠️ Checked, because the two switches are independent and their combination is
+# a real arrangement: a machine handed a ready-built STANDALONE tree has no
+# node_modules at all, and `umami_migrate` defaults to true. Unguarded, the run
+# dies on `./node_modules/.bin/prisma: No such file or directory` — a message
+# that names a path and hides the decision that led there.
+- name: Look for the migration tool
+  ansible.builtin.stat:
+    path: "{{ umami_release_dir }}/node_modules/.bin/prisma"
+  register: umami_prisma
+
+- name: Say plainly when there is nothing to migrate with
+  ansible.builtin.assert:
+    that:
+      - umami_prisma.stat.exists
+    fail_msg: >-
+      umami_migrate is on, but {{ umami_release_dir }} carries no prisma —
+      nothing here installed dependencies. A tree delivered ready-built
+      (umami_build: false) is usually a standalone one, which has none: migrate
+      from wherever it was built, and set umami_migrate: false here.
+    quiet: true
+
 - name: Apply pending database migrations
   ansible.builtin.command:
     cmd: ./node_modules/.bin/prisma migrate deploy

@@ -13,3 +13,15 @@ umami_build_stamp: "{{ umami_release_dir }}/.build-complete"
 # The lowest Node this application runs on. next@16 requires >=20.9 and
 # prisma@7 requires ^20.19 || ^22.12 || >=24; upstream's own Dockerfile uses 22.
 umami_node_required_major: 20
+
+# Settings the unit owns, which `umami_environment` may not carry. Not a style
+# rule: systemd applies EnvironmentFile after Environment=, so any of these
+# coming from the inventory would override the unit and defeat the asserts that
+# guard them.
+umami_reserved_environment:
+  - HOSTNAME
+  - PORT
+  - NODE_ENV
+  - NODE_OPTIONS
+  - DATABASE_URL
+  - APP_SECRET

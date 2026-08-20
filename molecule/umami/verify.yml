@@ -94,6 +94,40 @@
           one process; a shell on it is an unnecessary way onto the machine.
         quiet: true
 
+    # The role's own refusal, checked rather than assumed. A migration switch left
+    # on where nothing installed dependencies is a real inventory — a machine fed
+    # a ready-built standalone tree has no node_modules — and the message it
+    # produces is what somebody reads at that moment.
+    # `block`/`rescue` rather than `ignore_errors`: the latter does not stop a
+    # failure raised INSIDE an included role, so the scenario died on the very
+    # refusal it was checking for.
+    - name: Ask the role to migrate a tree with no migration tool
+      block:
+        - name: Run the migration step against a tree that has none
+          ansible.builtin.include_role:
+            name: umami
+            tasks_from: migrate.yml
+          vars:
+            umami_release_dir: /opt/umami-test/no-such-build
+
+        - name: The role accepted a tree it cannot migrate
+          ansible.builtin.fail:
+            msg: >-
+              migrate.yml ran against a tree with no prisma in it. A machine fed
+              a ready-built standalone tree has none, and `umami_migrate`
+              defaults to true — so this combination reaches real inventories.
+      rescue:
+        # The message is the point. `No such file or directory` naming
+        # node_modules would name a path and hide the decision that led there.
+        - name: The refusal names the decision, not a path
+          ansible.builtin.assert:
+            that:
+              - "'carries no prisma' in (ansible_failed_result.msg | default(''))"
+            fail_msg: >-
+              The role refused, but the message does not say why:
+              {{ ansible_failed_result.msg | default('(no message)') }}
+            quiet: true
+
     - name: Read the unit's state
       ansible.builtin.systemd_service:
         name: umami

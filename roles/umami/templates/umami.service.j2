@@ -39,6 +39,22 @@ EnvironmentFile={{ umami_root }}/umami.env
 Restart=on-failure
 RestartSec=5s
 
+# ⚠️ The rate limit matters more than it looks. systemd's default gives up after
+# five starts in ten seconds, which bounds a service that dies IMMEDIATELY — but
+# not one that starts, listens, and dies half a minute later on a schema it
+# cannot use. That one never trips the default burst and loops forever: thirty
+# seconds alive, five dead, spawning a Node process each time on a machine with
+# 3.8 GB and nine sites on it. A wider window catches the slow failure too.
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+# The same reasoning the build applies to its heap, applied to the service. Node
+# sizes itself from total system memory rather than free memory, so a counter
+# that misbehaves competes with postgres for the last of it — and the OOM killer
+# picks by its own score, which on a database machine lands on postgres as
+# readily as on the offender.
+MemoryMax={{ umami_memory_max }}
+
 # Hardening. The service reads a build it does not own and writes nothing
 # outside its own tree; everything below says so to the kernel rather than
 # trusting the application to behave.
@@ -53,6 +69,20 @@ ProtectControlGroups=true
 RestrictSUIDSGID=true
 RestrictNamespaces=true
 LockPersonality=true
+# ⚠️ Not decoration on THIS machine. /proc/<pid>/environ holds the resolved
+# environment of a running process, so the 0640 split that keeps the database
+# password out of `systemctl cat` ends the moment the service starts unless the
+# rest of /proc is hidden from it — and, in the other direction, this account
+# could otherwise read the environment of every php-fpm worker serving the nine
+# sites beside it.
+ProtectProc=invisible
+ProcSubset=pid
+# Nothing here needs a capability, and saying so is cheaper than auditing later
+# which one crept in.
+CapabilityBoundingSet=
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0077
 # Next writes its runtime cache under the release tree, so that one path is
 # writable and the rest of the filesystem is not.
 ReadWritePaths={{ umami_release_dir }}

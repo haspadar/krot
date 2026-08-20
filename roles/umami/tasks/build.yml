@@ -44,20 +44,25 @@
           - --strip-components=1
         creates: "{{ umami_release_dir }}/package.json"
 
-    # Dependencies and build as one command, as the service user. Two reasons it
-    # is a shell line rather than two tasks:
-    #
-    #  * every step needs the same environment, and repeating it invites the two
-    #    copies to drift;
-    #  * the build reads DATABASE_URL. `prisma generate` needs a URL present to
-    #    produce a client, though it connects to nothing at this point — a build
-    #    without it fails on a missing variable, which reads as a broken release
-    #    rather than a missing setting.
+    # Two tasks, not one, and only the second carries the connection string:
+    # fetching dependencies needs no database, and an environment is easiest to
+    # keep out of a place by never putting it there.
     #
     # As umami_user, not root: files built as root under a directory the service
     # cannot write are the ordinary way a Next.js application ends up unable to
     # write its own cache, and that surfaces at the first request rather than
     # here.
+    # ⚠️ `timeout:` and NOT `async:`/`poll:`, and the difference is a password on
+    # disk. An async task writes its result — including the resolved
+    # environment — to `~/.ansible_async/<jobid>` under the CONNECTION user,
+    # mode 0644, and nothing ever removes it. `no_log` suppresses the console
+    # and not that file, so one failed build would leave DATABASE_URL in
+    # plaintext, world-readable, permanently — on a machine running nine sites
+    # whose whole point is that a compromised one reads nothing. Measured
+    # 2026-08-20: files from five days earlier were still sitting there at 0644.
+    #
+    # Nothing is lost by dropping it: `poll: 15` blocked the play anyway, so the
+    # asynchrony bought no concurrency, only the leak.
     - name: Install dependencies and build
       ansible.builtin.command:
         cmd: >-
@@ -84,8 +89,7 @@
       # Ansible has no notion of what this changed; the stamp below is what
       # makes the step skippable, so reporting is left honest and blunt.
       changed_when: true
-      async: "{{ umami_build_timeout | int }}"
-      poll: 15
+      timeout: "{{ umami_build_timeout | int }}"
 
     - name: Compile the application
       ansible.builtin.command:
@@ -98,18 +102,26 @@
         NEXT_TELEMETRY_DISABLED: "1"
         PNPM_HOME: "{{ umami_release_dir }}/.pnpm"
         HOME: "{{ umami_release_dir }}"
-        # Present because `prisma generate` inside the build refuses to run
-        # without it. It connects to nothing here — the schema is applied later,
-        # by migrate.yml, against a database that exists.
-        DATABASE_URL: "{{ umami_database_url }}"
+        # ⚠️ A PLACEHOLDER, not the real connection string, and that is the whole
+        # point. `prisma generate` refuses to run without the variable being
+        # present but connects to nothing here — the schema is applied later, by
+        # migrate.yml, against a database that exists. Handing it the real
+        # password would buy nothing and cost the build's own output: with a
+        # secret in the environment the task needs `no_log`, and then an OOM at
+        # the heap ceiling reports itself as `{"censored": ...}` on a
+        # fifteen-minute step.
+        #
+        # Which would defeat the ceiling's whole reason for existing — it is
+        # there so the build fails AS the build, and a censored failure names
+        # nothing at all.
+        DATABASE_URL: postgresql://build:build@127.0.0.1:5432/build
         # Skips the connection check the build would otherwise make. Without it
         # a build on a machine whose database is not up yet fails for a reason
-        # that has nothing to do with building.
+        # that has nothing to do with building — and with the placeholder above
+        # it would fail on every machine.
         SKIP_DB_CHECK: "1"
       changed_when: true
-      async: "{{ umami_build_timeout | int }}"
-      poll: 15
-      no_log: true
+      timeout: "{{ umami_build_timeout | int }}"
 
     # `output: standalone` (next.config.ts:223 of v3.3.0) writes a
     # self-contained server, but it traces only what it can see: the static

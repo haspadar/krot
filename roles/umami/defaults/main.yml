@@ -9,6 +9,22 @@
 # unrelated provisioning run.
 umami_version: "3.3.0"
 
+# ⚠️ A tag is a MOVEABLE reference, and this role does not verify which commit
+# it landed on — recorded as a known gap rather than a checked one.
+#
+# What was tried and does not work: GitHub's `archive/refs/tags/` tarball carries
+# no commit metadata (verified 2026-08-20 by unpacking v3.3.0), so there is
+# nothing in the tree to compare against. A checksum on the tarball does not fill
+# the gap either — GitHub generates those archives on demand and has changed
+# their compression, so the bytes are not stable while the commit is.
+#
+# The real fix is to fetch by commit SHA instead of by tag, which makes the tree
+# immutable by construction. Left for when a version is next bumped, because it
+# changes the URL shape and deserves its own measurement.
+#
+# What already limits the damage: `pnpm install --frozen-lockfile` pins every
+# dependency by integrity hash, and the build runs as an unprivileged account.
+
 # Where the checkout and its build live. One directory owned by the service
 # account: the build writes into node_modules/ and .next/ as the same user that
 # later runs the application, so there is no permission handover half way
@@ -66,6 +82,14 @@ umami_build_timeout: 1200
 # 1024 fits a 4GB machine with sites and a database on it. Raise it on a bigger
 # box; do not remove it.
 umami_build_memory_mb: 1024
+
+# How much memory the running service may take. Separate from the build ceiling
+# above and smaller: serving a counter is not compiling one.
+#
+# A limit rather than none, because this machine has 3.8 GB and a database on
+# it — an unbounded Node process competing for the last of it gets postgres
+# killed as readily as itself.
+umami_memory_max: 512M
 
 # The build runs beside live sites, so it yields to them. Not a limit on how
 # long it takes — a limit on whose requests get slower while it does.

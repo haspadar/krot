@@ -59,6 +59,13 @@ provisioner:
         # No database in this container, so the schema step has nothing to talk
         # to. The connection string is still set and still asserted — it is what
         # reaches the environment file, and verify reads it back from there.
+        #
+        # ⚠️ This differs from every real machine, where it defaults to TRUE, and
+        # the difference hid a defect: with no build there is no prisma binary,
+        # and the run died naming a path rather than the decision behind it. The
+        # role now refuses that combination out loud, and `prepare.yml` plants a
+        # stand-in binary so the refusal itself is exercised — see the second
+        # scenario below.
         umami_migrate: false
 
         # Every value differs from the role's default, so a setting read back

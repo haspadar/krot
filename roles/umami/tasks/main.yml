@@ -38,6 +38,28 @@
       without any sign of it.
     quiet: true
 
+# ⚠️ systemd applies EnvironmentFile AFTER Environment=, so a value here
+# overrides what the unit sets — including HOSTNAME. Without this check an
+# inventory could pass every assert above and still publish the service on every
+# interface, which is the exact failure the loopback assert exists to prevent,
+# arriving through the role's own extension point.
+#
+# Newlines are refused for the neighbouring reason: EnvironmentFile is parsed
+# line by line, so a value carrying one writes additional settings into a file
+# root owns. NODE_OPTIONS=--require /tmp/x.js is the version of that which runs
+# code.
+- name: Assert extra settings cannot override what the unit decides
+  ansible.builtin.assert:
+    that:
+      - umami_environment.keys() | reject('in', umami_reserved_environment) | list | length
+        == umami_environment | length
+      - umami_environment.values() | select('search', '[\r\n]') | list | length == 0
+    fail_msg: >-
+      umami_environment may not set {{ umami_reserved_environment | join(', ') }}
+      — the unit decides those, and a value here would silently win — and may not
+      contain a newline, which would write further settings into the file.
+    quiet: true
+
 - name: Assert the port is a port
   ansible.builtin.assert:
     that:
@@ -45,6 +67,23 @@
       - umami_port | int < 65536
     fail_msg: "umami_port must be a port number, got {{ umami_port }}."
     quiet: true
+
+# ⚠️ Needed because two tasks below `become` an UNPRIVILEGED user while carrying
+# the connection string in their environment. Without acl, Ansible cannot hand
+# the module payload to that user by ACL and falls back to `chmod a+r` on
+# /tmp/ansible-tmp-*, which puts the resolved DATABASE_URL in a world-readable
+# file for the length of the task. `no_log` does not touch this — it filters the
+# callback, not the transport.
+#
+# The window is short and the machine is not: nine sites and php-fpm share it,
+# and www-data is exactly the account an application-level compromise lands on.
+# That is the account the 0640 env file exists to keep out.
+- name: Install acl, so becoming the service user does not publish its secrets
+  ansible.builtin.apt:
+    name: acl
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
 
 - name: Create the service group
   ansible.builtin.group:
@@ -97,12 +136,17 @@
     owner: root
     group: "{{ umami_group }}"
     mode: "0640"
-  notify: Restart umami
+  register: umami_env
 
-- name: Apply pending database migrations
-  ansible.builtin.include_tasks: migrate.yml
-  when: umami_migrate | bool
-
+# ⚠️ The unit goes in BEFORE the migration, and the restart happens right after
+# it — not through a handler at the end of the play. The order is the whole
+# defence against a version bump leaving code and schema disagreeing.
+#
+# Written the other way round — migrate, then unit, then let the handler restart
+# whenever the play happens to end — an upgrade opens a window where the schema
+# is new and the running process is still the old build. A migration that fails
+# leaves that window open indefinitely, and `state: started` cannot close it: an
+# already-active service is already started, so that task does nothing at all.
 - name: Install the service unit
   ansible.builtin.template:
     src: umami.service.j2
@@ -110,13 +154,47 @@
     owner: root
     group: root
     mode: "0644"
-  notify:
-    - Reload systemd
-    - Restart umami
+  register: umami_unit
 
-- name: Start the counter
+- name: Apply pending database migrations
+  ansible.builtin.include_tasks: migrate.yml
+  when: umami_migrate | bool
+
+# Restarted explicitly rather than notified, so the new code is running before
+# this role reports success. A handler would defer it past every remaining role
+# in the play — and past whatever else that play does to the machine.
+- name: Start the counter on the tree that was just prepared
   ansible.builtin.systemd_service:
     name: umami
     enabled: true
-    state: started
+    state: "{{ (umami_unit.changed or umami_env.changed) | ternary('restarted', 'started') }}"
     daemon_reload: true
+
+# ⚠️ AFTER the service is running, never before: a tree deleted ahead of a failed
+# start would take the working version with it.
+#
+# Left alone they accumulate silently — each is a checkout plus node_modules plus
+# .next plus a pnpm store — and the first symptom of the pile is a full disk,
+# which on this machine hits PostgreSQL rather than the counter. One previous
+# version is kept so a rollback is a unit edit rather than a rebuild.
+- name: List the release trees on the machine
+  ansible.builtin.find:
+    paths: "{{ umami_root }}"
+    file_type: directory
+    depth: 1
+  register: umami_trees
+
+- name: Remove releases older than the one before this
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  # Sorted newest-first, the running version dropped, the newest survivor kept:
+  # what is left to delete is everything from the second survivor onwards.
+  loop: "{{ umami_stale_releases }}"
+  loop_control:
+    label: "{{ item | basename }}"
+  vars:
+    umami_other_releases: >-
+      {{ umami_trees.files | map(attribute='path')
+         | reject('equalto', umami_release_dir) | sort | reverse | list }}
+    umami_stale_releases: "{{ umami_other_releases[1:] }}"

@@ -36,3 +36,50 @@
 
 - [x] 4.1 `wiki/operations/analytics-counter.md`, linked from the README; the role table in
       `collection-layout.md` names it among busel's roles
+
+## 5. Fixed in review
+
+Two independent reviews, different angles. Both found real defects; these are the ones that
+were fixed rather than argued with.
+
+- [x] 5.1 **`async:` wrote the password to disk.** An async task records its result — resolved
+      environment included — in `~/.ansible_async/<jobid>` under the connection user, mode
+      0644, and nothing removes it. `no_log` filters the console, not that file. Measured
+      2026-08-20: files five days old were still there at 0644. Replaced with `timeout:`;
+      `poll: 15` blocked the play anyway, so the asynchrony bought nothing but the leak.
+- [x] 5.2 **`become` to an unprivileged user published the payload.** Without `acl`, Ansible
+      falls back to `chmod a+r` on `/tmp/ansible-tmp-*`, putting the connection string in a
+      world-readable file for the length of the task — on a machine where `www-data` serves
+      nine sites. The role installs `acl`.
+- [x] 5.3 **The build no longer sees the real password at all.** `prisma generate` needs the
+      variable to EXIST, not to work, so it gets a placeholder. That removed the reason for
+      `no_log` on the build — which had been censoring the build's own failure, defeating the
+      heap ceiling's whole purpose of making the build fail as the build.
+- [x] 5.4 **`umami_environment` could override the loopback.** systemd applies
+      `EnvironmentFile` after `Environment=`, so an inventory could pass every assert and
+      still publish the service on all interfaces. Reserved keys and newlines now refused.
+- [x] 5.5 **The unit was installed after the migration.** On a version bump that left a window
+      where the schema was new and the running process was the old build — and `state: started`
+      cannot close it, because an active service is already started. Unit first, restart
+      inline rather than through a handler at the end of the play.
+- [x] 5.6 **Migration with no prisma named a path, not a cause.** A ready-built standalone tree
+      has no `node_modules`, and `umami_migrate` defaults to true. Refused out loud, and the
+      refusal itself is exercised by the scenario.
+- [x] 5.7 **Old release trees accumulated forever.** Each is a checkout plus node_modules plus
+      .next plus a pnpm store; the first symptom is a full disk, which on this machine hits
+      PostgreSQL. Two kept, older removed — after the new one is running, never before.
+- [x] 5.8 **Unit hardening completed.** `ProtectProc=invisible` (without it `/proc/<pid>/environ`
+      hands the password to anything that can read it, ending the 0640 split the moment the
+      process starts), `MemoryMax`, `StartLimitIntervalSec` — the last because systemd's
+      default bounds a service that dies instantly and not one that dies half a minute in,
+      which loops forever.
+- [ ] 5.9 **Tag pinning is a KNOWN GAP, not a fixed defect.** A tag can be moved, and the role
+      does not verify which commit it got. Two approaches were tried and rejected on
+      measurement: GitHub's tarball carries no commit metadata (verified 2026-08-20 by
+      unpacking v3.3.0), and a tarball checksum is not stable because those archives are
+      generated on demand. The real fix is fetching by SHA instead of by tag; left for the
+      next version bump, because it changes the URL shape. What limits the damage meanwhile:
+      `--frozen-lockfile` pins every dependency by integrity hash, and the build runs
+      unprivileged.
+
+Scenario after all of it: 7/7, idempotence `changed=0`.
