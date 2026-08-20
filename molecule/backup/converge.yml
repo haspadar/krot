@@ -1,0 +1,5 @@
+---
+- name: Converge
+  hosts: krot-backup
+  roles:
+    - role: backup

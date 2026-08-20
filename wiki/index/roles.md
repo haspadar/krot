@@ -11,10 +11,11 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-Всего **12**. Источник — `roles/`. Роль отвечает на вопрос «что ставится на машину»; страница вики — «как с этим работать и что кусается».
+Всего **13**. Источник — `roles/`. Роль отвечает на вопрос «что ставится на машину»; страница вики — «как с этим работать и что кусается».
 
 | Роль | Ручек в `defaults` | Объясняет страница |
 |---|---|---|
+| [`backup`](../../roles/backup/) | 17 | [operations/database-backups.md](../operations/database-backups.md) |
 | [`bootstrap`](../../roles/bootstrap/) | 6 | [operations/cloudflare.md](../operations/cloudflare.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`common`](../../roles/common/) | 5 | [operations/logging.md](../operations/logging.md), [operations/testing-roles.md](../operations/testing-roles.md), [research/apt-allowed-origins-appends.md](../research/apt-allowed-origins-appends.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`cron`](../../roles/cron/) | 8 | [operations/cron-jobs.md](../operations/cron-jobs.md), [operations/logging.md](../operations/logging.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md) |

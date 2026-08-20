@@ -1,0 +1,68 @@
+---
+# Two containers, and the second one is the point: the upload is signed with
+# SigV4 written by hand, and a scenario that stubbed the storage would test
+# everything except the part most likely to be wrong. MinIO speaks the same
+# protocol R2 does, so a signature this scenario accepts is one R2 accepts.
+driver:
+  name: docker
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-backup
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+    networks:
+      - name: krot-backup-net
+
+  - name: krot-backup-storage
+    image: minio/minio:latest
+    command: server /data
+    pre_build_image: true
+    env:
+      MINIO_ROOT_USER: molecule
+      MINIO_ROOT_PASSWORD: molecule-secret
+    networks:
+      - name: krot-backup-net
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      roles_path: ../../roles
+  inventory:
+    host_vars:
+      krot-backup:
+        # http, because MinIO here serves plain. The scheme is explicit rather than
+        # implied: production is https and the role defaults to it, so a scenario
+        # that relied on the default would not exercise the parsing at all.
+        backup_s3_endpoint: http://krot-backup-storage:9000
+        backup_s3_bucket: molecule-backups
+        backup_s3_key: molecule
+        backup_s3_secret: molecule-secret
+        backup_s3_region: us-east-1
+        backup_prefix: molecule
+        # The rehearsal is exercised by verify.yml directly rather than left to
+        # its monthly timer, which would never fire inside a scenario.
+        backup_verify: true
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible

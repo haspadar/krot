@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    Daily copies of every database in the local cluster, uploaded off the
+    machine and rehearsed monthly.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - backup
+    - database
+
+dependencies: []

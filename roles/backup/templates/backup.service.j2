@@ -1,0 +1,32 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Copy every database of this cluster off the machine
+# Copies leave over the network; starting before it is up fails for a reason
+# that has nothing to do with backups.
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The cluster account, not the operator user the application's jobs run as.
+# Dumps are taken over the peer socket, so no database password exists anywhere
+# to be stored, rotated or leaked — which is why this job is the machine's work
+# and not the project's.
+User={{ backup_pg_user }}
+# Holds the storage secret. Read by systemd as root before dropping privileges,
+# so the file itself stays 0600 and unreadable by everything else on the box.
+EnvironmentFile={{ backup_script_dir }}/storage.env
+# A hung upload would otherwise block every later start of this unit while the
+# timer keeps firing — the job stops running and the timer still looks healthy.
+TimeoutStartSec={{ backup_timeout }}
+ExecStart={{ backup_script_dir }}/backup.sh
+# Output lands in the journal under this unit's name. Deliberately not a file:
+# a redirection is opened by the shell BEFORE the command starts, so on a path
+# the user cannot write it fails earlier than the work does — and the error has
+# nowhere to land either. That is how an hourly job on this machine went five
+# days without running while cron reported starting it every hour.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

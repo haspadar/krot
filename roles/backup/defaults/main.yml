@@ -1,0 +1,71 @@
+---
+# Where the copies go. Empty by default and asserted in tasks/main.yml, because a
+# backup role whose storage is unset must not quietly install a job that copies
+# nothing — that is the failure this role exists to remove, reproduced by its own
+# defaults.
+backup_s3_endpoint: ""
+backup_s3_bucket: ""
+backup_s3_key: ""
+backup_s3_secret: ""
+# R2 ignores the region and wants a literal "auto"; S3 proper wants a real one.
+# Named rather than hardcoded so this role is not R2-only.
+backup_s3_region: auto
+
+# The prefix every object of this machine lives under. Machines share a bucket
+# without sharing a path, so one machine's copies can be listed, restored or
+# removed without touching another's.
+backup_prefix: "{{ krot_hostname | default(ansible_hostname) }}"
+
+# Where dumps are assembled before they leave. /var/tmp rather than /tmp: tmpfs
+# on some machines, and a 42 MB set of dumps written into RAM on a box with
+# 3.8 GB is a way to lose the machine while trying to protect it.
+backup_work_dir: /var/tmp/krot-backup
+
+# The cluster account. Dumps are taken over the peer socket, so no password
+# exists anywhere and none has to be rotated — which is also why this job does
+# NOT run as the operator user like the application's jobs do.
+backup_pg_user: postgres
+
+# Databases never worth copying. Templates reproduce themselves from a Postgres
+# install; postgres itself is the maintenance database and holds nothing this
+# machine created.
+#
+# ⚠️ A DENY list, deliberately, and not an allow list. An allow list would have
+# to be edited every time a site is added, and a site missing from it looks
+# exactly like a site that is backed up — the omission is invisible in the very
+# file that is supposed to record it.
+backup_exclude_databases:
+  - postgres
+
+# Nice, because this runs on a machine serving sites. Dumping is I/O bound more
+# than CPU bound, so this matters less than it does for the umami build, but it
+# costs nothing.
+backup_nice: 15
+
+# Long enough for a set many times the current size, short enough that a hung
+# job fails instead of blocking every later run of the same unit.
+backup_timeout: 1h
+
+# When the copies are taken. Night in the machine's timezone, offset by the cron
+# role so it does not stack with everything else scheduled daily.
+backup_schedule: "*-*-* 03:00:00"
+
+# Whether the monthly restore rehearsal is installed. On by default: a copy that
+# has never been restored is a hope rather than a backup, and the two are
+# indistinguishable until the moment the difference matters most.
+backup_verify: true
+backup_verify_schedule: "*-*-01 04:00:00"
+
+# The database the rehearsal restores into and drops afterwards. Named so it is
+# obviously disposable if a failed run ever leaves it behind.
+backup_verify_database: krot_restore_check
+
+# The bucket the application reads its own data from, named here only so this
+# role can refuse to write backups into it. Empty means the check is skipped —
+# a machine with no such bucket has nothing to collide with.
+backup_shared_photo_bucket: ""
+
+# Where the scripts and the credentials live. Under /usr/local rather than /opt
+# because they are executables of this machine, and the path shows up in unit
+# files, which are easier to read when it is the conventional one.
+backup_script_dir: /usr/local/lib/krot-backup

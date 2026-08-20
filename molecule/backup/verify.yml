@@ -1,0 +1,130 @@
+---
+# Everything below reads the machine and the storage rather than Ansible's
+# report. A role that writes unit files perfectly and copies nothing passes any
+# check built on `changed`, and that is exactly the failure this role exists to
+# remove.
+- name: Verify
+  hosts: krot-backup
+  tasks:
+    - name: The timer is enabled and queued
+      ansible.builtin.command: systemctl is-enabled krot-backup.timer
+      register: backup_timer
+      changed_when: false
+      failed_when: backup_timer.stdout != "enabled"
+
+    - name: The credentials are unreadable by anything but the cluster account
+      ansible.builtin.stat:
+        path: /usr/local/lib/krot-backup/storage.env
+      register: backup_credentials
+      failed_when: >-
+        not backup_credentials.stat.exists
+        or backup_credentials.stat.mode != '0600'
+        or backup_credentials.stat.pw_name != 'postgres'
+
+    # The run itself, not the timer's schedule: a scenario that only checked
+    # installation would prove the machine intends to make copies.
+    - name: Run the backup
+      ansible.builtin.command: systemctl start --wait krot-backup.service
+      changed_when: true
+
+    - name: The run succeeded
+      ansible.builtin.command: systemctl show krot-backup.service -p Result -p ExecMainStatus
+      register: backup_result
+      changed_when: false
+      failed_when: >-
+        'Result=success' not in backup_result.stdout
+        or 'ExecMainStatus=0' not in backup_result.stdout
+
+    - name: It reported what it copied, and how much
+      ansible.builtin.command: journalctl -u krot-backup.service --no-pager -n 40
+      register: backup_journal
+      changed_when: false
+      failed_when: >-
+        'Copied 2 databases' not in backup_journal.stdout
+
+    # ⚠️ The excluded database must be absent from the copies, and absence is
+    # what this asserts. Checking only that the two wanted ones arrived would
+    # pass a role that copied everything including `postgres`.
+    - name: The work directory was cleaned up
+      ansible.builtin.stat:
+        path: /var/tmp/krot-backup
+      register: backup_workdir
+      failed_when: backup_workdir.stat.exists
+
+    - name: The rehearsal restores a copy and finds data in it
+      ansible.builtin.command: systemctl start --wait krot-backup-verify.service
+      changed_when: true
+
+    - name: The rehearsal succeeded
+      ansible.builtin.command: journalctl -u krot-backup-verify.service --no-pager -n 20
+      register: rehearsal_journal
+      changed_when: false
+      failed_when: >-
+        'tables,' not in rehearsal_journal.stdout
+        or ' 0 rows' in rehearsal_journal.stdout
+
+    # The scratch database is dropped whether the rehearsal passed or died: left
+    # behind, the next night's backup would pick it up as an ordinary database
+    # and start copying the rehearsal's own leftovers.
+    - name: The rehearsal left no scratch database behind
+      community.postgresql.postgresql_query:
+        db: postgres
+        query: select count(*) from pg_database where datname = 'krot_restore_check'
+      become: true
+      become_user: postgres
+      register: scratch
+      failed_when: scratch.query_result[0].count != 0
+
+- name: Verify the copies actually arrived
+  hosts: krot-backup-storage
+  gather_facts: false
+  tasks:
+    # Asked of the storage, not of the machine that claims to have uploaded. The
+    # signature is hand-written, and "the script exited 0" is precisely the
+    # thing under test.
+    - name: Both databases are in the bucket
+      ansible.builtin.raw: mc ls --recursive local/molecule-backups
+      register: stored
+      changed_when: false
+      failed_when: >-
+        'molecule_one.dump' not in stored.stdout
+        or 'molecule_two.dump' not in stored.stdout
+
+    # Without these a restore onto a clean machine yields databases nobody can
+    # log into: pg_dump carries no roles, no passwords and no grants.
+    - name: The cluster's roles were copied too
+      ansible.builtin.raw: mc ls --recursive local/molecule-backups
+      register: stored_globals
+      changed_when: false
+      failed_when: "'globals.sql' not in stored_globals.stdout"
+
+    - name: The roles copy actually holds role statements
+      ansible.builtin.raw: >-
+        mc cat local/molecule-backups/molecule/daily/$(date -u +%Y-%m-%d)/globals.sql
+      register: globals_body
+      changed_when: false
+      failed_when: "'CREATE ROLE' not in globals_body.stdout"
+
+    - name: The excluded database was not copied
+      ansible.builtin.raw: mc ls --recursive local/molecule-backups
+      register: stored_excluded
+      changed_when: false
+      failed_when: "'postgres.dump' in stored_excluded.stdout"
+
+    # A zero-byte object is what a broken upload leaves behind, and it is
+    # indistinguishable from a working one in a listing that only checks names.
+    #
+    # ⚠️ Measured on the object itself, not on the prefix above it: `mc stat` on
+    # a prefix answers `"type":"folder"` with `"size":0`, so a check pointed
+    # there fails on a perfectly good copy and would be "fixed" by removing it.
+    - name: The copies are not empty
+      ansible.builtin.raw: >-
+        mc ls --recursive --json local/molecule-backups
+      register: stored_size
+      changed_when: false
+      failed_when: >-
+        stored_size.stdout_lines
+        | map('from_json')
+        | selectattr('key', 'search', 'molecule_one.dump')
+        | map(attribute='size')
+        | first | default(0) | int == 0

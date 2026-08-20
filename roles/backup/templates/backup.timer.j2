@@ -1,0 +1,18 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Copy every database of this cluster off the machine (timer)
+
+[Timer]
+OnCalendar={{ backup_schedule }}
+# Spread against everything else this machine does nightly, and steady from run
+# to run: derived from the machine and unit name rather than re-rolled, so
+# "03:00" keeps meaning a particular minute past three.
+RandomizedDelaySec=20m
+FixedRandomDelay=true
+# A machine that was off at 03:00 copies on boot instead of dropping the night
+# without a word.
+Persistent=true
+Unit=krot-backup.service
+
+[Install]
+WantedBy=timers.target
