@@ -167,7 +167,11 @@
   ansible.builtin.systemd_service:
     name: umami
     enabled: true
-    state: "{{ (umami_unit.changed or umami_env.changed) | ternary('restarted', 'started') }}"
+    # A rebuild counts as much as a changed unit: it replaces the code the process
+    # is running, and a process does not notice that on its own.
+    state: >-
+      {{ (umami_unit.changed or umami_env.changed or (umami_built.changed | default(false)))
+         | ternary('restarted', 'started') }}
     daemon_reload: true
 
 # ⚠️ AFTER the service is running, never before: a tree deleted ahead of a failed
