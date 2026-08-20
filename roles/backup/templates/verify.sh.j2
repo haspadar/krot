@@ -10,7 +10,12 @@
 # holds data. Runs monthly.
 set -euo pipefail
 
-work_dir={{ backup_work_dir | quote }}/verify
+# ⚠️ A SIBLING of the backup's directory, not a child of it. The backup starts
+# with `rm -rf` on its own path and installs the same as an EXIT trap, so a
+# rehearsal working underneath it loses its downloaded dump the moment the two
+# overlap — which they can: the timers are an hour apart with 20m of jitter each
+# and the backup may run for up to an hour.
+work_dir={{ backup_work_dir | quote }}-verify
 prefix={{ backup_prefix | quote }}
 scratch={{ backup_verify_database | quote }}
 
@@ -31,23 +36,64 @@ trap cleanup EXIT
 # expose a problem, and because a rehearsal on the smallest proves the least.
 # Asked of the cluster for the same reason the backup asks: a name written here
 # would outlive the database it names.
+# ⚠️ The scratch database is excluded from its own selection. Its cleanup trap
+# does not run under SIGKILL — which is what systemd sends after
+# TimeoutStartSec, and what an OOM kill sends on a 3.8 GB box mid-restore — so a
+# leftover is a real state. Left selectable, it is by construction the same size
+# as the largest real database, and the rehearsal would eventually restore its
+# own leftover and declare the backup verified without touching a real one.
 target="$(
     psql -tAX -d postgres -c \
         "select datname from pg_database
           where not datistemplate and datallowconn
+            and datname <> '$scratch'
           order by pg_database_size(datname) desc
           limit 1"
 )"
 
-day="$(date -u +%Y-%m-%d)"
+if [ -z "$target" ]; then
+    echo "No database to rehearse against — the cluster returned nothing." >&2
+    exit 1
+fi
+
 dump="$work_dir/$target.dump"
 
-# Yesterday, not today: this runs at 04:00 and the backup at 03:00, but a
-# rehearsal that depends on the hour between them would fail for a reason that
-# has nothing to do with restoring.
-"{{ backup_script_dir }}/s3_get.py" "$prefix/daily/$day/$target.dump" "$dump" \
-    || "{{ backup_script_dir }}/s3_get.py" \
-        "$prefix/daily/$(date -u -d yesterday +%Y-%m-%d)/$target.dump" "$dump"
+# ⚠️ The day is REMEMBERED, so the dump and the roles come from one set. Today
+# first, yesterday as a fallback: this runs at 04:00 and the backup at 03:00,
+# but a rehearsal depending on the hour between them would fail for a reason
+# that has nothing to do with restoring.
+#
+# The marker is fetched before either: it exists only on a night that finished,
+# so a partial set — a run that died on the fourth of nine uploads — is refused
+# here instead of restoring from it and reporting the copies healthy.
+restored_day=""
+for candidate in "$(date -u +%Y-%m-%d)" "$(date -u -d yesterday +%Y-%m-%d)"; do
+    if "{{ backup_script_dir }}/s3_get.py" \
+            "$prefix/daily/$candidate/_complete" "$work_dir/complete" 2>/dev/null; then
+        restored_day="$candidate"
+        break
+    fi
+done
+
+if [ -z "$restored_day" ]; then
+    echo "No complete set to rehearse against: neither today nor yesterday finished." >&2
+    exit 1
+fi
+
+"{{ backup_script_dir }}/s3_get.py" "$prefix/daily/$restored_day/$target.dump" "$dump"
+
+# ⚠️ The roles are fetched and READ, not assumed present. globals.sql is what
+# makes a restore onto a clean machine possible at all, and nothing else on the
+# machine ever looks at it: molecule checks it once at build time, and a
+# pg_dumpall that started emitting an empty file — after a permissions change or
+# a major upgrade — would be caught by nobody.
+globals="$work_dir/globals.sql"
+"{{ backup_script_dir }}/s3_get.py" "$prefix/daily/$restored_day/globals.sql" "$globals"
+
+if ! grep -q '^CREATE ROLE' "$globals"; then
+    echo "The copy of $restored_day carries no roles — a restore would yield databases nobody can log into." >&2
+    exit 1
+fi
 
 createdb "$scratch"
 
@@ -64,22 +110,33 @@ tables="$(
           where table_schema = 'public'"
 )"
 
-if [ "$tables" -eq 0 ]; then
-    echo "Restored $target from $day and found no tables — the copy is empty." >&2
-    exit 1
-fi
-
-# Schema without rows is the failure this check exists for: pg_restore exits 0
-# on a dump that carries structure and nothing else, and every other signal
-# short of counting says the backup works.
+# Read before either is judged, so the emptiness check below covers both. Schema
+# without rows is the failure this check exists for: pg_restore exits 0 on a
+# dump that carries structure and nothing else, and every other signal short of
+# counting says the backup works.
 rows="$(
     psql -tAX -d "$scratch" -c \
         "select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables"
 )"
+
+# ⚠️ Compared as a STRING against emptiness first. `[ "" -eq 0 ]` prints
+# "integer expected" and returns FALSE — and because it is an `if` condition,
+# set -e does not fire. The rehearsal then prints its success line with blanks
+# where the numbers go and exits 0, manufacturing the one signal that separates
+# a backup from a hope out of a psql that never answered.
+if [ -z "$tables" ] || [ -z "$rows" ]; then
+    echo "Restored $target but could not read what arrived — psql answered nothing." >&2
+    exit 1
+fi
+
+if [ "$tables" -eq 0 ]; then
+    echo "Restored $target from $restored_day and found no tables — the copy is empty." >&2
+    exit 1
+fi
 
 if [ "$rows" -eq 0 ]; then
     echo "Restored $target: $tables tables, not one row. The copy carries schema only." >&2
     exit 1
 fi
 
-echo "Restored $target from the copy of $day: $tables tables, $rows rows."
+echo "Restored $target from the copy of $restored_day: $tables tables, $rows rows."

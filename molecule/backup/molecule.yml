@@ -29,7 +29,9 @@ platforms:
     pre_build_image: true
     env:
       MINIO_ROOT_USER: molecule
-      MINIO_ROOT_PASSWORD: molecule-secret
+      # Выдуманная учётка: живёт только внутри контейнера сценария, на
+      # приватной сети, и наружу не выходит.
+      MINIO_ROOT_PASSWORD: molecule-secret  # secret-lint: allow
     networks:
       - name: krot-backup-net
 
@@ -47,9 +49,16 @@ provisioner:
         backup_s3_endpoint: http://krot-backup-storage:9000
         backup_s3_bucket: molecule-backups
         backup_s3_key: molecule
+        # secret-lint: allow — та же выдуманная учётка, что у контейнера выше.
         backup_s3_secret: molecule-secret
         backup_s3_region: us-east-1
         backup_prefix: molecule
+        # ⚠️ TWO entries, deliberately. A one-entry list renders correctly even
+        # when the join is broken, so a scenario with one exclusion passes over
+        # the defect instead of catching it — which is exactly what happened.
+        backup_exclude_databases:
+          - postgres
+          - molecule_skipped
         # The rehearsal is exercised by verify.yml directly rather than left to
         # its monthly timer, which would never fire inside a scenario.
         backup_verify: true

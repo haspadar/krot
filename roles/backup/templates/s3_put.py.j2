@@ -16,6 +16,7 @@ import hmac
 import os
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 
 ALGORITHM = "AWS4-HMAC-SHA256"
@@ -32,8 +33,21 @@ def signing_key(secret: str, stamp: str, region: str) -> bytes:
     return key
 
 
+def object_path(bucket: str, key: str) -> str:
+    """The request path for one object, escaped once and in one place.
+
+    ⚠️ Escaping is not cosmetic here: SigV4 signs the path, so an unescaped
+    character produces a signature over a string the server never reconstructs.
+    The failure is a 403 that reads like a wrong key. `+` is the quiet one — it
+    survives the round trip looking fine and mismatches the signature; `#`
+    truncates the path at the fragment; a space raises InvalidURL and a
+    non-ASCII name a UnicodeEncodeError.
+    """
+    return "/" + urllib.parse.quote(f"{bucket}/{key}", safe="/")
+
+
 def request(method: str, path: str, payload: bytes, extra: dict | None = None):
-    """Build a signed request. `path` is already URL-escaped by the caller."""
+    """Build a signed request. `path` must already be escaped — see object_path."""
     endpoint = os.environ["BACKUP_S3_ENDPOINT"].rstrip("/")
     # The scheme is separated from the host because the host is what gets
     # signed: SigV4 hashes a `host:` header, and a scheme left in it produces a
@@ -117,7 +131,7 @@ def main() -> None:
     with open(source, "rb") as handle:
         payload = handle.read()
 
-    send(request("PUT", f"/{bucket}/{key}", payload))
+    send(request("PUT", object_path(bucket, key), payload))
     print(f"uploaded {key} ({len(payload)} bytes)")
 
 

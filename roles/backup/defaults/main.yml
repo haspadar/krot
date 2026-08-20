@@ -36,6 +36,10 @@ backup_pg_user: postgres
 # file that is supposed to record it.
 backup_exclude_databases:
   - postgres
+  # The rehearsal's scratch database. Its cleanup does not survive SIGKILL, and
+  # a leftover copied as an ordinary database would mean the backup feeding on
+  # the rehearsal's output.
+  - krot_restore_check
 
 # Nice, because this runs on a machine serving sites. Dumping is I/O bound more
 # than CPU bound, so this matters less than it does for the umami build, but it

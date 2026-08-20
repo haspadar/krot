@@ -27,30 +27,36 @@ trap 'rm -rf "$work_dir"' EXIT
 # list was written would be missing from it and would look present — there is
 # nothing in an inventory that distinguishes "not backed up" from "not
 # mentioned".
+# ⚠️ Through a FILE, not straight into readarray from a process substitution.
+# A substitution runs in a subshell whose exit status nothing observes —
+# readarray itself always succeeds — so a psql that dies partway through its
+# output hands over a PARTIAL list, and the run copies a subset of the databases
+# and exits 0. Measured: `readarray -t x < <( { echo a; echo b; exit 3; } | cat )`
+# continues with two elements and no error.
+#
+# That is precisely the failure this role exists to remove: a backup that is
+# short and looks complete. A cluster that is down is caught either way by the
+# empty check below; a cluster that dies mid-answer is caught only here.
+listing="$work_dir/databases"
+psql -tAX -d postgres -c \
+    "select datname from pg_database
+      where not datistemplate and datallowconn
+      order by 1" > "$listing"
+
 # ⚠️ Excluded in the shell and NOT with a psql variable. `-c` does not expand
 # them — only interactive input and `-f` do — so `:'excluded'` reaches the
 # server as a literal colon and the query dies with a syntax error. Measured on
 # the live cluster 2026-08-20; the role would have installed a job that failed
 # every night from the first one.
-readarray -t databases < <(
-    psql -tAX -d postgres -c \
-        "select datname from pg_database
-          where not datistemplate and datallowconn
-          order by 1" \
-    | grep -vxF -f {{ backup_script_dir }}/excluded-databases
-)
-
-# ⚠️ Counted once into a variable rather than written inline everywhere it is
-# needed. Bash spells array length with a brace and a hash, and Jinja reads
-# that pair as the opening of a comment: the template is refused with
-# "Missing end of comment tag", blamed on the shell line, which is not where
-# anyone looks for a templating error. One occurrence is easier to keep
-# correct than four.
 #
-# grep -c and not wc -l: printf on an empty array still emits one newline,
-# so wc would answer 1 for a cluster that returned nothing — and the check
-# below, whose entire purpose is catching that case, would never fire.
-count=$(printf '%s\n' "${databases[@]-}" | grep -c . || true)
+# `|| true` on both: grep exits 1 when it filters everything out, which is a
+# legitimate answer here and is judged by the check below rather than by set -e.
+wanted="$work_dir/wanted"
+grep -vxF -f {{ backup_script_dir }}/excluded-databases "$listing" > "$wanted" || true
+
+readarray -t databases < "$wanted"
+count=$(grep -c . "$wanted" || true)
+rm -f "$listing" "$wanted"
 
 # A cluster answering with nothing is a failure, not a successful run with zero
 # copies. The two are the same exit code and the same silence otherwise, and the
@@ -109,6 +115,16 @@ done
 
 # The count and the size, not just "done". A run that found nothing and honestly
 # copied all of it prints the same word.
+# ⚠️ Written LAST and only on full success, so a partial night is
+# distinguishable from a complete one. Without it a run that died on the fourth
+# of nine uploads leaves a day prefix that looks like a finished set to
+# everything downstream — including a human restoring at 3am, and including the
+# rehearsal, which would restore from a failed night and call the copies healthy.
+marker="$work_dir/complete"
+printf '%s\n' "$count databases" > "$marker"
+"{{ backup_script_dir }}/s3_put.py" "$marker" "$prefix/daily/$day/_complete"
+rm -f "$marker"
+
 echo "Copied $count databases, $(numfmt --to=iec "$total") total, to $prefix/daily/$day/"
 
 # One copy per month kept beyond the daily window, written by the machine on the

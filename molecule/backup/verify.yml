@@ -92,6 +92,15 @@
 
     # Without these a restore onto a clean machine yields databases nobody can
     # log into: pg_dump carries no roles, no passwords and no grants.
+    # The marker exists only on a night that finished, so a partial set is
+    # distinguishable from a complete one. Without it a run that died mid-loop
+    # leaves a day prefix that looks finished to everything downstream.
+    - name: The night is marked complete
+      ansible.builtin.raw: mc ls --recursive local/molecule-backups
+      register: stored_marker
+      changed_when: false
+      failed_when: "'_complete' not in stored_marker.stdout"
+
     - name: The cluster's roles were copied too
       ansible.builtin.raw: mc ls --recursive local/molecule-backups
       register: stored_globals
@@ -105,11 +114,16 @@
       changed_when: false
       failed_when: "'CREATE ROLE' not in globals_body.stdout"
 
-    - name: The excluded database was not copied
+    # Both entries of the deny list, not just the first: a broken join renders
+    # the two names as one unmatchable line, and a check on the first alone
+    # passes anyway.
+    - name: Neither excluded database was copied
       ansible.builtin.raw: mc ls --recursive local/molecule-backups
       register: stored_excluded
       changed_when: false
-      failed_when: "'postgres.dump' in stored_excluded.stdout"
+      failed_when: >-
+        'postgres.dump' in stored_excluded.stdout
+        or 'molecule_skipped.dump' in stored_excluded.stdout
 
     # A zero-byte object is what a broken upload leaves behind, and it is
     # indistinguishable from a working one in a listing that only checks names.

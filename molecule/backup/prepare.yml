@@ -25,6 +25,9 @@
       loop:
         - molecule_one
         - molecule_two
+        # Excluded by the second entry of the deny list, so its absence from the
+        # bucket is what proves the list is read as more than one line.
+        - molecule_skipped
 
     # Rows, not just a schema: the rehearsal refuses a copy that restores
     # structure and nothing else, and a scenario with empty tables could not
@@ -40,6 +43,7 @@
       loop:
         - molecule_one
         - molecule_two
+        - molecule_skipped
 
 - name: Prepare the storage
   hosts: krot-backup-storage

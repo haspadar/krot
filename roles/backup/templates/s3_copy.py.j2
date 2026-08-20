@@ -6,29 +6,26 @@
 # downloading and re-uploading 42 MB it already sent an hour ago.
 import os
 import sys
-import urllib.parse
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from s3_put import request, send  # noqa: E402
+from s3_put import object_path, request, send  # noqa: E402
 
 
 def main() -> None:
     source, destination = sys.argv[1], sys.argv[2]
     bucket = os.environ["BACKUP_S3_BUCKET"]
 
-    # The source header carries the bucket and is escaped separately from the
-    # request path: it is a header value, and an unescaped space or plus in a
-    # database name would produce a signature over a different string than the
-    # server reconstructs.
-    copy_source = urllib.parse.quote(f"/{bucket}/{source}")
-
+    # Both ends escaped the same way. Escaping only the header — as this did
+    # first — makes the two disagree: the daily object is written under a raw
+    # name and the monthly promotion asks for an escaped one, so it 404s on an
+    # object that is there.
     send(
         request(
             "PUT",
-            f"/{bucket}/{destination}",
+            object_path(bucket, destination),
             b"",
-            {"x-amz-copy-source": copy_source},
+            {"x-amz-copy-source": object_path(bucket, source)},
         )
     )
     print(f"kept {destination}")

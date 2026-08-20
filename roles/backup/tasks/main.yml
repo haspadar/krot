@@ -59,10 +59,14 @@
     mode: "0600"
   no_log: true
 
+# ⚠️ A plain scalar, NOT a `content: |` block. Inside a literal block Jinja's
+# \n is emitted as the two characters backslash-n, so a list of two becomes the
+# single line `postgres\nfoo` — which matches no database name, and the
+# exclusion silently stops excluding. With one entry it works by accident, which
+# is why molecule cannot catch it: the scenario has one.
 - name: Install the exclusion list
   ansible.builtin.copy:
-    content: |
-      {{ backup_exclude_databases | join('\n') }}
+    content: "{{ backup_exclude_databases | join('\n') }}\n"
     dest: "{{ backup_script_dir }}/excluded-databases"
     owner: root
     group: root
