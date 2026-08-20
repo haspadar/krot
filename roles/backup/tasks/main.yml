@@ -1,0 +1,157 @@
+---
+# Storage that is not configured must stop the run rather than install a job
+# that copies nothing. A backup silently doing nothing is the exact failure this
+# role removes, and unasserted defaults would reproduce it here.
+- name: Assert the storage is configured
+  ansible.builtin.assert:
+    that:
+      - backup_s3_endpoint | length > 0
+      - backup_s3_bucket | length > 0
+      - backup_s3_key | length > 0
+      - backup_s3_secret | length > 0
+    fail_msg: >-
+      This role needs somewhere to put the copies: set backup_s3_endpoint,
+      backup_s3_bucket, backup_s3_key and backup_s3_secret. A backup role with
+      no destination installs a job that appears to run and protects nothing.
+    quiet: true
+
+# ⚠️ Its own key, never the application's. The application's key lives in a file
+# on this same machine, so sharing it would mean a compromised site hands over
+# both the site and its backups — the copies would then protect only against
+# disk failure, which is the one case almost everything else already covers.
+- name: Assert the storage key is not the application's
+  ansible.builtin.assert:
+    that:
+      - backup_s3_bucket != backup_shared_photo_bucket
+    fail_msg: >-
+      The backups are pointed at the bucket the sites read photos from. Give the
+      copies their own bucket and their own key.
+    quiet: true
+  when: backup_shared_photo_bucket | length > 0
+
+- name: Install the tools the copies need
+  ansible.builtin.apt:
+    name:
+      # numfmt, for the sizes the job reports. Present on Ubuntu already; named
+      # so a minimal image does not fail at 03:00 on a missing coreutils.
+      - coreutils
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Create the script directory
+  ansible.builtin.file:
+    path: "{{ backup_script_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# 0600 and owned by the cluster account: it holds the storage secret, and the
+# unit reads it as that user. Every other file of this role is world-readable
+# because none of them carry anything.
+- name: Install the storage credentials
+  ansible.builtin.template:
+    src: backup.env.j2
+    dest: "{{ backup_script_dir }}/storage.env"
+    owner: "{{ backup_pg_user }}"
+    group: "{{ backup_pg_user }}"
+    mode: "0600"
+  no_log: true
+
+# ⚠️ A plain scalar, NOT a `content: |` block. Inside a literal block Jinja's
+# \n is emitted as the two characters backslash-n, so a list of two becomes the
+# single line `postgres\nfoo` — which matches no database name, and the
+# exclusion silently stops excluding. With one entry it works by accident, which
+# is why molecule cannot catch it: the scenario has one.
+- name: Install the exclusion list
+  ansible.builtin.copy:
+    content: "{{ backup_exclude_databases | join('\n') }}\n"
+    dest: "{{ backup_script_dir }}/excluded-databases"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the scripts
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ backup_script_dir }}/{{ item }}"
+    owner: root
+    group: root
+    mode: "0755"
+  loop:
+    - s3_put.py
+    - s3_copy.py
+    - s3_get.py
+    - backup.sh
+    - verify.sh
+
+- name: Install the backup service
+  ansible.builtin.template:
+    src: backup.service.j2
+    dest: /etc/systemd/system/krot-backup.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Install the backup timer
+  ansible.builtin.template:
+    src: backup.timer.j2
+    dest: /etc/systemd/system/krot-backup.timer
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload systemd
+
+- name: Install the restore rehearsal
+  ansible.builtin.template:
+    src: "{{ item.src }}"
+    dest: "/etc/systemd/system/krot-backup-verify.{{ item.kind }}"
+    owner: root
+    group: root
+    mode: "0644"
+  loop:
+    - src: verify.service.j2
+      kind: service
+    - src: verify.timer.j2
+      kind: timer
+  loop_control:
+    label: "{{ item.kind }}"
+  when: backup_verify
+  notify: Reload systemd
+
+# systemd has to know the units before they are enabled below.
+- name: Apply pending unit changes
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the backup timer
+  ansible.builtin.systemd_service:
+    name: krot-backup.timer
+    state: started
+    enabled: true
+
+- name: Check whether a rehearsal timer is installed
+  ansible.builtin.stat:
+    path: /etc/systemd/system/krot-backup-verify.timer
+  register: backup_rehearsal_unit
+
+# Stopped rather than left running when the rehearsal is turned off: a timer
+# whose unit files were removed keeps firing until systemd is told, and it then
+# fails every month against a service that no longer exists.
+- name: Enable the rehearsal timer
+  ansible.builtin.systemd_service:
+    name: krot-backup-verify.timer
+    state: "{{ backup_verify | ternary('started', 'stopped') }}"
+    enabled: "{{ backup_verify }}"
+  when: backup_rehearsal_unit.stat.exists
+
+- name: Remove the rehearsal when it is turned off
+  ansible.builtin.file:
+    path: "/etc/systemd/system/krot-backup-verify.{{ item }}"
+    state: absent
+  loop:
+    - service
+    - timer
+  when: not backup_verify
+  notify: Reload systemd

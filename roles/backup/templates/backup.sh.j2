@@ -1,0 +1,148 @@
+#!/usr/bin/env bash
+{{ ansible_managed | comment }}
+#
+# ⚠️ The shebang is the FIRST line, above the managed banner. Put below it the
+# file is a comment followed by a shebang systemd never sees, and the unit dies
+# with "Exec format error" (203/EXEC) — which names the interpreter, not the
+# missing line.
+#
+# Dumps every database of the local cluster and uploads each one. Runs as the
+# cluster account over the peer socket, so nothing here holds a database
+# password.
+set -euo pipefail
+
+work_dir={{ backup_work_dir | quote }}
+prefix={{ backup_prefix | quote }}
+day="$(date -u +%Y-%m-%d)"
+
+# ⚠️ Not `mktemp -d`: this directory is recreated every night, and a random name
+# per run means a failed run's leftovers are never found by the next one. A
+# fixed path is cleaned below whether or not the previous run finished.
+rm -rf "$work_dir"
+mkdir -p "$work_dir"
+chmod 700 "$work_dir"
+trap 'rm -rf "$work_dir"' EXIT
+
+# Asked of the cluster, never declared in a file. A database created after the
+# list was written would be missing from it and would look present — there is
+# nothing in an inventory that distinguishes "not backed up" from "not
+# mentioned".
+# ⚠️ Through a FILE, not straight into readarray from a process substitution.
+# A substitution runs in a subshell whose exit status nothing observes —
+# readarray itself always succeeds — so a psql that dies partway through its
+# output hands over a PARTIAL list, and the run copies a subset of the databases
+# and exits 0. Measured: `readarray -t x < <( { echo a; echo b; exit 3; } | cat )`
+# continues with two elements and no error.
+#
+# That is precisely the failure this role exists to remove: a backup that is
+# short and looks complete. A cluster that is down is caught either way by the
+# empty check below; a cluster that dies mid-answer is caught only here.
+listing="$work_dir/databases"
+psql -tAX -d postgres -c \
+    "select datname from pg_database
+      where not datistemplate and datallowconn
+      order by 1" > "$listing"
+
+# ⚠️ Excluded in the shell and NOT with a psql variable. `-c` does not expand
+# them — only interactive input and `-f` do — so `:'excluded'` reaches the
+# server as a literal colon and the query dies with a syntax error. Measured on
+# the live cluster 2026-08-20; the role would have installed a job that failed
+# every night from the first one.
+#
+# `|| true` on both: grep exits 1 when it filters everything out, which is a
+# legitimate answer here and is judged by the check below rather than by set -e.
+wanted="$work_dir/wanted"
+grep -vxF -f {{ backup_script_dir }}/excluded-databases "$listing" > "$wanted" || true
+
+readarray -t databases < "$wanted"
+count=$(grep -c . "$wanted" || true)
+rm -f "$listing" "$wanted"
+
+# A cluster answering with nothing is a failure, not a successful run with zero
+# copies. The two are the same exit code and the same silence otherwise, and the
+# whole point of this job is that its absence is audible.
+if [ "$count" -eq 0 ]; then
+    echo "No databases to copy — the cluster returned an empty list." >&2
+    exit 1
+fi
+
+# ⚠️ The cluster's roles, BEFORE the databases and never instead of them.
+# pg_dump copies one database and nothing around it: no roles, no passwords, no
+# grants. Restoring only the dumps onto a fresh machine yields databases nobody
+# can connect to — every site answering "role does not exist" — and the copies
+# would have looked complete the whole time.
+#
+# Measured on the live cluster 2026-08-20: three login roles (busel, umami,
+# postgres) and per-table grants that exist precisely to keep the sites from
+# reading each other's statistics. None of that is in a pg_dump.
+#
+# --globals-only rather than a full pg_dumpall: the databases are copied
+# individually below, and a second full copy would double the upload to restate
+# what is already there.
+globals="$work_dir/globals.sql"
+nice -n {{ backup_nice }} pg_dumpall --globals-only -f "$globals"
+
+# 0600 while it is on disk: it carries the roles' password hashes. It is
+# uploaded like everything else, and the bucket is what keeps it private there.
+chmod 600 "$globals"
+
+"{{ backup_script_dir }}/s3_put.py" "$globals" "$prefix/daily/$day/globals.sql"
+total=$(stat -c %s "$globals")
+rm -f "$globals"
+
+for db in "${databases[@]}"; do
+    file="$work_dir/$db.dump"
+
+    # -Fc compresses on its own. Measured 2026-08-20: 323 MB raw against 42 MB
+    # here, and -Z9 gave not one byte more — so the machine serving nine sites
+    # does not spend the CPU on it.
+    nice -n {{ backup_nice }} pg_dump -Fc -d "$db" -f "$file"
+
+    size="$(stat -c %s "$file")"
+    total=$(( total + size ))
+
+    # The date is in the path rather than in the name so a lifecycle rule can
+    # act on a prefix, and so listing one day is listing one directory.
+    "{{ backup_script_dir }}/s3_put.py" "$file" "$prefix/daily/$day/$db.dump"
+
+    # Removed as it goes rather than all at once at the end: the set is small
+    # today, and a machine with 68 GB free would still rather not hold every
+    # dump at once when it does not have to.
+    rm -f "$file"
+
+    echo "$db: $(numfmt --to=iec "$size")"
+done
+
+# The count and the size, not just "done". A run that found nothing and honestly
+# copied all of it prints the same word.
+# ⚠️ Written LAST and only on full success, so a partial night is
+# distinguishable from a complete one. Without it a run that died on the fourth
+# of nine uploads leaves a day prefix that looks like a finished set to
+# everything downstream — including a human restoring at 3am, and including the
+# rehearsal, which would restore from a failed night and call the copies healthy.
+marker="$work_dir/complete"
+printf '%s\n' "$count databases" > "$marker"
+"{{ backup_script_dir }}/s3_put.py" "$marker" "$prefix/daily/$day/_complete"
+rm -f "$marker"
+
+echo "Copied $count databases, $(numfmt --to=iec "$total") total, to $prefix/daily/$day/"
+
+# One copy per month kept beyond the daily window, written by the machine on the
+# first of the month rather than by a lifecycle rule: a rule can expire objects
+# but cannot promote one, so the monthly copy has to be put where the daily
+# expiry does not reach.
+if [ "$(date -u +%d)" = "01" ]; then
+    month="$(date -u +%Y-%m)"
+    for db in "${databases[@]}"; do
+        "{{ backup_script_dir }}/s3_copy.py" \
+            "$prefix/daily/$day/$db.dump" "$prefix/monthly/$month/$db.dump"
+    done
+
+    # The globals travel with them. A monthly set without the roles is a set of
+    # databases nobody can log into — and it becomes the only surviving copy the
+    # moment the daily window rolls past it.
+    "{{ backup_script_dir }}/s3_copy.py" \
+        "$prefix/daily/$day/globals.sql" "$prefix/monthly/$month/globals.sql"
+
+    echo "Kept $month as the monthly copy."
+fi

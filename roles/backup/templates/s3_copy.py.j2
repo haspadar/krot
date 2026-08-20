@@ -1,0 +1,35 @@
+#!/usr/bin/env python3
+{{ ansible_managed | comment }}
+#
+# Copies one object to another key inside the same bucket, server-side: the
+# monthly copy is promoted from that day's daily copy without the machine
+# downloading and re-uploading 42 MB it already sent an hour ago.
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from s3_put import object_path, request, send  # noqa: E402
+
+
+def main() -> None:
+    source, destination = sys.argv[1], sys.argv[2]
+    bucket = os.environ["BACKUP_S3_BUCKET"]
+
+    # Both ends escaped the same way. Escaping only the header — as this did
+    # first — makes the two disagree: the daily object is written under a raw
+    # name and the monthly promotion asks for an escaped one, so it 404s on an
+    # object that is there.
+    send(
+        request(
+            "PUT",
+            object_path(bucket, destination),
+            b"",
+            {"x-amz-copy-source": object_path(bucket, source)},
+        )
+    )
+    print(f"kept {destination}")
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,17 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Restore the newest copy and check it holds data
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User={{ backup_pg_user }}
+EnvironmentFile={{ backup_script_dir }}/storage.env
+TimeoutStartSec={{ backup_timeout }}
+ExecStart={{ backup_script_dir }}/verify.sh
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Restore the newest copy and check it holds data (timer)
+
+[Timer]
+OnCalendar={{ backup_verify_schedule }}
+RandomizedDelaySec=20m
+FixedRandomDelay=true
+Persistent=true
+Unit=krot-backup-verify.service
+
+[Install]
+WantedBy=timers.target

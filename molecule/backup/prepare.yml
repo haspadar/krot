@@ -1,0 +1,65 @@
+---
+# A cluster with data in it, because the role's whole job is copying databases
+# and a scenario against an empty cluster would pass while proving nothing.
+- name: Prepare
+  hosts: krot-backup
+  tasks:
+    - name: Install Postgres
+      ansible.builtin.apt:
+        name:
+          - postgresql
+          - python3-psycopg2
+        state: present
+        update_cache: true
+
+    - name: Start the cluster
+      ansible.builtin.systemd_service:
+        name: postgresql
+        state: started
+
+    - name: Create databases to copy
+      community.postgresql.postgresql_db:
+        name: "{{ item }}"
+      become: true
+      become_user: postgres
+      loop:
+        - molecule_one
+        - molecule_two
+        # Excluded by the second entry of the deny list, so its absence from the
+        # bucket is what proves the list is read as more than one line.
+        - molecule_skipped
+
+    # Rows, not just a schema: the rehearsal refuses a copy that restores
+    # structure and nothing else, and a scenario with empty tables could not
+    # tell that check from a broken one.
+    - name: Put rows in them
+      community.postgresql.postgresql_query:
+        db: "{{ item }}"
+        query: |
+          create table if not exists sample (id int primary key, note text);
+          insert into sample values (1, 'kept') on conflict do nothing;
+      become: true
+      become_user: postgres
+      loop:
+        - molecule_one
+        - molecule_two
+        - molecule_skipped
+
+- name: Prepare the storage
+  hosts: krot-backup-storage
+  gather_facts: false
+  tasks:
+    # mc rather than an ansible module: the MinIO image carries it, and adding a
+    # collection for one bucket would be a dependency this scenario does not
+    # otherwise need.
+    - name: Wait for MinIO to answer
+      ansible.builtin.raw: mc alias set local http://127.0.0.1:9000 molecule molecule-secret
+      register: minio_alias
+      retries: 10
+      delay: 3
+      until: minio_alias.rc == 0
+      changed_when: false
+
+    - name: Create the bucket
+      ansible.builtin.raw: mc mb --ignore-existing local/molecule-backups
+      changed_when: false
