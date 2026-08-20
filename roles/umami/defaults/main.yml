@@ -43,6 +43,23 @@ umami_group: umami
 umami_bind_host: 127.0.0.1
 umami_port: 3000
 
+# The path the panel is reached at, when it is not the root. Empty means the
+# root, which is what a service on a domain of its own wants.
+#
+# ⚠️ This is a BUILD-time setting, not a runtime one, and that is the whole
+# reason it lives here rather than in `umami_environment`. Next bakes the value
+# into every link and asset path it emits (next.config.ts: `basePath`), so a
+# reverse proxy that rewrites the path without it gets a page that loads and is
+# broken: the HTML arrives, every stylesheet and script under it 404s, and the
+# panel looks like a failed deploy rather than a missing setting.
+#
+# Measured 2026-08-20 before setting it: `/login` emitted `/_next/static/...`
+# from the root while nginx served it under a prefix.
+#
+# Changing it re-runs the build, because the value is compiled in — which is
+# also why the stamp includes it.
+umami_base_path: ""
+
 # Where the counter keeps its data. No default: a wrong guess would point the
 # service at a database belonging to something else, and the role has no way to
 # tell the difference. Asserted in tasks/main.yml.
