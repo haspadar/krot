@@ -36,11 +36,13 @@ provisioner:
         # Not `km`, the default: an account name that matched would be reached
         # whether the variable is honoured or not.
         bootstrap_user: krot-operator
+        # Открытая половина ключа, и притом заведомо недействительная: после
+        # обязательного префикса ed25519 стоят одни нули. Приватной половины нет ни у
+        # кого, войти по нему нельзя. Роль обязана куда-то класть ключи, а сценарий —
+        # проверять, что кладёт.
         bootstrap_authorized_keys:
-          - >-
-            ssh-ed25519
-            AAAAC3NzaC1lZDI1NTE5AAAAIJ0000000000000000000000000000000000000000
-            molecule@example
+          # secret-lint: allow — открытый ключ из нулей, приватной половины не существует
+          - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJ0000000000000000000000000000000000000000 molecule@example"
         # Left at the default on purpose. The groups are the point of this
         # scenario, and naming them here would test the inventory rather than
         # the default every machine actually gets.
