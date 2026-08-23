@@ -16,7 +16,7 @@
   ansible.builtin.user:
     name: "{{ bootstrap_user }}"
     shell: "{{ bootstrap_user_shell }}"
-    groups: sudo
+    groups: "{{ bootstrap_user_groups | join(',') }}"
     append: true
     create_home: true
     state: present

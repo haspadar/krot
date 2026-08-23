@@ -9,6 +9,20 @@ bootstrap_user: km
 # point this at another shell and installing it is the caller's job.
 bootstrap_user_shell: /bin/bash
 
+# Groups the operator belongs to, beyond its own.
+#
+# `sudo` because the account administers the machine. `adm` because it also READS the
+# machine: nginx writes its logs `0640 www-data adm`, and the work that reads them runs
+# under this account by cron. Without it every log file answers `Permission denied`, and a
+# reader that treats an unopenable file as an empty one writes down "nothing happened" —
+# a false fact, nightly, of exactly the kind such a reader exists to catch.
+#
+# Membership rather than `sudo cat`: reading a log needs no root, and a process that parses
+# somebody else's input should not be handed more than it needs.
+bootstrap_user_groups:
+  - sudo
+  - adm
+
 # Public keys placed in the operator's authorized_keys. The playbook fills this
 # from Bitwarden; the role itself takes plain strings so it stays testable and
 # free of any secret-store dependency.

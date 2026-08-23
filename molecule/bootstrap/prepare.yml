@@ -1,0 +1,23 @@
+---
+# The image ships without sshd, and the role edits its configuration. Installing
+# it here rather than in the role, because installing sshd is not what bootstrap
+# is for — a machine that needs bootstrapping already answers on port 22.
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Install the ssh server the role configures
+      ansible.builtin.apt:
+        name: openssh-server
+        state: present
+        update_cache: true
+
+    # The cloud-init drop-in the role neutralises. Present on real Ubuntu cloud
+    # images and absent from this one, so without it the neutralising task would
+    # be tested against a file that was never there.
+    - name: Place the cloud-init drop-in the role has to neutralise
+      ansible.builtin.copy:
+        content: "PasswordAuthentication yes\n"
+        dest: /etc/ssh/sshd_config.d/50-cloud-init.conf
+        owner: root
+        group: root
+        mode: "0644"
