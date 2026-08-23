@@ -54,7 +54,7 @@ ansible-playbook bootstrap.yml -u root -k
 
 | Role | What it does |
 |------|-----------|
-| `bootstrap` | Operator user + sudo, `authorized_keys`, `PermitRootLogin no`, `PasswordAuthentication no` |
+| `bootstrap` | Operator user (`sudo` + `adm`, so scheduled work reads `/var/log` without root), `authorized_keys`, `PermitRootLogin no`, `PasswordAuthentication no` |
 | `common` | hostname, timezone, base packages (including `btop`, `ncdu`, `ripgrep`, `fd-find`, `jq`), unattended security upgrades, a cap on the systemd journal |
 | `firewall` | ufw; with `firewall_cloudflare_only` it admits 80/443 only from Cloudflare ranges and refreshes them on a weekly timer |
 | `fail2ban` | fail2ban with the `sshd` jail |

@@ -1,0 +1,37 @@
+---
+# The image ships without sshd, and the role edits its configuration. Installing
+# it here rather than in the role, because installing sshd is not what bootstrap
+# is for — a machine that needs bootstrapping already answers on port 22.
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Install the ssh server the role configures
+      ansible.builtin.apt:
+        name: openssh-server
+        state: present
+        update_cache: true
+
+    # On a real machine this runs at boot, and systemd's RuntimeDirectory=sshd
+    # on ssh.service is what creates /run/sshd before sshd ever checks for it.
+    # This container never boots — it starts from `command: /lib/systemd/systemd`
+    # with a running init but no boot sequence that starts ssh — so nothing
+    # creates that directory unless something starts the unit. Without it,
+    # `sshd -t` (the role's own validate on the hardening template) fails with
+    # "Missing privilege separation directory: /run/sshd", which has nothing to
+    # do with the config the role wrote.
+    - name: Start sshd, which is what creates /run/sshd on a real boot
+      ansible.builtin.systemd:
+        name: ssh
+        state: started
+        enabled: true
+
+    # The cloud-init drop-in the role neutralises. Present on real Ubuntu cloud
+    # images and absent from this one, so without it the neutralising task would
+    # be tested against a file that was never there.
+    - name: Place the cloud-init drop-in the role has to neutralise
+      ansible.builtin.copy:
+        content: "PasswordAuthentication yes\n"
+        dest: /etc/ssh/sshd_config.d/50-cloud-init.conf
+        owner: root
+        group: root
+        mode: "0644"

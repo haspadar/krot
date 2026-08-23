@@ -1,0 +1,85 @@
+---
+# Read back from the machine, not from the files the role wrote. Whether the
+# account can actually open a log is a different fact from whether a group name
+# appears in a variable, and only the first is what the role promises.
+- name: Verify
+  hosts: all
+  vars:
+    operator: krot-operator
+  tasks:
+    - name: The operator account exists
+      ansible.builtin.command: id {{ operator }}
+      register: operator_id
+      changed_when: false
+
+    - name: It administers the machine
+      ansible.builtin.assert:
+        that: "'(sudo)' in operator_id.stdout"
+        fail_msg: >-
+          {{ operator }} is not in sudo; every task that follows a bootstrap
+          runs through it.
+        quiet: true
+
+    # ⚠️ The reason this scenario exists. nginx writes its logs `0640
+    # www-data adm`, and the work that reads them runs under this account by
+    # cron — without sudo. Measured on the live machine 2026-08-23: the account
+    # was in `sudo` alone and every log answered Permission denied.
+    #
+    # The failure that follows is silent, which is what makes the group worth a
+    # test: an unopenable file yields no lines, no lines reads as "no crawler
+    # came", and the absence of a permission is written down nightly as a fact
+    # about the outside world.
+    - name: It reads the machine's logs
+      ansible.builtin.assert:
+        that: "'(adm)' in operator_id.stdout"
+        fail_msg: >-
+          {{ operator }} is not in adm and cannot read /var/log/nginx.
+        quiet: true
+
+    # The group membership proved above is a claim about a file it has not
+    # opened. This opens one.
+    - name: Place a log file owned the way nginx owns its own
+      ansible.builtin.copy:
+        content: "a line\n"
+        dest: /var/log/molecule-probe.log
+        owner: root
+        group: adm
+        mode: "0640"
+
+    - name: The operator opens it without sudo
+      ansible.builtin.command: cat /var/log/molecule-probe.log
+      become: true
+      become_user: "{{ operator }}"
+      register: probe
+      changed_when: false
+      failed_when: probe.rc != 0 or 'a line' not in probe.stdout
+
+    - name: The operator's key is the one it was given
+      ansible.builtin.command: cat /home/{{ operator }}/.ssh/authorized_keys
+      register: keys
+      changed_when: false
+      failed_when: "'molecule@example' not in keys.stdout"
+
+    - name: Root cannot log in and neither can a password
+      ansible.builtin.command: sshd -T
+      register: sshd_effective
+      changed_when: false
+
+    # `sshd -T` prints what sshd will actually do, drop-ins resolved. Reading
+    # the role's own file instead would pass while the cloud-init drop-in
+    # quietly overruled it — which is the specific thing the role neutralises.
+    - name: The effective configuration refuses passwords and root
+      ansible.builtin.assert:
+        that:
+          - "'permitrootlogin no' in sshd_effective.stdout"
+          - "'passwordauthentication no' in sshd_effective.stdout"
+        fail_msg: >-
+          sshd would still accept a password or a root login; a drop-in read
+          after our file is overruling it.
+        quiet: true
+
+    - name: The operator runs the shell the role chose
+      ansible.builtin.command: getent passwd {{ operator }}
+      register: passwd_line
+      changed_when: false
+      failed_when: "'/bin/bash' not in passwd_line.stdout"
