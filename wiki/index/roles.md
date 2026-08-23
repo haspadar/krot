@@ -2,7 +2,7 @@
 kind: index
 title: Роли коллекции
 owner: generated
-verified: 2026-08-20
+verified: 2026-08-23
 roles: []
 ---
 
@@ -16,7 +16,7 @@ roles: []
 | Роль | Ручек в `defaults` | Объясняет страница |
 |---|---|---|
 | [`backup`](../../roles/backup/) | 17 | [operations/database-backups.md](../operations/database-backups.md) |
-| [`bootstrap`](../../roles/bootstrap/) | 6 | [operations/cloudflare.md](../operations/cloudflare.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
+| [`bootstrap`](../../roles/bootstrap/) | 7 | [operations/cloudflare.md](../operations/cloudflare.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`common`](../../roles/common/) | 5 | [operations/logging.md](../operations/logging.md), [operations/testing-roles.md](../operations/testing-roles.md), [research/apt-allowed-origins-appends.md](../research/apt-allowed-origins-appends.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`cron`](../../roles/cron/) | 8 | [operations/cron-jobs.md](../operations/cron-jobs.md), [operations/logging.md](../operations/logging.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md) |
 | [`deploy`](../../roles/deploy/) | 6 | [operations/deploy.md](../operations/deploy.md) |

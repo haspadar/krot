@@ -16,7 +16,11 @@
   ansible.builtin.user:
     name: "{{ bootstrap_user }}"
     shell: "{{ bootstrap_user_shell }}"
-    groups: "{{ bootstrap_user_groups | join(',') }}"
+    # Список, а не склеенная строка. Модуль объявляет параметр списком и склеивает сам,
+    # так что `join` ничего не добавлял, зато заводил свой отказ: переопределение
+    # `bootstrap_user_groups: "sudo,adm"` строкой раскладывается по одному символу и падает
+    # на `Group o does not exist`. Громко, но на пустом месте.
+    groups: "{{ bootstrap_user_groups }}"
     append: true
     create_home: true
     state: present

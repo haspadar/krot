@@ -33,9 +33,6 @@ TASK_LINE = re.compile(r"^\s*- name:", re.M)
 # than in a document because a list that lives beside the counter cannot drift
 # away from it unnoticed.
 UNCOVERED = {
-    "bootstrap": "Molecule connects through docker, bypassing sshd, so a broken "
-                 "sshd config would pass unnoticed — green in the very case the "
-                 "role exists for",
     "deploy": "runs Deployer from the control machine, not on the host",
     "deploy_keys": "needs real private repositories",
     "docker": "installs Docker inside a container",
@@ -72,8 +69,8 @@ EXTRA_SCENARIOS = {
 #
 # These two cannot be moved that way. Deleting a scenario, or gutting the roles
 # it covers, drops covered_tasks below the floor; adding tasks anywhere does not.
-MIN_COVERED_ROLES = 9
-MIN_COVERED_TASKS = 149
+MIN_COVERED_ROLES = 10
+MIN_COVERED_TASKS = 156
 
 
 def count_tasks(role: Path) -> int:

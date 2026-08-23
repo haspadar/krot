@@ -2,7 +2,7 @@
 kind: index
 title: Changes
 owner: generated
-verified: 2026-08-20
+verified: 2026-08-23
 roles: []
 ---
 
@@ -11,14 +11,15 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **13**.
+В работе — **1**, заархивировано — **13**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **6** из 13: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **7** из 14: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
+| [`2026-08-23-operator-reads-the-logs`](../../openspec/changes/2026-08-23-operator-reads-the-logs/proposal.md) | **в работе** | — | Оператор читает логи машины, а не только правит её |
 | [`umami-role`](../../openspec/changes/archive/2026-08-20-umami-role/proposal.md) | 2026-08-20 | [#42](https://github.com/haspadar/krot/pull/42) | Proposal: the analytics counter is a service of the machine |
 | [`ci-faster-feedback`](../../openspec/changes/archive/2026-08-15-ci-faster-feedback/proposal.md) | 2026-08-15 | — | Proposal: CI waits longer than it works |
 | [`molecule-role-tests`](../../openspec/changes/archive/2026-08-15-molecule-role-tests/proposal.md) | 2026-08-15 | — | Proposal: a role meets reality for the first time in production |
