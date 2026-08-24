@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **1**, заархивировано — **14**.
+В работе — **0**, заархивировано — **15**.
 
 Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **7** из 15: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
@@ -19,7 +19,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
-| [`2026-08-24-the-boundary-with-busel`](../../openspec/changes/2026-08-24-the-boundary-with-busel/proposal.md) | **в работе** | — | Граница с busel описана неверно |
+| [`the-boundary-with-busel`](../../openspec/changes/archive/2026-08-24-the-boundary-with-busel/proposal.md) | 2026-08-24 | — | Граница с busel описана неверно |
 | [`operator-reads-the-logs`](../../openspec/changes/archive/2026-08-23-operator-reads-the-logs/proposal.md) | 2026-08-23 | [#47](https://github.com/haspadar/krot/pull/47) | Оператор читает логи машины, а не только правит её |
 | [`umami-role`](../../openspec/changes/archive/2026-08-20-umami-role/proposal.md) | 2026-08-20 | [#42](https://github.com/haspadar/krot/pull/42) | Proposal: the analytics counter is a service of the machine |
 | [`ci-faster-feedback`](../../openspec/changes/archive/2026-08-15-ci-faster-feedback/proposal.md) | 2026-08-15 | — | Proposal: CI waits longer than it works |
