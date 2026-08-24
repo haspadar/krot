@@ -14,7 +14,20 @@ backup_s3_region: auto
 # The prefix every object of this machine lives under. Machines share a bucket
 # without sharing a path, so one machine's copies can be listed, restored or
 # removed without touching another's.
-backup_prefix: "{{ krot_hostname | default(ansible_hostname) }}"
+#
+# The machine's own name, asked of the machine — not of a variable a particular
+# consumer happens to define. This default used to read `krot_hostname |
+# default(ansible_hostname)`, which is a name from busel's inventory and exists
+# in no role here: the collection's own default silently depended on one
+# consumer's naming convention, and any other consumer got the fallback without
+# ever learning there had been a first choice.
+#
+# ⚠️ Renaming a machine moves the prefix, and yesterday's copies stay under the
+# old path. They are not lost, but nothing points at them any more — and a
+# restore that looks only under the new prefix reads "there are no copies",
+# which is indistinguishable from a backup that never ran. Set this explicitly
+# to keep a path stable across a rename.
+backup_prefix: "{{ ansible_hostname }}"
 
 # Where dumps are assembled before they leave. /var/tmp rather than /tmp: tmpfs
 # on some machines, and a 42 MB set of dumps written into RAM on a box with
