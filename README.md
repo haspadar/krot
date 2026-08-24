@@ -65,6 +65,8 @@ ansible-playbook bootstrap.yml -u root -k
 | `deploy_keys` | A separate SSH key per private repository plus host aliases, so git presents the right one |
 | `deploy` | Runs the project's Deployer from the control machine. Releases and rollback stay in `deploy.php` |
 | `cron` | Periodic application jobs as systemd timers: output to the journal, exit code visible to `systemctl` |
+| `backup` | Nightly `pg_dump` of every database in the cluster to S3-compatible storage, plus a monthly restore rehearsal that judges by the data, not by `pg_restore`'s exit code |
+| `umami` | The visit counter as a system service: built on the machine, bound to the loopback, its schema migrated on deploy |
 
 Every role is atomic and applicable on its own. All parameters live in
 `roles/<role>/defaults/main.yml`.
@@ -78,8 +80,10 @@ the operator's business, not the machine's.
 - **Vhosts for specific sites** — the project generates those itself; the `nginx` role owns only
   the `sites-available`/`sites-enabled` directories and their permissions.
 - **Databases for specific applications** — the `postgresql` role installs the server only.
-- **Code deployment** — that is the project's Deployer/CI. There is exactly one overlap: the role
-  creates the user and the directory with permissions where releases are later placed.
+- **Code deployment** — that is the project's Deployer/CI. There is exactly one overlap: the
+  directory where releases are later placed is created with its permissions here — by the `nginx`
+  role, from `nginx_deploy_root`. The operator account itself comes from `bootstrap`; the `deploy`
+  role creates neither, it only runs the project's Deployer.
 
 ## Deployment
 
@@ -387,9 +391,14 @@ does not touch the database at all.
 
 ## Secrets
 
-Roles take passwords from Bitwarden at runtime; there are no secrets in the repository. Before a
-run the vault must be unlocked, **and the token must be handed to the playbook through the
-environment**:
+No secrets live in this repository, and **no role reaches for a secret store itself**: a role that
+needs a password takes it as an ordinary variable and fails its `assert` when it is empty. Fetching
+it is the consumer's job, done in its own inventory — busel resolves `nginx_auth_password`, the
+umami secrets and the S3 credentials with `community.general.bitwarden` lookups in
+`group_vars/`. That keeps the roles testable and free of any dependency on one particular vault.
+
+The consequence is that the token must be handed to the **playbook** through the environment, with
+the vault unlocked before the run: 
 
 ```bash
 BW_SESSION="$(cat /tmp/bw-$USER/session)" ansible-playbook site.yml

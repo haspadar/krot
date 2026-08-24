@@ -2,8 +2,8 @@
 kind: runbook
 title: Поднять машину с нуля
 owner: haspadar
-verified: 2026-08-15
-roles: [bootstrap, common, firewall, fail2ban]
+verified: 2026-08-24
+roles: [backup, bootstrap, common, cron, deploy_keys, docker, fail2ban, firewall, nginx, php, postgresql, umami]
 ---
 
 # Поднять машину с нуля
@@ -52,15 +52,32 @@ busel:
 
 ```yaml
 - name: Provision the machine
-  hosts: web
+  hosts: recipients
   roles:
     - role: haspadar.krot.common
+    - role: haspadar.krot.deploy_keys   # ключ на репозиторий, до выкатки
     - role: haspadar.krot.php
     - role: haspadar.krot.postgresql
     - role: haspadar.krot.nginx
+    - role: haspadar.krot.cron          # периодические задачи приложения
+    - role: haspadar.krot.umami         # счётчик на петле
+    - role: haspadar.krot.backup        # копии баз вне машины
     - role: haspadar.krot.firewall
     - role: haspadar.krot.fail2ban
 ```
+
+⚠️ **Порядок здесь не косметический, и три роли в конце списка стоят там по причине.**
+
+- **`umami` до `firewall`** — по той же причине, что и всё остальное: замок закрывает машину, и
+  сервис, не поднятый к этому моменту, выглядит сломанным, а не незапущенным.
+- **`backup` после `postgresql`** — копировать нечего, пока кластера нет.
+- **`firewall` последним** — CF-замок закрывает 80/443 для всех, кроме Cloudflare, и включается,
+  когда защищаемые им сервисы уже отвечают.
+
+**Роль `umami` базу себе НЕ заводит** — она требует готовую строку подключения и лишь применяет
+миграции. База и её владелец создаются провижинингом сайта, до этого прогона; иначе роль падает
+на миграции с «database … does not exist». Это тот же водораздел, что и у `postgresql`: сервер
+ставит машина, базы заводит приложение.
 
 matilda:
 
@@ -70,6 +87,11 @@ matilda:
     - role: haspadar.krot.firewall
     - role: haspadar.krot.fail2ban
 ```
+
+⚠️ **Список busel — не «минимум», а полный состав его машины.** Прогон без `cron`, `umami` и
+`backup` даёт машину, у которой всё зелёное: сайты отвечают, `systemctl --failed` пуст,
+идемпотентность из шага 5 сходится. Не отвечает только то, чего нет: таймеры, счётчик и копии
+баз. Отсутствие последних обнаруживается в тот день, когда они нужны.
 
 Если какая-то роль тянет пароль из секретницы, токен передаётся через окружение — см.
 [секреты](../operations/secrets.md):
@@ -100,11 +122,16 @@ ansible-playbook site.yml     # второй прогон подряд
 
 ```bash
 systemctl --failed                  # должно быть пусто
-systemctl list-timers 'krot-*'      # если задачи объявлены
+systemctl list-timers 'krot-*'      # задачи приложения, копии баз, обновление CF-диапазонов
 ```
 
 Ради этой команды сделан выбор транспорта в роли `cron` — разбор в
 [отказах, которые не видно](../operations/silent-failures.md).
+
+⚠️ **Пустой список таймеров на машине busel — это отказ, а не «нечему стоять».** По списку ролей
+выше их там минимум три источника: `cron` ставит задачи приложения, `backup` — ночную копию и
+ежемесячную проверку восстановления, `firewall` — обновление диапазонов Cloudflare. Пусто значит,
+что роль не отработала, а не что объявлять было нечего.
 
 ## Мелочь, которая сбивает
 
