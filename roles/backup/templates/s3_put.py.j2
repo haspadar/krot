@@ -118,7 +118,14 @@ def send(req) -> bytes:
         # usually the bucket name or the region.
         body = error.read().decode(errors="replace")[:800]
         print(f"{req.get_method()} {req.selector} → {error.code}\n{body}", file=sys.stderr)
-        raise SystemExit(1)
+        # ⚠️ 404 exits 3, every other refusal exits 1, and the difference is what
+        # lets a caller tell "this object is not there" from "storage would not
+        # answer us". The restore probes seven days and expects most of them to
+        # be missing; sharing one code made a rotated key, a wrong bucket and an
+        # outage all print "No complete set in the last seven nights", sending
+        # the operator to inspect a healthy timer while the data was gone.
+        # Measured 2026-08-29 with a valid dump in place and a wrong secret.
+        raise SystemExit(3 if error.code == 404 else 1)
     except urllib.error.URLError as error:
         print(f"{req.get_method()} {req.selector} → {error.reason}", file=sys.stderr)
         raise SystemExit(1)

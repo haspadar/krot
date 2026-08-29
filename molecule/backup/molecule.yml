@@ -56,9 +56,15 @@ provisioner:
         # ⚠️ TWO entries, deliberately. A one-entry list renders correctly even
         # when the join is broken, so a scenario with one exclusion passes over
         # the defect instead of catching it — which is exactly what happened.
+        # ⚠️ Both scratch names among them, spelled the way the defaults derive
+        # them. The scenario replaces this list wholesale, so a scratch excluded
+        # only in defaults is not excluded here — which is how a leftover
+        # restore scratch got copied without any test noticing.
         backup_exclude_databases:
           - postgres
           - molecule_skipped
+          - "{{ backup_verify_database }}"
+          - "{{ backup_verify_database }}_restore"
         # The rehearsal is exercised by verify.yml directly rather than left to
         # its monthly timer, which would never fire inside a scenario.
         backup_verify: true

@@ -28,6 +28,13 @@
         # Excluded by the second entry of the deny list, so its absence from the
         # bucket is what proves the list is read as more than one line.
         - molecule_skipped
+        # ⚠️ A database with NOTHING in `public`, which is legal and which the
+        # restore refused as an empty copy: it counted tables in `public` while
+        # counting rows everywhere, so this shape reported "0 tables" with its
+        # data sitting in the scratch. Kept as a whole database rather than as a
+        # second schema on an existing one, because the defect was the absence of
+        # `public` tables, not the presence of others.
+        - molecule_elsewhere
 
     # Rows, not just a schema: the rehearsal refuses a copy that restores
     # structure and nothing else, and a scenario with empty tables could not
@@ -44,6 +51,62 @@
         - molecule_one
         - molecule_two
         - molecule_skipped
+
+    - name: And rows somewhere other than public, in the database that has no public tables
+      community.postgresql.postgresql_query:
+        db: molecule_elsewhere
+        query: |
+          create schema if not exists app;
+          create table if not exists app.sample (id int primary key, note text);
+          insert into app.sample values (1, 'kept') on conflict do nothing;
+          drop table if exists sample;
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    # ⚠️ A database that is not just tables in `public`, because a restore of one
+    # that is proves only the easy half. Each of these was a way the restore
+    # failed silently or outright:
+    #   - a grant, which `--no-privileges` stripped while reporting success —
+    #     and per-table grants are what keep the sites from reading each other;
+    #   - a second schema, which `DROP SCHEMA public` left standing so the dump's
+    #     own `CREATE SCHEMA` aborted the whole transaction;
+    #   - a view, which the ownership loop never touched, so it came back owned
+    #     by whoever ran the restore.
+    - name: A role that owns things, and a reader that may only look
+      community.postgresql.postgresql_user:
+        name: "{{ item }}"
+        state: present
+      become: true
+      become_user: postgres
+      loop:
+        - molecule_owner
+        - molecule_reader
+
+    - name: A database shaped like a real one, not like a test fixture
+      community.postgresql.postgresql_query:
+        db: molecule_two
+        query: |
+          create schema if not exists extra authorization molecule_owner;
+          create table if not exists extra.side (id int primary key);
+          insert into extra.side values (1) on conflict do nothing;
+          create or replace view peek as select id from sample;
+          -- ⚠️ A materialized view, which holds rows and is not a table. The
+          -- judgement counts tables and sums rows from `pg_stat_user_tables`,
+          -- and that view includes matviews — so counting only ordinary tables
+          -- made a database of them read as "0 tables, n rows" and be refused
+          -- as empty. Here it sits alongside a real table, which is the shape
+          -- that keeps the two counts honest about each other.
+          drop materialized view if exists digest;
+          create materialized view digest as select count(*) as n from sample;
+          alter table sample owner to molecule_owner;
+          alter view peek owner to molecule_owner;
+          alter schema public owner to molecule_owner;
+          alter database molecule_two owner to molecule_owner;
+          grant select on sample to molecule_reader;
+      become: true
+      become_user: postgres
+      changed_when: true
 
 - name: Prepare the storage
   hosts: krot-backup-storage

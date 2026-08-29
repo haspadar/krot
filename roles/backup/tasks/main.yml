@@ -35,6 +35,11 @@
       # numfmt, for the sizes the job reports. Present on Ubuntu already; named
       # so a minimal image does not fail at 03:00 on a missing coreutils.
       - coreutils
+      # flock, which is what keeps two restores from deleting each other's
+      # downloads. Named for the same reason as coreutils: it is essential on
+      # Ubuntu, and a missing one would surface as a restore failing on the day
+      # it is needed rather than as a role failing on the day it is applied.
+      - util-linux
     state: present
     update_cache: true
     cache_valid_time: 3600
@@ -85,6 +90,21 @@
     - s3_get.py
     - backup.sh
     - verify.sh
+    # Run by a person rather than a timer, and installed for exactly that reason:
+    # restoring is the rarest operation here and the one done under the most
+    # pressure, so the sequence has to be on the machine before it is needed.
+    - restore.sh
+
+- name: Put the restore within reach on the PATH
+  # A script only findable at /usr/local/lib/krot-backup/restore.sh is a script
+  # nobody finds on the day it is needed — the operator would be reading the role
+  # to learn where it lives, at the one moment reading is most expensive. The
+  # backup and the rehearsal have units to call them; this one has a person.
+  ansible.builtin.file:
+    src: "{{ backup_script_dir }}/restore.sh"
+    dest: /usr/local/bin/krot-restore
+    state: link
+    force: true
 
 - name: Install the backup service
   ansible.builtin.template:

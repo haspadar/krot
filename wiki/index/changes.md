@@ -2,7 +2,7 @@
 kind: index
 title: Changes
 owner: generated
-verified: 2026-08-24
+verified: 2026-08-29
 roles: []
 ---
 
@@ -11,14 +11,15 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **15**.
+В работе — **1**, заархивировано — **15**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **7** из 15: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **8** из 16: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
+| [`2026-08-29-a-copy-nobody-can-restore-is-a-hope`](../../openspec/changes/2026-08-29-a-copy-nobody-can-restore-is-a-hope/proposal.md) | **в работе** | — | Копия, которую некому развернуть, — это надежда, а не резервная копия |
 | [`the-boundary-with-busel`](../../openspec/changes/archive/2026-08-24-the-boundary-with-busel/proposal.md) | 2026-08-24 | — | Граница с busel описана неверно |
 | [`operator-reads-the-logs`](../../openspec/changes/archive/2026-08-23-operator-reads-the-logs/proposal.md) | 2026-08-23 | [#47](https://github.com/haspadar/krot/pull/47) | Оператор читает логи машины, а не только правит её |
 | [`umami-role`](../../openspec/changes/archive/2026-08-20-umami-role/proposal.md) | 2026-08-20 | [#42](https://github.com/haspadar/krot/pull/42) | Proposal: the analytics counter is a service of the machine |

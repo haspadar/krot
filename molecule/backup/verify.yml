@@ -21,6 +21,18 @@
         or backup_credentials.stat.mode != '0600'
         or backup_credentials.stat.pw_name != 'postgres'
 
+    # ⚠️ A leftover scratch, left where a SIGKILLed restore would leave one. The
+    # exclusion list is matched whole-line, so the restore's scratch is a second
+    # name and not covered by the rehearsal's — and a copied scratch means the
+    # copies start feeding on their own output. Created BEFORE the run so the
+    # count below is the assertion: it stays at two.
+    - name: A scratch database left behind by an interrupted restore
+      community.postgresql.postgresql_db:
+        name: krot_restore_check_restore
+        state: present
+      become: true
+      become_user: postgres
+
     # The run itself, not the timer's schedule: a scenario that only checked
     # installation would prove the machine intends to make copies.
     - name: Run the backup
@@ -39,8 +51,19 @@
       ansible.builtin.command: journalctl -u krot-backup.service --no-pager -n 40
       register: backup_journal
       changed_when: false
+      # Three, with a leftover restore scratch sitting on the machine — the count
+      # is what catches an exclusion that misses it, and the name is asserted
+      # separately because a miscount could come from anywhere.
       failed_when: >-
-        'Copied 2 databases' not in backup_journal.stdout
+        'Copied 3 databases' not in backup_journal.stdout
+        or 'krot_restore_check_restore' in backup_journal.stdout
+
+    - name: The leftover scratch goes, whether or not it was copied
+      community.postgresql.postgresql_db:
+        name: krot_restore_check_restore
+        state: absent
+      become: true
+      become_user: postgres
 
     # ⚠️ The excluded database must be absent from the copies, and absence is
     # what this asserts. Checking only that the two wanted ones arrived would
@@ -63,6 +86,293 @@
         'tables,' not in rehearsal_journal.stdout
         or ' 0 rows' in rehearsal_journal.stdout
 
+    # Restoring is run by a person, so nothing else would ever exercise it. It is
+    # also the operation performed under the most pressure and the least often,
+    # which is exactly the combination a test has to cover instead of a habit.
+    - name: The restore is on the PATH under a name worth remembering
+      ansible.builtin.stat:
+        path: /usr/local/bin/krot-restore
+      register: restore_link
+      failed_when: not restore_link.stat.exists
+
+    # ⚠️ `postgresql_db`, not a query. `postgresql_query` wraps what it is given
+    # in a transaction, and CREATE DATABASE cannot run inside one — the failure
+    # names the transaction, not the module that opened it.
+    - name: A database to restore into, holding something to lose
+      community.postgresql.postgresql_db:
+        name: krot_restore_target
+        state: present
+      become: true
+      become_user: postgres
+
+    - name: Something in it, so a replacement is observable
+      community.postgresql.postgresql_query:
+        db: krot_restore_target
+        query: create table doomed as select generate_series(1, 7) as n
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    # ⚠️ The name is not in the set of copies, so this asks the refusal rather
+    # than the restore — and the refusal is the half that protects data. A run
+    # that found no copy and carried on would replace live rows with nothing.
+    # ⚠️ As root, which is how the script is run and the ONLY identity it works
+    # under: the credentials are root-readable and every cluster call goes
+    # through `sudo -u postgres`, which `postgres` itself may not do. Run under
+    # `become_user: postgres` these three tests passed for the wrong reason —
+    # sudo refused, psql never ran, and the script blamed the database name. The
+    # sudoers assertion below is what keeps that from coming back: without it a
+    # deleted `as_postgres` would leave the suite green.
+    - name: A database with no copy in the set is refused, not emptied
+      ansible.builtin.command: /usr/local/bin/krot-restore krot_restore_target --force
+      become: true
+      register: no_copy
+      changed_when: false
+      # The refusal, not its wording: which of the two refusals fires depends on
+      # whether the scenario's bucket happens to hold a set for today, and both
+      # protect the same rows. But it must be a refusal the script reasoned its
+      # way to, not one sudo handed it.
+      failed_when: no_copy.rc == 0 or 'sudoers' in no_copy.stderr
+
+    - name: And it left the rows alone
+      community.postgresql.postgresql_query:
+        db: krot_restore_target
+        query: select count(*) from doomed
+      become: true
+      become_user: postgres
+      register: survived
+      failed_when: survived.query_result[0].count != 7
+
+    - name: A name that is not a database at all is refused before anything is downloaded
+      ansible.builtin.command: /usr/local/bin/krot-restore no_such_database --force
+      become: true
+      register: no_database
+      changed_when: false
+      # ⚠️ The wording AND the absence of a sudo failure. This message is printed
+      # when the lookup finds nothing — and a lookup that could not run finds
+      # nothing too, so on its own the assertion passes on a script that never
+      # reached the cluster.
+      failed_when: >-
+        no_database.rc == 0
+        or 'Restoring cannot create it' not in no_database.stderr
+        or 'sudoers' in no_database.stderr
+
+    - name: Clean up the target
+      community.postgresql.postgresql_db:
+        name: krot_restore_target
+        state: absent
+      become: true
+      become_user: postgres
+
+    # ⚠️ `molecule_two`, which the run above actually copied — the refusals are
+    # asked of a database with no dump, and a suite of nothing but refusals never
+    # reaches the half that touches data. Everything from `createdb` onward — the
+    # scratch restore, the content judgement, DROP SCHEMA, the single-transaction
+    # replacement, the ownership handover and the cleanup — was exercised only by
+    # hand on a live machine, which is a habit rather than a test. The destructive
+    # half is the half worth guarding.
+    # ⚠️ Damaged in every way the restore has to undo: rows replaced, the grant
+    # revoked, the extra schema's contents changed. A restore that only put the
+    # rows back would pass a check on rows alone while leaving the site's
+    # permissions and its second schema wrong — which is what it did.
+    - name: Damage the database that does have a copy
+      community.postgresql.postgresql_query:
+        db: molecule_two
+        query: |
+          delete from sample;
+          insert into sample values (99, 'wrong') on conflict do nothing;
+          revoke select on sample from molecule_reader;
+          delete from extra.side;
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Restore it from the copy taken above
+      ansible.builtin.command: /usr/local/bin/krot-restore molecule_two --force
+      become: true
+      register: restored
+      changed_when: true
+      failed_when: restored.rc != 0 or 'Restored molecule_two' not in restored.stdout
+
+    # The row that was deleted is back and the row that replaced it is gone:
+    # either alone would pass on a restore that merely appended.
+    - name: The copy's rows replaced the damaged ones
+      community.postgresql.postgresql_query:
+        db: molecule_two
+        query: select id, note from sample order by id
+      become: true
+      become_user: postgres
+      register: restored_rows
+      failed_when: >-
+        restored_rows.query_result | length != 1
+        or restored_rows.query_result[0].id != 1
+        or restored_rows.query_result[0].note != 'kept'
+
+    # ⚠️ The failure this exists to prevent is invisible until the site reads its
+    # own data, so it is asserted here rather than left to be discovered there.
+    # ⚠️ The VIEW as well as the table. The ownership loop covers tables and
+    # sequences in `public` and nothing else, so a restore that stripped owners
+    # from the dump left views, matviews and functions belonging to whoever ran
+    # it — and a check on tables alone passes on exactly that.
+    - name: And they belong to the role again, not to whoever ran the restore
+      community.postgresql.postgresql_query:
+        db: molecule_two
+        query: >-
+          select (select tableowner from pg_tables
+                  where schemaname = 'public' and tablename = 'sample') as table_owner,
+                 (select viewowner from pg_views
+                  where schemaname = 'public' and viewname = 'peek') as view_owner,
+                 (select nspowner::regrole::text from pg_namespace
+                  where nspname = 'public') as schema_owner,
+                 (select nspowner::regrole::text from pg_namespace
+                  where nspname = 'extra') as extra_owner
+      become: true
+      become_user: postgres
+      register: restored_owner
+      failed_when: >-
+        restored_owner.query_result[0].table_owner != 'molecule_owner'
+        or restored_owner.query_result[0].view_owner != 'molecule_owner'
+        or restored_owner.query_result[0].schema_owner != 'molecule_owner'
+        or restored_owner.query_result[0].extra_owner != 'molecule_owner'
+
+    # ⚠️ The grant, which is the half that had no symptom at all. Stripped by
+    # `--no-privileges`, the restore reported success and handed the data to
+    # everyone — `backup.sh` says in as many words that these per-table grants
+    # exist to keep the sites from reading each other's statistics.
+    - name: The grant the copy carried is back
+      community.postgresql.postgresql_query:
+        db: molecule_two
+        query: >-
+          select grantee from information_schema.table_privileges
+          where table_name = 'sample' and privilege_type = 'SELECT'
+            and grantee = 'molecule_reader'
+      become: true
+      become_user: postgres
+      register: restored_grant
+      failed_when: restored_grant.query_result | length != 1
+
+    # ⚠️ The materialized view, which is the fourth disguise of one defect: the
+    # judgement counts tables and sums rows from a view that includes matviews,
+    # so a database holding them read as "0 tables, n rows" — refused as empty by
+    # the rehearsal every month, and reported by the restore as the very
+    # mismatch it was meant to have removed. Asserted through a restore because
+    # a matview also has to come back WITH its rows: `pg_dump` carries the data
+    # unless the view was never populated.
+    - name: The materialized view came back, with its rows
+      community.postgresql.postgresql_query:
+        db: molecule_two
+        query: select n from digest
+      become: true
+      become_user: postgres
+      register: restored_matview
+      failed_when: >-
+        restored_matview.query_result | length != 1
+        or restored_matview.query_result[0].n != 1
+
+    # ⚠️ The second schema, whose absence was not a silent loss but a total
+    # refusal: `DROP SCHEMA public` left it standing, the dump's own CREATE
+    # SCHEMA hit "already exists", and the transaction rolled back. The database
+    # could not be restored at all, and nothing in the suite noticed because
+    # every test database had only `public`.
+    - name: The second schema came back with its rows
+      community.postgresql.postgresql_query:
+        db: molecule_two
+        query: select count(*) as n from extra.side
+      become: true
+      become_user: postgres
+      register: restored_extra
+      failed_when: restored_extra.query_result[0].n != 1
+
+    # ⚠️ Asserted after a run that DID create a scratch, which is the only way
+    # this proves anything. Asked after refusals alone it passes on a script with
+    # no cleanup at all: every refusal exits before `createdb`, so the count is
+    # zero whether or not the trap exists.
+    - name: The successful restore left no scratch database behind
+      community.postgresql.postgresql_query:
+        db: postgres
+        query: select count(*) from pg_database where datname like 'krot\_restore\_check%'
+      become: true
+      become_user: postgres
+      register: restore_scratch
+      failed_when: restore_scratch.query_result[0].count != 0
+
+    - name: Nor a working directory
+      ansible.builtin.stat:
+        path: /var/tmp/krot-backup-restore
+      register: restore_work_dir
+      failed_when: restore_work_dir.stat.exists
+
+    # ⚠️ A database with nothing in `public` at all, which the judgement refused
+    # as an empty copy: it counted tables in `public` and rows everywhere, so this
+    # shape reported "0 tables" while its rows sat in the scratch. The refusal was
+    # indistinguishable from a genuinely empty backup, and it fired on a database
+    # that is perfectly ordinary — Postgres does not require anything to live in
+    # `public`.
+    - name: Damage the database that keeps nothing in public
+      community.postgresql.postgresql_query:
+        db: molecule_elsewhere
+        query: delete from app.sample
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: A copy whose tables are all outside public is restored, not called empty
+      ansible.builtin.command: /usr/local/bin/krot-restore molecule_elsewhere --force
+      become: true
+      register: restored_elsewhere
+      changed_when: true
+      failed_when: >-
+        restored_elsewhere.rc != 0
+        or 'Restored molecule_elsewhere' not in restored_elsewhere.stdout
+        or 'refusing to restore' in restored_elsewhere.stderr
+
+    - name: And its rows are back where they live
+      community.postgresql.postgresql_query:
+        db: molecule_elsewhere
+        query: select count(*) as n from app.sample
+      become: true
+      become_user: postgres
+      register: elsewhere_rows
+      failed_when: elsewhere_rows.query_result[0].n != 1
+
+    # ⚠️ Asked of a database that HAS a copy, so the run reaches the confirmation
+    # instead of dying earlier for an unrelated reason. Asked of one without a
+    # copy — as it was — the missing-dump refusal fires first and the assertion
+    # passes on a script whose no-tty guard has been deleted outright.
+    - name: Without a terminal and without --force it refuses rather than assuming yes
+      ansible.builtin.command: /usr/local/bin/krot-restore molecule_two
+      become: true
+      register: unattended
+      changed_when: false
+      failed_when: >-
+        unattended.rc == 0
+        or 'Refusing to restore without confirmation' not in unattended.stderr
+        or 'sudoers' in unattended.stderr
+
+    # ⚠️ A second restore while the first holds the lock. Without it both runs
+    # share one working directory and one scratch name, and each begins by
+    # deleting the other's downloaded dump. Taken here with the lock held by a
+    # sleeping shell rather than by a real restore, so the assertion is about the
+    # lock and not about a race that may or may not be lost.
+    - name: A second restore is refused while another holds the lock
+      # ⚠️ No `set -e`: the whole point is to observe a non-zero exit rather than
+      # be killed by it, and the holder has to be reaped either way.
+      ansible.builtin.shell: |
+        flock /run/lock/krot-restore.lock sleep 10 &
+        held=$!
+        sleep 1
+        /usr/local/bin/krot-restore molecule_two --force
+        rc=$?
+        kill "$held" 2>/dev/null
+        wait "$held" 2>/dev/null
+        exit "$rc"
+      become: true
+      register: contended
+      changed_when: false
+      failed_when: >-
+        contended.rc == 0
+        or 'Another restore is running' not in contended.stderr
+
     # The scratch database is dropped whether the rehearsal passed or died: left
     # behind, the next night's backup would pick it up as an ordinary database
     # and start copying the rehearsal's own leftovers.
@@ -82,13 +392,14 @@
     # Asked of the storage, not of the machine that claims to have uploaded. The
     # signature is hand-written, and "the script exited 0" is precisely the
     # thing under test.
-    - name: Both databases are in the bucket
+    - name: Every database that should be copied is in the bucket
       ansible.builtin.raw: mc ls --recursive local/molecule-backups
       register: stored
       changed_when: false
       failed_when: >-
         'molecule_one.dump' not in stored.stdout
         or 'molecule_two.dump' not in stored.stdout
+        or 'molecule_elsewhere.dump' not in stored.stdout
 
     # Without these a restore onto a clean machine yields databases nobody can
     # log into: pg_dump carries no roles, no passwords and no grants.
@@ -107,12 +418,19 @@
       changed_when: false
       failed_when: "'globals.sql' not in stored_globals.stdout"
 
-    - name: The roles copy actually holds role statements
+    # ⚠️ The roles AND the map of who owns what, which are two different things
+    # and only the first comes from `pg_dumpall --globals-only`. Without the map
+    # a restore onto a bare machine has to guess owners, and a database guessed
+    # onto `postgres` is one its site cannot read. Asserted on a named database
+    # rather than on the header, so a map that renders empty is caught.
+    - name: The roles copy holds role statements and the ownership map
       ansible.builtin.raw: >-
         mc cat local/molecule-backups/molecule/daily/$(date -u +%Y-%m-%d)/globals.sql
       register: globals_body
       changed_when: false
-      failed_when: "'CREATE ROLE' not in globals_body.stdout"
+      failed_when: >-
+        'CREATE ROLE' not in globals_body.stdout
+        or 'CREATE DATABASE molecule_one OWNER' not in globals_body.stdout
 
     # Both entries of the deny list, not just the first: a broken join renders
     # the two names as one unmatchable line, and a check on the first alone

@@ -66,17 +66,40 @@ dump="$work_dir/$target.dump"
 # The marker is fetched before either: it exists only on a night that finished,
 # so a partial set — a run that died on the fourth of nine uploads — is refused
 # here instead of restoring from it and reporting the copies healthy.
+# ⚠️ An absence and a refusal are different answers, and stderr is NOT discarded.
+# `s3_get.py` exits 3 when the object is not there and 1 when storage would not
+# answer at all — a rotated key, a wrong bucket or an outage. Read as one, they
+# made a healthy backup look like a missing one: the probe expects most nights to
+# be absent, so a 403 counted as "not this night either" and the run ended saying
+# no set had finished. The restore was given this distinction on 2026-08-29 and
+# the rehearsal was left with the old reading, which is the half that runs
+# unattended every month and reports to nobody watching.
+probe_day() {
+    local candidate="$1" status=0
+
+    "{{ backup_script_dir }}/s3_get.py" \
+        "$prefix/daily/$candidate/_complete" "$work_dir/complete" || status=$?
+
+    if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then
+        echo "Storage would not answer for the set of $candidate — see the reply above." >&2
+        echo "This is not the same as having no copies: check {{ backup_script_dir }}/storage.env" >&2
+        echo "(key, secret, bucket, endpoint) before concluding anything about them." >&2
+        exit 1
+    fi
+
+    return "$status"
+}
+
 restored_day=""
 for candidate in "$(date -u +%Y-%m-%d)" "$(date -u -d yesterday +%Y-%m-%d)"; do
-    if "{{ backup_script_dir }}/s3_get.py" \
-            "$prefix/daily/$candidate/_complete" "$work_dir/complete" 2>/dev/null; then
+    if probe_day "$candidate"; then
         restored_day="$candidate"
         break
     fi
 done
 
 if [ -z "$restored_day" ]; then
-    echo "No complete set to rehearse against: neither today nor yesterday finished." >&2
+    echo "No complete set to rehearse against: storage answered, and neither today nor yesterday finished." >&2
     exit 1
 fi
 
@@ -104,10 +127,37 @@ createdb "$scratch"
 # The judgement below looks at what arrived instead.
 pg_restore --no-owner --no-privileges -d "$scratch" "$dump" 2>&1 | tail -5 || true
 
+# ⚠️ Every user schema, not just `public`, and for the same reason the restore
+# counts that way: `rows` below sums across all of them, so counting tables in
+# one schema makes a database that keeps them elsewhere read as structure with
+# rows in it — 0 tables and n rows — and the rehearsal calls a healthy copy
+# broken. The target here is whichever database is largest, so this is not a
+# hypothetical shape: one database organised that way and the monthly check
+# starts failing on a backup that is fine.
+#
+# ⚠️ And the tables extensions bring are excluded from BOTH counts. PostGIS ships
+# `spatial_ref_sys` with thousands of rows, so a database that lost everything it
+# owned but kept the extension would report tables and rows and pass — the
+# rehearsal would declare a hollow copy healthy, which is the one thing it exists
+# to catch. Kept identical to the restore's judgement deliberately: the two
+# answer the same question, and every time they have differed the difference has
+# been a defect.
+extension_tables="select 1 from pg_depend d
+     where d.objid = c.oid and d.classid = 'pg_class'::regclass and d.deptype = 'e'"
+
+# ⚠️ `m` and `p` alongside `r` — see the restore, which counts identically. A
+# materialized view holds rows and is not a table, so counting only `r` while
+# summing rows from `pg_stat_user_tables` made a database made of them read as
+# 0 tables and thousands of rows: the rehearsal would call a healthy copy empty
+# every month.
 tables="$(
     psql -tAX -d "$scratch" -c \
-        "select count(*) from information_schema.tables
-          where table_schema = 'public'"
+        "select count(*) from pg_class c
+          join pg_namespace n on n.oid = c.relnamespace
+          where c.relkind in ('r', 'm', 'p')
+            and n.nspname not in ('pg_catalog', 'information_schema')
+            and n.nspname not like 'pg\\_%'
+            and not exists ($extension_tables)"
 )"
 
 # Read before either is judged, so the emptiness check below covers both. Schema
@@ -116,7 +166,9 @@ tables="$(
 # counting says the backup works.
 rows="$(
     psql -tAX -d "$scratch" -c \
-        "select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables"
+        "select coalesce(sum(s.n_live_tup), 0) from pg_stat_user_tables s
+          join pg_class c on c.oid = s.relid
+          where not exists ($extension_tables)"
 )"
 
 # ⚠️ Compared as a STRING against emptiness first. `[ "" -eq 0 ]` prints
