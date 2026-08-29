@@ -1,0 +1,196 @@
+#!/usr/bin/env bash
+{{ ansible_managed | comment }}
+#
+# ⚠️ The shebang is the FIRST line, above the managed banner. Put below it the
+# file is a comment followed by a shebang nothing ever sees, and the script dies
+# with "Exec format error" — which names the interpreter, not the missing line.
+#
+# Restores one database from the nightly copies, over what is there now.
+#
+# Not a timer: this is run by a person, on the worst day, and the value it adds
+# is that the sequence is written down rather than remembered. Restoring is the
+# rarest operation here and the one performed under the most pressure — the data
+# is already gone — so it is the last place a sequence should be assembled from
+# memory. Measured 2026-08-29 in busel: a destructive sequence retyped by hand
+# reached the wrong database twice in one day.
+#
+# Judges the copy the way `verify.sh` does — by what arrived, not by pg_restore's
+# exit code, which is 0 on a dump carrying structure and nothing else.
+set -euo pipefail
+
+work_dir={{ backup_work_dir | quote }}-restore
+prefix={{ backup_prefix | quote }}
+scratch={{ backup_verify_database | quote }}-restore
+
+usage() {
+    cat >&2 <<USAGE
+Usage: krot-restore <database> [--day YYYY-MM-DD] [--force]
+
+  <database>   the database to restore INTO — its current contents are replaced
+  --day        which nightly set to take; default is the newest complete one
+  --force      do not ask; for scripts and runs without a terminal
+USAGE
+    exit 2
+}
+
+target=""
+day=""
+force=no
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --day)   day="${2:-}"; shift 2 || usage ;;
+        --force) force=yes; shift ;;
+        -h|--help) usage ;;
+        -*)      echo "Unknown option: $1" >&2; usage ;;
+        *)       [ -z "$target" ] || usage; target="$1"; shift ;;
+    esac
+done
+
+[ -n "$target" ] || usage
+
+# ⚠️ Refused before anything is downloaded. Restoring into a database that does
+# not exist would have to create it, and a typo would then be answered with a new
+# empty database named after the mistake — which reads as success right up until
+# something tries to read the real one.
+if ! psql -tAX -d postgres -c \
+        "select 1 from pg_database where datname = '$target'" | grep -q 1; then
+    echo "No database named $target on this machine. Restoring cannot create it — check the name." >&2
+    exit 1
+fi
+
+rm -rf "$work_dir"
+mkdir -p "$work_dir"
+chmod 700 "$work_dir"
+
+# The scratch database goes whether this succeeded or died halfway. A leftover
+# would be picked up by the next night's backup as an ordinary database and
+# copied — the copies would start feeding themselves.
+cleanup() {
+    rm -rf "$work_dir"
+    dropdb --if-exists "$scratch" || true
+}
+trap cleanup EXIT
+
+# ⚠️ The marker first, and it is what makes a set a set. `_complete` is uploaded
+# last, so a night that died on the fourth of nine uploads has dumps in the
+# bucket and no marker — and restoring from it would produce a database that
+# looks whole. Named days are checked for the marker too: asking for a specific
+# day is not a reason to accept an unfinished one.
+if [ -n "$day" ]; then
+    if ! "{{ backup_script_dir }}/s3_get.py" "$prefix/daily/$day/_complete" "$work_dir/complete" 2>/dev/null; then
+        echo "The set of $day did not finish — no _complete marker. Pick another day." >&2
+        exit 1
+    fi
+else
+    for candidate in $(seq 0 6); do
+        probe="$(date -u -d "$candidate days ago" +%Y-%m-%d)"
+        if "{{ backup_script_dir }}/s3_get.py" "$prefix/daily/$probe/_complete" "$work_dir/complete" 2>/dev/null; then
+            day="$probe"
+            break
+        fi
+    done
+
+    if [ -z "$day" ]; then
+        echo "No complete set in the last seven nights. Check that the backup timer is running." >&2
+        exit 1
+    fi
+fi
+
+dump="$work_dir/$target.dump"
+
+if ! "{{ backup_script_dir }}/s3_get.py" "$prefix/daily/$day/$target.dump" "$dump" 2>/dev/null; then
+    echo "The set of $day holds no copy of $target — the database may be newer than that night." >&2
+    exit 1
+fi
+
+# ⚠️ Restored into a scratch database FIRST, and judged there. Restoring straight
+# over the target would mean finding out the copy is empty after the live data is
+# already gone — which is the one moment this script exists to avoid.
+createdb "$scratch"
+
+# Errors are not fatal and the exit code is not the judgement: a dump restored
+# into a fresh database always complains about roles and extensions it cannot
+# recreate. What arrived is read below instead.
+pg_restore --no-owner --no-privileges -d "$scratch" "$dump" 2>&1 | tail -5 || true
+
+tables="$(psql -tAX -d "$scratch" -c \
+    "select count(*) from information_schema.tables where table_schema = 'public'")"
+rows="$(psql -tAX -d "$scratch" -c \
+    "select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables")"
+
+# ⚠️ Emptiness before arithmetic. `[ "" -eq 0 ]` prints "integer expected" and
+# returns false — and as an `if` condition that does not trip `set -e`, so the
+# script would carry on and replace live data on the strength of a psql that
+# never answered.
+if [ -z "$tables" ] || [ -z "$rows" ]; then
+    echo "Read the copy of $target but could not count what arrived — psql answered nothing." >&2
+    exit 1
+fi
+
+if [ "$tables" -eq 0 ] || [ "$rows" -eq 0 ]; then
+    echo "The copy of $target from $day holds $tables tables and $rows rows — refusing to restore it over live data." >&2
+    exit 1
+fi
+
+# What is about to be lost, read from the target rather than assumed. An operator
+# restoring the wrong database sees a number they do not expect, and that is the
+# last point at which this is cheap.
+current="$(psql -tAX -d "$target" -c \
+    "select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables" 2>/dev/null || echo 0)"
+
+echo "About to restore $target from the copy of $day."
+echo "  copy:    $tables tables, $rows rows"
+echo "  now in $target: $current rows — these are replaced"
+
+if [ "$force" != yes ]; then
+    if [ ! -t 0 ]; then
+        echo "Refusing to restore without confirmation. Pass --force when running without a terminal." >&2
+        exit 1
+    fi
+
+    read -r -p "Type the database name to confirm: " typed
+    if [ "$typed" != "$target" ]; then
+        echo "Not confirmed — nothing done."
+        exit 0
+    fi
+fi
+
+# ⚠️ One transaction for the drop and the restore together. psql carries on after
+# an error and exits 0 by default, so a restore that broke in the middle would
+# leave the schema dropped, part of the tables back, and this script reporting
+# success — a database frozen half-restored. Postgres does DDL transactionally,
+# so on any error the DROP rolls back with everything else and the target is
+# exactly as it was.
+#
+# The dump goes in as plain SQL: pg_restore's own -1 does the same, but the
+# ownership handover below has to be inside the SAME transaction, and only psql
+# can be given both.
+pg_restore --no-owner --no-privileges -f "$work_dir/$target.sql" "$dump"
+
+owner="$(psql -tAX -d postgres -c \
+    "select pg_get_userbyid(datdba) from pg_database where datname = '$target'")"
+
+{
+    echo "DROP SCHEMA public CASCADE;"
+    echo "CREATE SCHEMA public;"
+    cat "$work_dir/$target.sql"
+    # ⚠️ Ownership handed back inside the transaction. A schema recreated by this
+    # script belongs to whoever ran it, and so does every table in it — the site
+    # then meets `permission denied` on its own database, and only when it first
+    # tries to read it, which is after this reported success.
+    echo "ALTER SCHEMA public OWNER TO ${owner};"
+    echo "DO \$\$ DECLARE r record; BEGIN"
+    echo "  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname='public' LOOP"
+    echo "    EXECUTE format('ALTER TABLE public.%I OWNER TO ${owner}', r.tablename);"
+    echo "  END LOOP;"
+    echo "  FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname='public' LOOP"
+    echo "    EXECUTE format('ALTER SEQUENCE public.%I OWNER TO ${owner}', r.sequencename);"
+    echo "  END LOOP;"
+    echo "END \$\$;"
+} | psql -q -v ON_ERROR_STOP=1 --single-transaction -d "$target" -f -
+
+restored="$(psql -tAX -d "$target" -c \
+    "select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables")"
+
+echo "Restored $target from the copy of $day: $restored rows."

@@ -1,0 +1,10 @@
+# krot has no openspec/specs/ and is not meant to: its unit of knowledge is a
+# role, not a capability. Without this file `openspec archive` refuses with "No
+# deltas found".
+#
+# `schema: spec-driven` is not optional decoration — it is what makes the marker
+# below count. Written with `skip_specs` alone the file parses as invalid change
+# metadata and the marker is ignored. Copied from a neighbouring change rather
+# than written from memory, which is how it was got wrong before.
+schema: spec-driven
+skip_specs: true
