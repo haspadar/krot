@@ -134,11 +134,25 @@ pg_restore --no-owner --no-privileges -d "$scratch" "$dump" 2>&1 | tail -5 || tr
 # broken. The target here is whichever database is largest, so this is not a
 # hypothetical shape: one database organised that way and the monthly check
 # starts failing on a backup that is fine.
+#
+# ⚠️ And the tables extensions bring are excluded from BOTH counts. PostGIS ships
+# `spatial_ref_sys` with thousands of rows, so a database that lost everything it
+# owned but kept the extension would report tables and rows and pass — the
+# rehearsal would declare a hollow copy healthy, which is the one thing it exists
+# to catch. Kept identical to the restore's judgement deliberately: the two
+# answer the same question, and every time they have differed the difference has
+# been a defect.
+extension_tables="select 1 from pg_depend d
+     where d.objid = c.oid and d.classid = 'pg_class'::regclass and d.deptype = 'e'"
+
 tables="$(
     psql -tAX -d "$scratch" -c \
-        "select count(*) from information_schema.tables
-          where table_type = 'BASE TABLE'
-            and table_schema not in ('pg_catalog', 'information_schema')"
+        "select count(*) from pg_class c
+          join pg_namespace n on n.oid = c.relnamespace
+          where c.relkind = 'r'
+            and n.nspname not in ('pg_catalog', 'information_schema')
+            and n.nspname not like 'pg\\_%'
+            and not exists ($extension_tables)"
 )"
 
 # Read before either is judged, so the emptiness check below covers both. Schema
@@ -147,7 +161,9 @@ tables="$(
 # counting says the backup works.
 rows="$(
     psql -tAX -d "$scratch" -c \
-        "select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables"
+        "select coalesce(sum(s.n_live_tup), 0) from pg_stat_user_tables s
+          join pg_class c on c.oid = s.relid
+          where not exists ($extension_tables)"
 )"
 
 # ⚠️ Compared as a STRING against emptiness first. `[ "" -eq 0 ]` prints

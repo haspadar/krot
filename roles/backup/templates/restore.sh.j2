@@ -303,14 +303,31 @@ as_postgres pg_restore --no-owner --no-privileges -d "$scratch" "$dump" 2>&1 | t
 # drops every user schema. Counting only `public` made a database that keeps its
 # tables elsewhere report 0 tables and be refused as an empty copy, with its data
 # sitting in the scratch right there. Measured 2026-08-29 on PG 18: a database
-# with one table in schema `app` counted 0 tables and 2 rows, and the mismatch is
-# the tell — `rows` below was already summing across all schemas.
+# with one table in schema `app` counted 0 tables and 2 rows.
+#
+# ⚠️ And NOT the tables extensions bring with them, which is the other half of
+# the same correction. Widening the schemas alone would have let an extension
+# stand in for the data: PostGIS ships `spatial_ref_sys` with ~8500 rows, so a
+# database that lost everything it owned but kept the extension would count one
+# table and thousands of rows and be judged a healthy copy — restored over live
+# data by the very check that exists to prevent it. Both queries filter the same
+# way, because a disagreement between them is what produced this defect twice:
+# first tables-in-one-schema against rows-in-all, now data-of-the-site against
+# data-of-an-extension.
+extension_tables="select 1 from pg_depend d
+     where d.objid = c.oid and d.classid = 'pg_class'::regclass and d.deptype = 'e'"
+
 tables="$(as_postgres psql -tAX -d "$scratch" -c \
-    "select count(*) from information_schema.tables
-     where table_type = 'BASE TABLE'
-       and table_schema not in ('pg_catalog', 'information_schema')")"
+    "select count(*) from pg_class c
+     join pg_namespace n on n.oid = c.relnamespace
+     where c.relkind = 'r'
+       and n.nspname not in ('pg_catalog', 'information_schema')
+       and n.nspname not like 'pg\\_%'
+       and not exists ($extension_tables)")"
 rows="$(as_postgres psql -tAX -d "$scratch" -c \
-    "select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables")"
+    "select coalesce(sum(s.n_live_tup), 0) from pg_stat_user_tables s
+     join pg_class c on c.oid = s.relid
+     where not exists ($extension_tables)")"
 
 # ⚠️ Emptiness before arithmetic. `[ "" -eq 0 ]` prints "integer expected" and
 # returns false — and as an `if` condition that does not trip `set -e`, so the
@@ -428,8 +445,13 @@ fi
 # it is there by default, and a dump made from a database that still had it
 # restores its contents without ever creating it.
 #
-# The `deptype = 'e'` test spares a schema an extension owns, which is the case
-# for extensions installed into one of their own. ⚠️ It is qualified by `classid`
+# The `deptype = 'e'` test spares a schema an extension CREATED — the one its
+# install script makes for itself. ⚠️ It does not spare a schema someone made and
+# then installed an extension into: that relationship lives in
+# `pg_extension.extnamespace`, not in `pg_depend`, so such a schema has no row
+# here and is dropped. That is the right outcome — the dump recreates it along
+# with its `CREATE EXTENSION` — but the predicate covers less than its name
+# suggests, and this is the note saying so. ⚠️ It is qualified by `classid`
 # because `pg_depend.objid` is unique per catalogue and not cluster-wide: without
 # it, an extension-member row for a function or a language whose oid happens to
 # equal a namespace oid would spare that schema — and the schema left standing is
@@ -447,6 +469,17 @@ fi
     # A minute is long enough for a transaction that is finishing and short
     # enough to be a named refusal: the transaction rolls back and the data is
     # untouched, which is what the operator needs to be told.
+    #
+    # ⚠️ Set TWICE, and the second time is not redundant. Every pg_dump body opens
+    # with `SET lock_timeout = 0;` — line 11 of the header, verbatim — and that
+    # takes effect inside this same transaction. Set only here, the bound covers
+    # the drop loop and then evaporates: the replay, the ownership handover and
+    # both loops below would wait unbounded again, which is most of the
+    # transaction and all of the part that runs after the data is already gone.
+    # Measured on PG 18: `ALTER TABLE … OWNER TO` against a table held by another
+    # session failed in 5s with the bound and hung indefinitely once the dump's
+    # own SET had passed. `PGOPTIONS` would not help — the dump's SET overrides
+    # that too. So it is re-issued after the body.
     echo "SET lock_timeout = '60s';"
     echo "DO \$\$ DECLARE r record; BEGIN"
     echo "  FOR r IN SELECT nspname FROM pg_namespace n"
@@ -459,6 +492,8 @@ fi
     echo "END \$\$;"
     echo "CREATE SCHEMA IF NOT EXISTS public;"
     cat "$work_dir/$target.sql"
+    # Restored after the body, which reset it to 0 — see above.
+    echo "SET lock_timeout = '60s';"
     # ⚠️ Ownership handed back inside the transaction, and it is a BACKSTOP now
     # rather than the mechanism. The dump carries `ALTER SCHEMA … OWNER TO` and an
     # owner for every object it creates — that is what the flags above used to
