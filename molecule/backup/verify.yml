@@ -51,11 +51,11 @@
       ansible.builtin.command: journalctl -u krot-backup.service --no-pager -n 40
       register: backup_journal
       changed_when: false
-      # Two, with a leftover restore scratch sitting on the machine — the count
+      # Three, with a leftover restore scratch sitting on the machine — the count
       # is what catches an exclusion that misses it, and the name is asserted
       # separately because a miscount could come from anywhere.
       failed_when: >-
-        'Copied 2 databases' not in backup_journal.stdout
+        'Copied 3 databases' not in backup_journal.stdout
         or 'krot_restore_check_restore' in backup_journal.stdout
 
     - name: The leftover scratch goes, whether or not it was copied
@@ -284,6 +284,39 @@
       register: restore_work_dir
       failed_when: restore_work_dir.stat.exists
 
+    # ⚠️ A database with nothing in `public` at all, which the judgement refused
+    # as an empty copy: it counted tables in `public` and rows everywhere, so this
+    # shape reported "0 tables" while its rows sat in the scratch. The refusal was
+    # indistinguishable from a genuinely empty backup, and it fired on a database
+    # that is perfectly ordinary — Postgres does not require anything to live in
+    # `public`.
+    - name: Damage the database that keeps nothing in public
+      community.postgresql.postgresql_query:
+        db: molecule_elsewhere
+        query: delete from app.sample
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: A copy whose tables are all outside public is restored, not called empty
+      ansible.builtin.command: /usr/local/bin/krot-restore molecule_elsewhere --force
+      become: true
+      register: restored_elsewhere
+      changed_when: true
+      failed_when: >-
+        restored_elsewhere.rc != 0
+        or 'Restored molecule_elsewhere' not in restored_elsewhere.stdout
+        or 'refusing to restore' in restored_elsewhere.stderr
+
+    - name: And its rows are back where they live
+      community.postgresql.postgresql_query:
+        db: molecule_elsewhere
+        query: select count(*) as n from app.sample
+      become: true
+      become_user: postgres
+      register: elsewhere_rows
+      failed_when: elsewhere_rows.query_result[0].n != 1
+
     # ⚠️ Asked of a database that HAS a copy, so the run reaches the confirmation
     # instead of dying earlier for an unrelated reason. Asked of one without a
     # copy — as it was — the missing-dump refusal fires first and the assertion
@@ -341,13 +374,14 @@
     # Asked of the storage, not of the machine that claims to have uploaded. The
     # signature is hand-written, and "the script exited 0" is precisely the
     # thing under test.
-    - name: Both databases are in the bucket
+    - name: Every database that should be copied is in the bucket
       ansible.builtin.raw: mc ls --recursive local/molecule-backups
       register: stored
       changed_when: false
       failed_when: >-
         'molecule_one.dump' not in stored.stdout
         or 'molecule_two.dump' not in stored.stdout
+        or 'molecule_elsewhere.dump' not in stored.stdout
 
     # Without these a restore onto a clean machine yields databases nobody can
     # log into: pg_dump carries no roles, no passwords and no grants.

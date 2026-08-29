@@ -299,8 +299,16 @@ as_postgres createdb "$scratch"
 # recreate. What arrived is read below instead.
 as_postgres pg_restore --no-owner --no-privileges -d "$scratch" "$dump" 2>&1 | tail -5 || true
 
+# ⚠️ Every user schema, not just `public` — the same reason the replacement below
+# drops every user schema. Counting only `public` made a database that keeps its
+# tables elsewhere report 0 tables and be refused as an empty copy, with its data
+# sitting in the scratch right there. Measured 2026-08-29 on PG 18: a database
+# with one table in schema `app` counted 0 tables and 2 rows, and the mismatch is
+# the tell — `rows` below was already summing across all schemas.
 tables="$(as_postgres psql -tAX -d "$scratch" -c \
-    "select count(*) from information_schema.tables where table_schema = 'public'")"
+    "select count(*) from information_schema.tables
+     where table_type = 'BASE TABLE'
+       and table_schema not in ('pg_catalog', 'information_schema')")"
 rows="$(as_postgres psql -tAX -d "$scratch" -c \
     "select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables")"
 
@@ -421,16 +429,30 @@ fi
 # restores its contents without ever creating it.
 #
 # The `deptype = 'e'` test spares a schema an extension owns, which is the case
-# for extensions installed into one of their own. It does NOT spare an extension
+# for extensions installed into one of their own. ⚠️ It is qualified by `classid`
+# because `pg_depend.objid` is unique per catalogue and not cluster-wide: without
+# it, an extension-member row for a function or a language whose oid happens to
+# equal a namespace oid would spare that schema — and the schema left standing is
+# exactly the failure this loop removes. It does NOT spare an extension
 # installed into `public`, which is where they land by default — that one goes
 # with the schema and comes back from the dump's own `CREATE EXTENSION`, checked
 # 2026-08-29 with pg_trgm. The same was true before this loop existed: `DROP
 # SCHEMA public CASCADE` always took it.
 {
+    # ⚠️ A bounded wait for the locks, not an unbounded one. `DROP SCHEMA …
+    # CASCADE` needs an AccessExclusiveLock on every object, and a site still
+    # holding a session on the target blocks it — forever, by default. The
+    # operator would see the "About to restore" report and then nothing at all,
+    # with the flock held and no way to tell a slow restore from a stuck one.
+    # A minute is long enough for a transaction that is finishing and short
+    # enough to be a named refusal: the transaction rolls back and the data is
+    # untouched, which is what the operator needs to be told.
+    echo "SET lock_timeout = '60s';"
     echo "DO \$\$ DECLARE r record; BEGIN"
     echo "  FOR r IN SELECT nspname FROM pg_namespace n"
     echo "           WHERE nspname NOT LIKE 'pg\\_%' AND nspname <> 'information_schema'"
     echo "             AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = n.oid"
+    echo "                             AND d.classid = 'pg_namespace'::regclass"
     echo "                             AND d.deptype = 'e') LOOP"
     echo "    EXECUTE format('DROP SCHEMA %I CASCADE', r.nspname);"
     echo "  END LOOP;"

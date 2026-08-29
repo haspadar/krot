@@ -127,10 +127,18 @@ createdb "$scratch"
 # The judgement below looks at what arrived instead.
 pg_restore --no-owner --no-privileges -d "$scratch" "$dump" 2>&1 | tail -5 || true
 
+# ⚠️ Every user schema, not just `public`, and for the same reason the restore
+# counts that way: `rows` below sums across all of them, so counting tables in
+# one schema makes a database that keeps them elsewhere read as structure with
+# rows in it — 0 tables and n rows — and the rehearsal calls a healthy copy
+# broken. The target here is whichever database is largest, so this is not a
+# hypothetical shape: one database organised that way and the monthly check
+# starts failing on a backup that is fine.
 tables="$(
     psql -tAX -d "$scratch" -c \
         "select count(*) from information_schema.tables
-          where table_schema = 'public'"
+          where table_type = 'BASE TABLE'
+            and table_schema not in ('pg_catalog', 'information_schema')"
 )"
 
 # Read before either is judged, so the emptiness check below covers both. Schema

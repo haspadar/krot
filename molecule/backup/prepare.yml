@@ -28,6 +28,13 @@
         # Excluded by the second entry of the deny list, so its absence from the
         # bucket is what proves the list is read as more than one line.
         - molecule_skipped
+        # ⚠️ A database with NOTHING in `public`, which is legal and which the
+        # restore refused as an empty copy: it counted tables in `public` while
+        # counting rows everywhere, so this shape reported "0 tables" with its
+        # data sitting in the scratch. Kept as a whole database rather than as a
+        # second schema on an existing one, because the defect was the absence of
+        # `public` tables, not the presence of others.
+        - molecule_elsewhere
 
     # Rows, not just a schema: the rehearsal refuses a copy that restores
     # structure and nothing else, and a scenario with empty tables could not
@@ -44,6 +51,18 @@
         - molecule_one
         - molecule_two
         - molecule_skipped
+
+    - name: And rows somewhere other than public, in the database that has no public tables
+      community.postgresql.postgresql_query:
+        db: molecule_elsewhere
+        query: |
+          create schema if not exists app;
+          create table if not exists app.sample (id int primary key, note text);
+          insert into app.sample values (1, 'kept') on conflict do nothing;
+          drop table if exists sample;
+      become: true
+      become_user: postgres
+      changed_when: true
 
     # ⚠️ A database that is not just tables in `public`, because a restore of one
     # that is proves only the easy half. Each of these was a way the restore
