@@ -82,6 +82,31 @@ fi
 globals="$work_dir/globals.sql"
 nice -n {{ backup_nice }} pg_dumpall --globals-only -f "$globals"
 
+# ⚠️ And which role owns which database, which `--globals-only` does NOT carry:
+# it emits the roles and their hashes, and nothing that says `busel` owns
+# `stadtdame`. The map lives only in `pg_database` on the machine — the one that
+# just died in the case these copies exist for. Restoring onto a fresh machine
+# then means guessing owners, and a database guessed onto `postgres` is one the
+# site meets `permission denied` on: the exact failure the restore's ownership
+# handover exists to prevent, reintroduced one step earlier.
+#
+# Written as runnable `CREATE DATABASE` statements rather than a table, so the
+# operator on a bare machine can run the file and get the databases the copies
+# expect to be restored into. Commented out, because restoring onto a machine
+# that still has them must not fail on the first line.
+{
+    echo ""
+    echo "-- Which role owns which database, on the night this set was made."
+    echo "-- pg_dumpall --globals-only does not record this, and nothing else does."
+    echo "-- Uncomment on a machine that does not have these databases yet."
+    nice -n {{ backup_nice }} psql -tAX -d postgres -c \
+        "select format('-- CREATE DATABASE %I OWNER %I;',
+                       datname, pg_get_userbyid(datdba))
+         from pg_database
+         where datallowconn and not datistemplate
+         order by datname"
+} >> "$globals"
+
 # 0600 while it is on disk: it carries the roles' password hashes. It is
 # uploaded like everything else, and the bucket is what keeps it private there.
 chmod 600 "$globals"

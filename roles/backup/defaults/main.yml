@@ -52,7 +52,18 @@ backup_exclude_databases:
   # The rehearsal's scratch database. Its cleanup does not survive SIGKILL, and
   # a leftover copied as an ordinary database would mean the backup feeding on
   # the rehearsal's output.
-  - krot_restore_check
+  #
+  # ⚠️ Both scratches, and they are different names: the rehearsal works in
+  # `backup_verify_database`, the restore in that name plus `_restore`, because
+  # the two must be able to run at once without sharing one. Matching here is
+  # whole-line (`grep -vxF`), so the first name does not cover the second — a
+  # leftover from a SIGKILLed restore was copied as an ordinary database and the
+  # night reported "Copied 5 databases" where there are four (2026-08-29).
+  #
+  # Written through the variable rather than spelled out, so renaming the
+  # scratch cannot leave an exclusion pointing at a name nothing uses any more.
+  - "{{ backup_verify_database }}"
+  - "{{ backup_verify_database }}_restore"
 
 # Nice, because this runs on a machine serving sites. Dumping is I/O bound more
 # than CPU bound, so this matters less than it does for the umami build, but it

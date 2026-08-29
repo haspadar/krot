@@ -1,8 +1,14 @@
 #!/usr/bin/env python3
 {{ ansible_managed | comment }}
 #
-# Downloads one object. Used by the restore rehearsal, never by the backup
-# itself.
+# Downloads one object. Used by the restore rehearsal and by the restore itself,
+# never by the backup.
+#
+# ⚠️ The exit code carries a distinction the caller depends on, and it comes
+# from `send`: 3 means the object is not there, 1 means storage refused us or
+# could not be reached, and the reason is on stderr in both cases. A restore
+# probes seven nights and expects most of them to be absent — reading a refusal
+# as an absence is what makes a rotated key print "no backups exist".
 import os
 import sys
 

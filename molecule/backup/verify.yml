@@ -21,6 +21,18 @@
         or backup_credentials.stat.mode != '0600'
         or backup_credentials.stat.pw_name != 'postgres'
 
+    # ⚠️ A leftover scratch, left where a SIGKILLed restore would leave one. The
+    # exclusion list is matched whole-line, so the restore's scratch is a second
+    # name and not covered by the rehearsal's — and a copied scratch means the
+    # copies start feeding on their own output. Created BEFORE the run so the
+    # count below is the assertion: it stays at two.
+    - name: A scratch database left behind by an interrupted restore
+      community.postgresql.postgresql_db:
+        name: krot_restore_check_restore
+        state: present
+      become: true
+      become_user: postgres
+
     # The run itself, not the timer's schedule: a scenario that only checked
     # installation would prove the machine intends to make copies.
     - name: Run the backup
@@ -39,8 +51,19 @@
       ansible.builtin.command: journalctl -u krot-backup.service --no-pager -n 40
       register: backup_journal
       changed_when: false
+      # Two, with a leftover restore scratch sitting on the machine — the count
+      # is what catches an exclusion that misses it, and the name is asserted
+      # separately because a miscount could come from anywhere.
       failed_when: >-
         'Copied 2 databases' not in backup_journal.stdout
+        or 'krot_restore_check_restore' in backup_journal.stdout
+
+    - name: The leftover scratch goes, whether or not it was copied
+      community.postgresql.postgresql_db:
+        name: krot_restore_check_restore
+        state: absent
+      become: true
+      become_user: postgres
 
     # ⚠️ The excluded database must be absent from the copies, and absence is
     # what this asserts. Checking only that the two wanted ones arrived would
@@ -93,16 +116,23 @@
     # ⚠️ The name is not in the set of copies, so this asks the refusal rather
     # than the restore — and the refusal is the half that protects data. A run
     # that found no copy and carried on would replace live rows with nothing.
+    # ⚠️ As root, which is how the script is run and the ONLY identity it works
+    # under: the credentials are root-readable and every cluster call goes
+    # through `sudo -u postgres`, which `postgres` itself may not do. Run under
+    # `become_user: postgres` these three tests passed for the wrong reason —
+    # sudo refused, psql never ran, and the script blamed the database name. The
+    # sudoers assertion below is what keeps that from coming back: without it a
+    # deleted `as_postgres` would leave the suite green.
     - name: A database with no copy in the set is refused, not emptied
       ansible.builtin.command: /usr/local/bin/krot-restore krot_restore_target --force
       become: true
-      become_user: postgres
       register: no_copy
       changed_when: false
       # The refusal, not its wording: which of the two refusals fires depends on
       # whether the scenario's bucket happens to hold a set for today, and both
-      # protect the same rows.
-      failed_when: no_copy.rc == 0
+      # protect the same rows. But it must be a refusal the script reasoned its
+      # way to, not one sudo handed it.
+      failed_when: no_copy.rc == 0 or 'sudoers' in no_copy.stderr
 
     - name: And it left the rows alone
       community.postgresql.postgresql_query:
@@ -116,10 +146,16 @@
     - name: A name that is not a database at all is refused before anything is downloaded
       ansible.builtin.command: /usr/local/bin/krot-restore no_such_database --force
       become: true
-      become_user: postgres
       register: no_database
       changed_when: false
-      failed_when: no_database.rc == 0 or 'Restoring cannot create it' not in no_database.stderr
+      # ⚠️ The wording AND the absence of a sudo failure. This message is printed
+      # when the lookup finds nothing — and a lookup that could not run finds
+      # nothing too, so on its own the assertion passes on a script that never
+      # reached the cluster.
+      failed_when: >-
+        no_database.rc == 0
+        or 'Restoring cannot create it' not in no_database.stderr
+        or 'sudoers' in no_database.stderr
 
     # ⚠️ Asserted on a database that has no copy, so what this proves is that the
     # run stops — not which guard stopped it. The confirmation is reached only
@@ -128,10 +164,9 @@
     - name: Without a terminal it refuses rather than assuming yes
       ansible.builtin.command: /usr/local/bin/krot-restore krot_restore_target
       become: true
-      become_user: postgres
       register: unattended
       changed_when: false
-      failed_when: unattended.rc == 0
+      failed_when: unattended.rc == 0 or 'sudoers' in unattended.stderr
 
     - name: The refusals left no scratch database behind
       community.postgresql.postgresql_query:
@@ -193,12 +228,19 @@
       changed_when: false
       failed_when: "'globals.sql' not in stored_globals.stdout"
 
-    - name: The roles copy actually holds role statements
+    # ⚠️ The roles AND the map of who owns what, which are two different things
+    # and only the first comes from `pg_dumpall --globals-only`. Without the map
+    # a restore onto a bare machine has to guess owners, and a database guessed
+    # onto `postgres` is one its site cannot read. Asserted on a named database
+    # rather than on the header, so a map that renders empty is caught.
+    - name: The roles copy holds role statements and the ownership map
       ansible.builtin.raw: >-
         mc cat local/molecule-backups/molecule/daily/$(date -u +%Y-%m-%d)/globals.sql
       register: globals_body
       changed_when: false
-      failed_when: "'CREATE ROLE' not in globals_body.stdout"
+      failed_when: >-
+        'CREATE ROLE' not in globals_body.stdout
+        or 'CREATE DATABASE molecule_one OWNER' not in globals_body.stdout
 
     # Both entries of the deny list, not just the first: a broken join renders
     # the two names as one unmatchable line, and a check on the first alone

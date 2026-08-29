@@ -48,6 +48,25 @@ as_postgres() {
     sudo -u postgres "$@"
 }
 
+# ⚠️ Asked ONCE, up front, and not left to be discovered by the first failure.
+# `postgres` is not in sudoers — only root and the operator account are — so run
+# as `postgres` every call through `as_postgres` fails, prints its complaint to
+# stderr, and returns nothing. The lookup below then finds no matching row and
+# says "No database named X on this machine", which is a lie of the worst kind:
+# it names the operator's own database as the fault on the day they are trying
+# to get it back. Measured 2026-08-29 in a container against a database that
+# demonstrably existed.
+#
+# The check is `sudo -n`: the question is whether this identity may become
+# postgres without being asked for anything, which is the only mode a script has.
+if ! sudo -n -u postgres true 2>/dev/null; then
+    echo "Running as $(id -un), which may not become the postgres user. Restoring" >&2
+    echo "reads root-only credentials and reaches the cluster as postgres, so it" >&2
+    echo "has to run as root:" >&2
+    echo "  sudo krot-restore $*" >&2
+    exit 1
+fi
+
 work_dir={{ backup_work_dir | quote }}-restore
 prefix={{ backup_prefix | quote }}
 # ⚠️ An underscore, not a hyphen. `krot_restore_check-restore` is not a valid
@@ -73,7 +92,16 @@ force=no
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --day)   day="${2:-}"; shift 2 || usage ;;
+        # ⚠️ `${2:-}` is empty only at the end of the arguments, so `--day
+        # --force` took `--force` as the date and quietly turned the force off.
+        # The flag has to reject a value that is another flag, not just a
+        # missing one.
+        --day)
+            case "${2:-}" in
+                ""|-*) echo "--day needs a date, as YYYY-MM-DD." >&2; usage ;;
+            esac
+            day="$2"; shift 2
+            ;;
         --force) force=yes; shift ;;
         -h|--help) usage ;;
         -*)      echo "Unknown option: $1" >&2; usage ;;
@@ -82,6 +110,32 @@ while [ $# -gt 0 ]; do
 done
 
 [ -n "$target" ] || usage
+
+# ⚠️ Checked before the name reaches a SQL string, and it reaches two of them —
+# the existence lookup and the owner lookup — both by interpolation rather than
+# by a parameter, because psql -c takes no bind values. A name carrying a quote
+# would close the literal and leave whatever follows to run as a statement of
+# its own, as root, on the day the operator is already restoring. This script
+# exists BECAUSE a hand-typed destructive command reached the wrong database
+# twice in one day; it should not offer a third way.
+#
+# The pattern is what an unquoted PostgreSQL identifier may be, which is what
+# every database on this machine is named.
+case "$target" in
+    *[!A-Za-z0-9_]* | [!A-Za-z_]*)
+        echo "\"$target\" is not a plain database name — letters, digits and" >&2
+        echo "underscores only, not starting with a digit." >&2
+        exit 1
+        ;;
+esac
+
+# The same, for the day: it becomes part of a storage key.
+if [ -n "$day" ]; then
+    case "$day" in
+        [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;;
+        *) echo "--day takes a date as YYYY-MM-DD, not \"$day\"." >&2; exit 1 ;;
+    esac
+fi
 
 # ⚠️ Refused before anything is downloaded. Restoring into a database that does
 # not exist would have to create it, and a typo would then be answered with a new
@@ -114,29 +168,57 @@ trap cleanup EXIT
 # bucket and no marker — and restoring from it would produce a database that
 # looks whole. Named days are checked for the marker too: asking for a specific
 # day is not a reason to accept an unfinished one.
+# ⚠️ An absence and a refusal are different answers, and only one of them means
+# "look for another day". `s3_get.py` exits 3 when the object is not there and 1
+# when storage would not answer — so a rotated key, a wrong bucket or an outage
+# stops here naming itself, instead of being counted as one more missing night
+# and reported at the end as "no backups exist". Measured 2026-08-29: with a
+# valid dump in place and a wrong secret, this printed "No complete set in the
+# last seven nights" while storage was answering 403 SignatureDoesNotMatch, and
+# the operator was sent to inspect a timer that was running.
+#
+# stderr is NOT discarded for the same reason: `send` prints the status and the
+# body, and the body is where S3 says whether the fault is the key or the name.
+fetch() {
+    local key="$1" into="$2" status=0
+
+    "{{ backup_script_dir }}/s3_get.py" "$key" "$into" || status=$?
+
+    if [ "$status" -ne 0 ] && [ "$status" -ne 3 ]; then
+        echo "Storage would not answer for $key — see the reply above. This is not" >&2
+        echo "the same as having no backups: check {{ backup_script_dir }}/storage.env" >&2
+        echo "(key, secret, bucket, endpoint) before concluding anything about the copies." >&2
+        exit 1
+    fi
+
+    return "$status"
+}
+
 if [ -n "$day" ]; then
-    if ! "{{ backup_script_dir }}/s3_get.py" "$prefix/daily/$day/_complete" "$work_dir/complete" 2>/dev/null; then
+    if ! fetch "$prefix/daily/$day/_complete" "$work_dir/complete"; then
         echo "The set of $day did not finish — no _complete marker. Pick another day." >&2
         exit 1
     fi
 else
     for candidate in $(seq 0 6); do
         probe="$(date -u -d "$candidate days ago" +%Y-%m-%d)"
-        if "{{ backup_script_dir }}/s3_get.py" "$prefix/daily/$probe/_complete" "$work_dir/complete" 2>/dev/null; then
+        if fetch "$prefix/daily/$probe/_complete" "$work_dir/complete"; then
             day="$probe"
             break
         fi
     done
 
     if [ -z "$day" ]; then
-        echo "No complete set in the last seven nights. Check that the backup timer is running." >&2
+        echo "No complete set in the last seven nights — storage answered, and none of" >&2
+        echo "those nights holds a _complete marker. Check that the backup timer is" >&2
+        echo "running, or name an older day with --day." >&2
         exit 1
     fi
 fi
 
 dump="$work_dir/$target.dump"
 
-if ! "{{ backup_script_dir }}/s3_get.py" "$prefix/daily/$day/$target.dump" "$dump" 2>/dev/null; then
+if ! fetch "$prefix/daily/$day/$target.dump" "$dump"; then
     echo "The set of $day holds no copy of $target — the database may be newer than that night." >&2
     exit 1
 fi
@@ -210,8 +292,16 @@ pg_restore --no-owner --no-privileges -f "$work_dir/$target.sql" "$dump"
 
 chmod 644 "$work_dir/$target.sql"
 
-owner="$(as_postgres psql -tAX -d postgres -c \
-    "select pg_get_userbyid(datdba) from pg_database where datname = '$target'")"
+# ⚠️ Quoted by Postgres, not by this script. A role whose name carries a hyphen
+# or a capital is legal and needs quoting in DDL; hand-rolling that quoting here
+# would put a second, weaker copy of a rule the server already implements —
+# `quote_ident` is the rule. Asked as a literal for the `format('%I')` calls
+# below, which take the raw name, and as an identifier for the bare ALTER SCHEMA.
+IFS='|' read -r owner_ident owner_literal <<OWNER
+$(as_postgres psql -tAX -F '|' -d postgres -c \
+    "select quote_ident(r), quote_literal(r) from (
+         select pg_get_userbyid(datdba) as r from pg_database where datname = '$target') o")
+OWNER
 
 {
     echo "DROP SCHEMA public CASCADE;"
@@ -221,16 +311,22 @@ owner="$(as_postgres psql -tAX -d postgres -c \
     # script belongs to whoever ran it, and so does every table in it — the site
     # then meets `permission denied` on its own database, and only when it first
     # tries to read it, which is after this reported success.
-    echo "ALTER SCHEMA public OWNER TO ${owner};"
+    echo "ALTER SCHEMA public OWNER TO ${owner_ident};"
     echo "DO \$\$ DECLARE r record; BEGIN"
     echo "  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname='public' LOOP"
-    echo "    EXECUTE format('ALTER TABLE public.%I OWNER TO ${owner}', r.tablename);"
+    echo "    EXECUTE format('ALTER TABLE public.%I OWNER TO %I', r.tablename, ${owner_literal});"
     echo "  END LOOP;"
     echo "  FOR r IN SELECT sequencename FROM pg_sequences WHERE schemaname='public' LOOP"
-    echo "    EXECUTE format('ALTER SEQUENCE public.%I OWNER TO ${owner}', r.sequencename);"
+    echo "    EXECUTE format('ALTER SEQUENCE public.%I OWNER TO %I', r.sequencename, ${owner_literal});"
     echo "  END LOOP;"
     echo "END \$\$;"
-} | as_postgres psql -q -v ON_ERROR_STOP=1 --single-transaction -d "$target" -f -
+# ⚠️ `-o /dev/null` on top of `-q`. The dump opens with a `SELECT
+# pg_catalog.set_config(...)`, and a SELECT's result table is not a notice —
+# `-q` leaves it, so the operator's report carried a stray `set_config` and a
+# `(1 row)` between "About to restore" and the outcome. On the day this is run
+# that reads as something having gone wrong. Errors are untouched: they go to
+# stderr, and ON_ERROR_STOP still aborts the transaction.
+} | as_postgres psql -q -o /dev/null -v ON_ERROR_STOP=1 --single-transaction -d "$target" -f -
 
 restored="$(as_postgres psql -tAX -d "$target" -c \
     "select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables")"
