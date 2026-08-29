@@ -18,6 +18,36 @@
 # exit code, which is 0 on a dump carrying structure and nothing else.
 set -euo pipefail
 
+# ⚠️ Read here, not inherited. `backup.sh` and `verify.sh` are started by systemd
+# units carrying `EnvironmentFile=`, so the credentials arrive without either
+# script mentioning them — and this one has no unit, because a person runs it.
+# Copied from their pattern, it fetched nothing and reported "no complete set in
+# the last seven nights": a missing variable reads as a missing backup, which is
+# the most alarming way possible to say "wrong environment".
+#
+# Sourced rather than required from the caller: the operator running this has
+# just lost data and should not also have to know which file holds the keys.
+if [ -r "{{ backup_script_dir }}/storage.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    . "{{ backup_script_dir }}/storage.env"
+    set +a
+else
+    echo "Cannot read {{ backup_script_dir }}/storage.env — run this as root." >&2
+    exit 1
+fi
+
+# ⚠️ Two identities, and they are not the same one. The credentials are readable
+# only by root, and the cluster is reachable only as `postgres` — a script that
+# picks either alone fails on the other half, and the failure names the half it
+# reached: run as postgres it says "no complete set in the last seven nights",
+# run as root it says "role root does not exist". Neither mentions the identity.
+#
+# So: root reads the keys, and every psql-family call goes through this.
+as_postgres() {
+    sudo -u postgres "$@"
+}
+
 work_dir={{ backup_work_dir | quote }}-restore
 prefix={{ backup_prefix | quote }}
 # ⚠️ An underscore, not a hyphen. `krot_restore_check-restore` is not a valid
@@ -57,7 +87,7 @@ done
 # not exist would have to create it, and a typo would then be answered with a new
 # empty database named after the mistake — which reads as success right up until
 # something tries to read the real one.
-if ! psql -tAX -d postgres -c \
+if ! as_postgres psql -tAX -d postgres -c \
         "select 1 from pg_database where datname = '$target'" | grep -q 1; then
     echo "No database named $target on this machine. Restoring cannot create it — check the name." >&2
     exit 1
@@ -65,14 +95,17 @@ fi
 
 rm -rf "$work_dir"
 mkdir -p "$work_dir"
-chmod 700 "$work_dir"
+# ⚠️ 0700 would be right if one user did all of this. Two do: root downloads here
+# and `postgres` reads the dump back out through pg_restore, so a private
+# directory means "No such file or directory" on a file that plainly exists.
+chmod 711 "$work_dir"
 
 # The scratch database goes whether this succeeded or died halfway. A leftover
 # would be picked up by the next night's backup as an ordinary database and
 # copied — the copies would start feeding themselves.
 cleanup() {
     rm -rf "$work_dir"
-    dropdb --if-exists "$scratch" || true
+    as_postgres dropdb --if-exists "$scratch" || true
 }
 trap cleanup EXIT
 
@@ -111,16 +144,16 @@ fi
 # ⚠️ Restored into a scratch database FIRST, and judged there. Restoring straight
 # over the target would mean finding out the copy is empty after the live data is
 # already gone — which is the one moment this script exists to avoid.
-createdb "$scratch"
+as_postgres createdb "$scratch"
 
 # Errors are not fatal and the exit code is not the judgement: a dump restored
 # into a fresh database always complains about roles and extensions it cannot
 # recreate. What arrived is read below instead.
-pg_restore --no-owner --no-privileges -d "$scratch" "$dump" 2>&1 | tail -5 || true
+as_postgres pg_restore --no-owner --no-privileges -d "$scratch" "$dump" 2>&1 | tail -5 || true
 
-tables="$(psql -tAX -d "$scratch" -c \
+tables="$(as_postgres psql -tAX -d "$scratch" -c \
     "select count(*) from information_schema.tables where table_schema = 'public'")"
-rows="$(psql -tAX -d "$scratch" -c \
+rows="$(as_postgres psql -tAX -d "$scratch" -c \
     "select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables")"
 
 # ⚠️ Emptiness before arithmetic. `[ "" -eq 0 ]` prints "integer expected" and
@@ -140,7 +173,7 @@ fi
 # What is about to be lost, read from the target rather than assumed. An operator
 # restoring the wrong database sees a number they do not expect, and that is the
 # last point at which this is cheap.
-current="$(psql -tAX -d "$target" -c \
+current="$(as_postgres psql -tAX -d "$target" -c \
     "select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables" 2>/dev/null || echo 0)"
 
 echo "About to restore $target from the copy of $day."
@@ -170,9 +203,14 @@ fi
 # The dump goes in as plain SQL: pg_restore's own -1 does the same, but the
 # ownership handover below has to be inside the SAME transaction, and only psql
 # can be given both.
+# ⚠️ Converted to SQL by root, into a file root owns — `pg_restore -f` writes as
+# the caller, and `postgres` cannot write into a directory holding credentials.
+# Only the reading half needs to be `postgres`, and that is the psql below.
 pg_restore --no-owner --no-privileges -f "$work_dir/$target.sql" "$dump"
 
-owner="$(psql -tAX -d postgres -c \
+chmod 644 "$work_dir/$target.sql"
+
+owner="$(as_postgres psql -tAX -d postgres -c \
     "select pg_get_userbyid(datdba) from pg_database where datname = '$target'")"
 
 {
@@ -192,9 +230,9 @@ owner="$(psql -tAX -d postgres -c \
     echo "    EXECUTE format('ALTER SEQUENCE public.%I OWNER TO ${owner}', r.sequencename);"
     echo "  END LOOP;"
     echo "END \$\$;"
-} | psql -q -v ON_ERROR_STOP=1 --single-transaction -d "$target" -f -
+} | as_postgres psql -q -v ON_ERROR_STOP=1 --single-transaction -d "$target" -f -
 
-restored="$(psql -tAX -d "$target" -c \
+restored="$(as_postgres psql -tAX -d "$target" -c \
     "select coalesce(sum(n_live_tup), 0) from pg_stat_user_tables")"
 
 echo "Restored $target from the copy of $day: $restored rows."
