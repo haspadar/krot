@@ -91,6 +91,14 @@
           create table if not exists extra.side (id int primary key);
           insert into extra.side values (1) on conflict do nothing;
           create or replace view peek as select id from sample;
+          -- ⚠️ A materialized view, which holds rows and is not a table. The
+          -- judgement counts tables and sums rows from `pg_stat_user_tables`,
+          -- and that view includes matviews — so counting only ordinary tables
+          -- made a database of them read as "0 tables, n rows" and be refused
+          -- as empty. Here it sits alongside a real table, which is the shape
+          -- that keeps the two counts honest about each other.
+          drop materialized view if exists digest;
+          create materialized view digest as select count(*) as n from sample;
           alter table sample owner to molecule_owner;
           alter view peek owner to molecule_owner;
           alter schema public owner to molecule_owner;

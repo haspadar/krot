@@ -145,11 +145,16 @@ pg_restore --no-owner --no-privileges -d "$scratch" "$dump" 2>&1 | tail -5 || tr
 extension_tables="select 1 from pg_depend d
      where d.objid = c.oid and d.classid = 'pg_class'::regclass and d.deptype = 'e'"
 
+# ⚠️ `m` and `p` alongside `r` — see the restore, which counts identically. A
+# materialized view holds rows and is not a table, so counting only `r` while
+# summing rows from `pg_stat_user_tables` made a database made of them read as
+# 0 tables and thousands of rows: the rehearsal would call a healthy copy empty
+# every month.
 tables="$(
     psql -tAX -d "$scratch" -c \
         "select count(*) from pg_class c
           join pg_namespace n on n.oid = c.relnamespace
-          where c.relkind = 'r'
+          where c.relkind in ('r', 'm', 'p')
             and n.nspname not in ('pg_catalog', 'information_schema')
             and n.nspname not like 'pg\\_%'
             and not exists ($extension_tables)"

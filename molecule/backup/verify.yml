@@ -251,6 +251,24 @@
       register: restored_grant
       failed_when: restored_grant.query_result | length != 1
 
+    # ⚠️ The materialized view, which is the fourth disguise of one defect: the
+    # judgement counts tables and sums rows from a view that includes matviews,
+    # so a database holding them read as "0 tables, n rows" — refused as empty by
+    # the rehearsal every month, and reported by the restore as the very
+    # mismatch it was meant to have removed. Asserted through a restore because
+    # a matview also has to come back WITH its rows: `pg_dump` carries the data
+    # unless the view was never populated.
+    - name: The materialized view came back, with its rows
+      community.postgresql.postgresql_query:
+        db: molecule_two
+        query: select n from digest
+      become: true
+      become_user: postgres
+      register: restored_matview
+      failed_when: >-
+        restored_matview.query_result | length != 1
+        or restored_matview.query_result[0].n != 1
+
     # ⚠️ The second schema, whose absence was not a silent loss but a total
     # refusal: `DROP SCHEMA public` left it standing, the dump's own CREATE
     # SCHEMA hit "already exists", and the transaction rolled back. The database

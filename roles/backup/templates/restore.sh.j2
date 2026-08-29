@@ -317,10 +317,19 @@ as_postgres pg_restore --no-owner --no-privileges -d "$scratch" "$dump" 2>&1 | t
 extension_tables="select 1 from pg_depend d
      where d.objid = c.oid and d.classid = 'pg_class'::regclass and d.deptype = 'e'"
 
+# ⚠️ `m` and `p` alongside `r`, because that is what `pg_stat_user_tables` counts
+# and the two have to agree. A materialized view holds rows and is not a table:
+# counted by `rows` and not by `tables`, a database made of them read as 0 tables
+# with thousands of rows — the exact mismatch this pair of queries has now
+# produced three times, in three different disguises. Measured through a real
+# dump/restore cycle on PG 18: 0 and 1000 before, 1 and 1000 after.
+#
+# The partitioned parent (`p`) does not double-count: its `n_live_tup` is always
+# 0 and the rows live in the leaf, which is an ordinary `r`.
 tables="$(as_postgres psql -tAX -d "$scratch" -c \
     "select count(*) from pg_class c
      join pg_namespace n on n.oid = c.relnamespace
-     where c.relkind = 'r'
+     where c.relkind in ('r', 'm', 'p')
        and n.nspname not in ('pg_catalog', 'information_schema')
        and n.nspname not like 'pg\\_%'
        and not exists ($extension_tables)")"
