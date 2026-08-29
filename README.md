@@ -65,7 +65,7 @@ ansible-playbook bootstrap.yml -u root -k
 | `deploy_keys` | A separate SSH key per private repository plus host aliases, so git presents the right one |
 | `deploy` | Runs the project's Deployer from the control machine. Releases and rollback stay in `deploy.php` |
 | `cron` | Periodic application jobs as systemd timers: output to the journal, exit code visible to `systemctl` |
-| `backup` | Nightly `pg_dump` of every database in the cluster to S3-compatible storage, plus a monthly restore rehearsal that judges by the data, not by `pg_restore`'s exit code |
+| `backup` | Nightly `pg_dump` of every database in the cluster to S3-compatible storage, a monthly restore rehearsal that judges by the data rather than by `pg_restore`'s exit code, and `krot-restore` — the way back, written down rather than retyped from memory |
 | `umami` | The visit counter as a system service: built on the machine, bound to the loopback, its schema migrated on deploy |
 
 Every role is atomic and applicable on its own. All parameters live in

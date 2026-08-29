@@ -45,6 +45,42 @@
         - molecule_two
         - molecule_skipped
 
+    # ⚠️ A database that is not just tables in `public`, because a restore of one
+    # that is proves only the easy half. Each of these was a way the restore
+    # failed silently or outright:
+    #   - a grant, which `--no-privileges` stripped while reporting success —
+    #     and per-table grants are what keep the sites from reading each other;
+    #   - a second schema, which `DROP SCHEMA public` left standing so the dump's
+    #     own `CREATE SCHEMA` aborted the whole transaction;
+    #   - a view, which the ownership loop never touched, so it came back owned
+    #     by whoever ran the restore.
+    - name: A role that owns things, and a reader that may only look
+      community.postgresql.postgresql_user:
+        name: "{{ item }}"
+        state: present
+      become: true
+      become_user: postgres
+      loop:
+        - molecule_owner
+        - molecule_reader
+
+    - name: A database shaped like a real one, not like a test fixture
+      community.postgresql.postgresql_query:
+        db: molecule_two
+        query: |
+          create schema if not exists extra authorization molecule_owner;
+          create table if not exists extra.side (id int primary key);
+          insert into extra.side values (1) on conflict do nothing;
+          create or replace view peek as select id from sample;
+          alter table sample owner to molecule_owner;
+          alter view peek owner to molecule_owner;
+          alter schema public owner to molecule_owner;
+          alter database molecule_two owner to molecule_owner;
+          grant select on sample to molecule_reader;
+      become: true
+      become_user: postgres
+      changed_when: true
+
 - name: Prepare the storage
   hosts: krot-backup-storage
   gather_facts: false

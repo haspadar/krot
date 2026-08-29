@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 {{ ansible_managed | comment }}
 #
-# ⚠️ The shebang is the FIRST line, above the managed banner. Put below it the
-# file is a comment followed by a shebang nothing ever sees, and the script dies
-# with "Exec format error" — which names the interpreter, not the missing line.
+# ⚠️ The shebang is the FIRST line, above the managed banner. Unlike its two
+# neighbours this script is not exec'd by systemd, so it would not die with
+# "Exec format error" — a shell that gets ENOEXEC falls back to interpreting the
+# file itself, and it would appear to work. That is the worse outcome: the
+# fallback interpreter is whatever shell the operator happens to run, and this
+# script is bash-specific (`{lock_fd}`, `read -p`, `local`). It would work for
+# everyone testing it and break for whoever restores from a different shell.
 #
 # Restores one database from the nightly copies, over what is there now.
 #
@@ -33,19 +37,33 @@ if [ -r "{{ backup_script_dir }}/storage.env" ]; then
     . "{{ backup_script_dir }}/storage.env"
     set +a
 else
-    echo "Cannot read {{ backup_script_dir }}/storage.env — run this as root." >&2
+    echo "Cannot read {{ backup_script_dir }}/storage.env as $(id -un). It is 0600 and" >&2
+    echo "owned by {{ backup_pg_user }}, so restoring has to run as root:" >&2
+    echo "  sudo krot-restore $*" >&2
     exit 1
 fi
 
-# ⚠️ Two identities, and they are not the same one. The credentials are readable
-# only by root, and the cluster is reachable only as `postgres` — a script that
-# picks either alone fails on the other half, and the failure names the half it
-# reached: run as postgres it says "no complete set in the last seven nights",
-# run as root it says "role root does not exist". Neither mentions the identity.
+# ⚠️ Two identities, and they are not the same one. `storage.env` is 0600 owned
+# by `postgres` — the timers run as that user and read it through systemd's
+# `EnvironmentFile=` — so the only accounts that can read it are `postgres` and
+# root. The cluster, meanwhile, is reachable only as `postgres`, and `postgres`
+# is not in sudoers: it can read the keys but cannot become itself through sudo.
+# A script picking either identity alone fails on the other half, and the failure
+# names the half it reached: run as postgres it says "no complete set in the last
+# seven nights", run as an operator without root it says the keys are unreadable.
+# Neither mentions the identity, which is the actual fault.
 #
 # So: root reads the keys, and every psql-family call goes through this.
+#
+# ⚠️ `backup_pg_user`, not a literal. The units, the credentials file and the
+# whole rest of the role are rendered from that variable, and a machine that
+# overrode it would have this script alone still reaching for `postgres` — which
+# either does not exist or is the wrong account, and the failure reads as peer
+# authentication rather than as a hardcoded name. The database `postgres` below
+# is a different thing and stays literal: it is the maintenance database every
+# cluster has, not an account anyone configures.
 as_postgres() {
-    sudo -u postgres "$@"
+    sudo -u {{ backup_pg_user | quote }} "$@"
 }
 
 # ⚠️ Asked ONCE, up front, and not left to be discovered by the first failure.
@@ -59,10 +77,10 @@ as_postgres() {
 #
 # The check is `sudo -n`: the question is whether this identity may become
 # postgres without being asked for anything, which is the only mode a script has.
-if ! sudo -n -u postgres true 2>/dev/null; then
-    echo "Running as $(id -un), which may not become the postgres user. Restoring" >&2
-    echo "reads root-only credentials and reaches the cluster as postgres, so it" >&2
-    echo "has to run as root:" >&2
+if ! sudo -n -u {{ backup_pg_user | quote }} true 2>/dev/null; then
+    echo "Running as $(id -un), which may not become {{ backup_pg_user }}. Restoring" >&2
+    echo "reads credentials owned by {{ backup_pg_user }} and reaches the cluster as" >&2
+    echo "that account, which is not in sudoers — so this has to run as root:" >&2
     echo "  sudo krot-restore $*" >&2
     exit 1
 fi
@@ -147,11 +165,42 @@ if ! as_postgres psql -tAX -d postgres -c \
     exit 1
 fi
 
+# ⚠️ One restore at a time, and the lock is taken BEFORE the working directory is
+# cleared. Two runs share this path and the scratch database name, and the first
+# thing each does is `rm -rf` the other's downloaded dump — so a second operator,
+# or an impatient second attempt, turns one restore into two half-restores of
+# whichever dump survived. The lock lives outside the working directory for two
+# reasons: the directory is what gets deleted, and /var/tmp is the wrong place
+# for it anyway — see below.
+#
+# `-n` rather than a wait: the second run should say so and stop, not sit
+# silently behind the first on the day someone is watching for output.
+#
+# ⚠️ In /run/lock, NOT beside the working directory. /var/tmp is world-writable
+# with a sticky bit, so any local account could create and hold this file before
+# the first restore ever runs — and every emergency restore would then refuse,
+# with a message blaming a concurrent run that does not exist. Worse, a root
+# redirection onto a predictable path in a world-writable directory is a symlink
+# target: where protected_symlinks is off, it truncates whatever the link points
+# at. /run/lock is root-owned, which is the whole requirement here.
+exec {lock_fd}>/run/lock/krot-restore.lock
+if ! flock -n "$lock_fd"; then
+    echo "Another restore is running on this machine — it holds $work_dir and the" >&2
+    echo "scratch database. Wait for it rather than starting a second: they would" >&2
+    echo "delete each other's downloads halfway through." >&2
+    exit 1
+fi
+
 rm -rf "$work_dir"
 mkdir -p "$work_dir"
 # ⚠️ 0700 would be right if one user did all of this. Two do: root downloads here
-# and `postgres` reads the dump back out through pg_restore, so a private
-# directory means "No such file or directory" on a file that plainly exists.
+# and {{ backup_pg_user }} reads the dump back out through pg_restore, so a
+# private directory means "No such file or directory" on a file that plainly
+# exists.
+#
+# 711 rather than 755: traversable, so a known path can be opened, but not
+# listable, so the database names are not on offer to every local account. What
+# the files themselves allow is set on the files — see the dump below.
 chmod 711 "$work_dir"
 
 # The scratch database goes whether this succeeded or died halfway. A leftover
@@ -223,6 +272,23 @@ if ! fetch "$prefix/daily/$day/$target.dump" "$dump"; then
     exit 1
 fi
 
+# ⚠️ Stated, not inherited, and 0640 rather than 0644. `s3_get.py` creates this
+# with a plain open(), so its mode would be root's umask — 0644 under the usual
+# 022, and 0600 under a stricter one, which `{{ backup_pg_user }}` could not read
+# at all. Left to the umask, the same failure ("No such file or directory" on a
+# file that plainly exists) comes back the day someone tightens it, with the
+# comment above still claiming the case is handled.
+#
+# ⚠️ And it is not world-readable, because this file IS the database. The
+# directory above is 0711 so the cluster account can traverse it, which stops
+# anyone from listing the names — but a mode-0644 file at a path anyone can guess
+# from the database name is the whole application's data, readable by every local
+# account for as long as the restore runs. Owned by the cluster account and
+# readable by its group instead: root writes it, `{{ backup_pg_user }}` reads it,
+# and nobody else is party to it.
+chown {{ backup_pg_user | quote }}:{{ backup_pg_user | quote }} "$dump"
+chmod 640 "$dump"
+
 # ⚠️ Restored into a scratch database FIRST, and judged there. Restoring straight
 # over the target would mean finding out the copy is empty after the live data is
 # already gone — which is the one moment this script exists to avoid.
@@ -285,12 +351,32 @@ fi
 # The dump goes in as plain SQL: pg_restore's own -1 does the same, but the
 # ownership handover below has to be inside the SAME transaction, and only psql
 # can be given both.
+#
+# ⚠️ WITHOUT `--no-owner --no-privileges`, unlike the scratch restore above. Those
+# flags are right there — the scratch exists only to be counted and dropped, and
+# insisting on roles would make it fail on a machine being rebuilt. Here they are
+# wrong, and quietly: they strip every GRANT the dump carries, and `backup.sh`
+# says in as many words that the cluster's per-table grants are what keep the
+# sites from reading each other's statistics. Measured 2026-08-29 on PG 18: a
+# dump carrying one GRANT restores with one, and with `--no-privileges` with
+# none — a restore that reports success and hands the data to everybody.
+#
+# They also hid a second failure. The ownership loop below repairs tables and
+# sequences in `public`; views, matviews, functions and types it does not touch,
+# and with the owner stripped from the dump they would all come back belonging to
+# whoever ran this. Keeping the dump's own ALTER ... OWNER statements is what
+# actually restores ownership; the loop stays as the fallback for objects created
+# by the schema itself, and for a dump made before this changed.
+#
 # ⚠️ Converted to SQL by root, into a file root owns — `pg_restore -f` writes as
-# the caller, and `postgres` cannot write into a directory holding credentials.
-# Only the reading half needs to be `postgres`, and that is the psql below.
-pg_restore --no-owner --no-privileges -f "$work_dir/$target.sql" "$dump"
+# the caller, and {{ backup_pg_user }} cannot write into a directory holding
+# credentials. Only the reading half needs to be that account, and that is the
+# psql below.
+pg_restore -f "$work_dir/$target.sql" "$dump"
 
-chmod 644 "$work_dir/$target.sql"
+# The plain SQL is the database too — same reasoning as the dump above.
+chown {{ backup_pg_user | quote }}:{{ backup_pg_user | quote }} "$work_dir/$target.sql"
+chmod 640 "$work_dir/$target.sql"
 
 # ⚠️ Quoted by Postgres, not by this script. A role whose name carries a hyphen
 # or a capital is legal and needs quoting in DDL; hand-rolling that quoting here
@@ -303,14 +389,67 @@ $(as_postgres psql -tAX -F '|' -d postgres -c \
          select pg_get_userbyid(datdba) as r from pg_database where datname = '$target') o")
 OWNER
 
+# ⚠️ Checked, because a substitution's exit status is not observed and an empty
+# answer is not an error here. A psql that failed — the cluster going away
+# between the lookup above and this one — leaves both halves empty, and the
+# handover below then renders as `ALTER SCHEMA public OWNER TO ;`. That aborts
+# the transaction, so the data survives; what does not survive is the
+# explanation, and the operator is handed a syntax error in generated SQL on the
+# day they are restoring. Asked here instead, before anything is dropped.
+if [ -z "$owner_ident" ] || [ -z "$owner_literal" ]; then
+    echo "Could not read who owns $target — psql answered nothing. Refusing to" >&2
+    echo "restore: the schema would come back owned by whoever ran this, and the" >&2
+    echo "site would meet permission denied on its own data." >&2
+    exit 1
+fi
+
+# ⚠️ EVERY user schema, not just `public`. A dump carries `CREATE SCHEMA extra`
+# for any schema the database has, and dropping only `public` leaves that one
+# standing — the restore then aborts on `schema "extra" already exists`, rolls
+# back, and the database cannot be restored at all. Measured 2026-08-29 on PG 18
+# against a database with one extra schema: the transaction rolled back with the
+# data intact and no way forward.
+#
+# This role is deliberately ignorant of the applications on the machine
+# (CLAUDE.md: "a role knows about the host, not the applications on it"), so it
+# cannot assume every database it protects uses `public` and nothing else. The
+# catalogue is asked instead: everything except the system schemas and the ones
+# extensions own.
+#
+# `public` is recreated explicitly because the dump does not always carry it —
+# it is there by default, and a dump made from a database that still had it
+# restores its contents without ever creating it.
+#
+# The `deptype = 'e'` test spares a schema an extension owns, which is the case
+# for extensions installed into one of their own. It does NOT spare an extension
+# installed into `public`, which is where they land by default — that one goes
+# with the schema and comes back from the dump's own `CREATE EXTENSION`, checked
+# 2026-08-29 with pg_trgm. The same was true before this loop existed: `DROP
+# SCHEMA public CASCADE` always took it.
 {
-    echo "DROP SCHEMA public CASCADE;"
-    echo "CREATE SCHEMA public;"
+    echo "DO \$\$ DECLARE r record; BEGIN"
+    echo "  FOR r IN SELECT nspname FROM pg_namespace n"
+    echo "           WHERE nspname NOT LIKE 'pg\\_%' AND nspname <> 'information_schema'"
+    echo "             AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = n.oid"
+    echo "                             AND d.deptype = 'e') LOOP"
+    echo "    EXECUTE format('DROP SCHEMA %I CASCADE', r.nspname);"
+    echo "  END LOOP;"
+    echo "END \$\$;"
+    echo "CREATE SCHEMA IF NOT EXISTS public;"
     cat "$work_dir/$target.sql"
-    # ⚠️ Ownership handed back inside the transaction. A schema recreated by this
-    # script belongs to whoever ran it, and so does every table in it — the site
-    # then meets `permission denied` on its own database, and only when it first
-    # tries to read it, which is after this reported success.
+    # ⚠️ Ownership handed back inside the transaction, and it is a BACKSTOP now
+    # rather than the mechanism. The dump carries `ALTER SCHEMA … OWNER TO` and an
+    # owner for every object it creates — that is what the flags above used to
+    # strip — so a set taken by this role restores ownership on its own. What this
+    # still catches: `public`, which is recreated by the loop above rather than by
+    # the dump when the dump does not carry it, and anything restored from a set
+    # taken BEFORE those flags were dropped, where the ownership is simply absent.
+    # Without it the schema and its tables belong to whoever ran this, and the
+    # site meets `permission denied` on its own database — only when it first
+    # tries to read, which is after this reported success.
+    #
+    # Scoped to `public` deliberately: any other schema comes from the dump, which
+    # creates it with its owner in the same statement.
     echo "ALTER SCHEMA public OWNER TO ${owner_ident};"
     echo "DO \$\$ DECLARE r record; BEGIN"
     echo "  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname='public' LOOP"
