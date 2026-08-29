@@ -20,7 +20,11 @@ set -euo pipefail
 
 work_dir={{ backup_work_dir | quote }}-restore
 prefix={{ backup_prefix | quote }}
-scratch={{ backup_verify_database | quote }}-restore
+# ⚠️ An underscore, not a hyphen. `krot_restore_check-restore` is not a valid
+# unquoted identifier, and createdb takes it while psql then needs it quoted
+# everywhere — the mismatch shows up as "syntax error at or near" halfway
+# through, after the download.
+scratch={{ backup_verify_database }}_restore
 
 usage() {
     cat >&2 <<USAGE

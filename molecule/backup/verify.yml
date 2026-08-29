@@ -63,6 +63,92 @@
         'tables,' not in rehearsal_journal.stdout
         or ' 0 rows' in rehearsal_journal.stdout
 
+    # Restoring is run by a person, so nothing else would ever exercise it. It is
+    # also the operation performed under the most pressure and the least often,
+    # which is exactly the combination a test has to cover instead of a habit.
+    - name: The restore is on the PATH under a name worth remembering
+      ansible.builtin.stat:
+        path: /usr/local/bin/krot-restore
+      register: restore_link
+      failed_when: not restore_link.stat.exists
+
+    # ⚠️ `postgresql_db`, not a query. `postgresql_query` wraps what it is given
+    # in a transaction, and CREATE DATABASE cannot run inside one — the failure
+    # names the transaction, not the module that opened it.
+    - name: A database to restore into, holding something to lose
+      community.postgresql.postgresql_db:
+        name: krot_restore_target
+        state: present
+      become: true
+      become_user: postgres
+
+    - name: Something in it, so a replacement is observable
+      community.postgresql.postgresql_query:
+        db: krot_restore_target
+        query: create table doomed as select generate_series(1, 7) as n
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    # ⚠️ The name is not in the set of copies, so this asks the refusal rather
+    # than the restore — and the refusal is the half that protects data. A run
+    # that found no copy and carried on would replace live rows with nothing.
+    - name: A database with no copy in the set is refused, not emptied
+      ansible.builtin.command: /usr/local/bin/krot-restore krot_restore_target --force
+      become: true
+      become_user: postgres
+      register: no_copy
+      changed_when: false
+      # The refusal, not its wording: which of the two refusals fires depends on
+      # whether the scenario's bucket happens to hold a set for today, and both
+      # protect the same rows.
+      failed_when: no_copy.rc == 0
+
+    - name: And it left the rows alone
+      community.postgresql.postgresql_query:
+        db: krot_restore_target
+        query: select count(*) from doomed
+      become: true
+      become_user: postgres
+      register: survived
+      failed_when: survived.query_result[0].count != 7
+
+    - name: A name that is not a database at all is refused before anything is downloaded
+      ansible.builtin.command: /usr/local/bin/krot-restore no_such_database --force
+      become: true
+      become_user: postgres
+      register: no_database
+      changed_when: false
+      failed_when: no_database.rc == 0 or 'Restoring cannot create it' not in no_database.stderr
+
+    # ⚠️ Asserted on a database that has no copy, so what this proves is that the
+    # run stops — not which guard stopped it. The confirmation is reached only
+    # after a set is found and judged, deliberately: asking to replace data from
+    # a copy that turns out to be empty would be asking the wrong question.
+    - name: Without a terminal it refuses rather than assuming yes
+      ansible.builtin.command: /usr/local/bin/krot-restore krot_restore_target
+      become: true
+      become_user: postgres
+      register: unattended
+      changed_when: false
+      failed_when: unattended.rc == 0
+
+    - name: The refusals left no scratch database behind
+      community.postgresql.postgresql_query:
+        db: postgres
+        query: select count(*) from pg_database where datname like 'krot\_restore\_check%'
+      become: true
+      become_user: postgres
+      register: restore_scratch
+      failed_when: restore_scratch.query_result[0].count != 0
+
+    - name: Clean up the target
+      community.postgresql.postgresql_db:
+        name: krot_restore_target
+        state: absent
+      become: true
+      become_user: postgres
+
     # The scratch database is dropped whether the rehearsal passed or died: left
     # behind, the next night's backup would pick it up as an ordinary database
     # and start copying the rehearsal's own leftovers.
