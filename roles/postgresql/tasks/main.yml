@@ -155,7 +155,10 @@
 - name: Collect query statistics
   community.postgresql.postgresql_ext:
     name: pg_stat_statements
-    db: postgres
+    # login_db, not db: community.postgresql 5.0.0 dropped the `db` alias and
+    # fails with "missing required arguments: login_db". The name works on 3.x
+    # and 4.x too, so it does not narrow the supported range.
+    login_db: postgres
     state: "{{ postgresql_stat_statements | ternary('present', 'absent') }}"
   become: true
   become_user: postgres
