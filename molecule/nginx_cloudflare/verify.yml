@@ -202,7 +202,7 @@
     # The guards. Each plants what a site generator used to write and runs the
     # role again; the role must refuse before writing, and name the file.
     - name: Guard refusals
-      ansible.builtin.include_tasks: guard.yml
+      ansible.builtin.include_tasks: tasks/guard.yml
       loop:
         - name: busel-shared.conf
           body: "real_ip_header CF-Connecting-IP;\n"
