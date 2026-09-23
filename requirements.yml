@@ -7,4 +7,7 @@ collections:
   - name: community.general
     version: ">=9.0.0"
   - name: community.postgresql
-    version: ">=3.4.0"
+    # Capped below the next major: 5.0.0 (2026-09-15) arrived through an open
+    # range and broke postgresql_ext on every machine's next run. A new major
+    # is taken on purpose, after the scenarios pass on it.
+    version: ">=3.4.0,<6.0.0"

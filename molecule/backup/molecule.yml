@@ -24,7 +24,10 @@ platforms:
       - name: krot-backup-net
 
   - name: krot-backup-storage
-    image: minio/minio:latest
+    # MinIO's own registry, pinned. Docker Hub's minio/minio is gone ("pull
+    # access denied ... repository does not exist", CI 2026-09-23), and a
+    # floating tag is how a scenario starts failing with no change in the repo.
+    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
     command: server /data
     pre_build_image: true
     env:

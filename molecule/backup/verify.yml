@@ -107,7 +107,7 @@
 
     - name: Something in it, so a replacement is observable
       community.postgresql.postgresql_query:
-        db: krot_restore_target
+        login_db: krot_restore_target
         query: create table doomed as select generate_series(1, 7) as n
       become: true
       become_user: postgres
@@ -136,7 +136,7 @@
 
     - name: And it left the rows alone
       community.postgresql.postgresql_query:
-        db: krot_restore_target
+        login_db: krot_restore_target
         query: select count(*) from doomed
       become: true
       become_user: postgres
@@ -177,7 +177,7 @@
     # permissions and its second schema wrong — which is what it did.
     - name: Damage the database that does have a copy
       community.postgresql.postgresql_query:
-        db: molecule_two
+        login_db: molecule_two
         query: |
           delete from sample;
           insert into sample values (99, 'wrong') on conflict do nothing;
@@ -198,7 +198,7 @@
     # either alone would pass on a restore that merely appended.
     - name: The copy's rows replaced the damaged ones
       community.postgresql.postgresql_query:
-        db: molecule_two
+        login_db: molecule_two
         query: select id, note from sample order by id
       become: true
       become_user: postgres
@@ -216,7 +216,7 @@
     # it — and a check on tables alone passes on exactly that.
     - name: And they belong to the role again, not to whoever ran the restore
       community.postgresql.postgresql_query:
-        db: molecule_two
+        login_db: molecule_two
         query: >-
           select (select tableowner from pg_tables
                   where schemaname = 'public' and tablename = 'sample') as table_owner,
@@ -241,7 +241,7 @@
     # exist to keep the sites from reading each other's statistics.
     - name: The grant the copy carried is back
       community.postgresql.postgresql_query:
-        db: molecule_two
+        login_db: molecule_two
         query: >-
           select grantee from information_schema.table_privileges
           where table_name = 'sample' and privilege_type = 'SELECT'
@@ -260,7 +260,7 @@
     # unless the view was never populated.
     - name: The materialized view came back, with its rows
       community.postgresql.postgresql_query:
-        db: molecule_two
+        login_db: molecule_two
         query: select n from digest
       become: true
       become_user: postgres
@@ -276,7 +276,7 @@
     # every test database had only `public`.
     - name: The second schema came back with its rows
       community.postgresql.postgresql_query:
-        db: molecule_two
+        login_db: molecule_two
         query: select count(*) as n from extra.side
       become: true
       become_user: postgres
@@ -289,7 +289,7 @@
     # zero whether or not the trap exists.
     - name: The successful restore left no scratch database behind
       community.postgresql.postgresql_query:
-        db: postgres
+        login_db: postgres
         query: select count(*) from pg_database where datname like 'krot\_restore\_check%'
       become: true
       become_user: postgres
@@ -310,7 +310,7 @@
     # `public`.
     - name: Damage the database that keeps nothing in public
       community.postgresql.postgresql_query:
-        db: molecule_elsewhere
+        login_db: molecule_elsewhere
         query: delete from app.sample
       become: true
       become_user: postgres
@@ -328,7 +328,7 @@
 
     - name: And its rows are back where they live
       community.postgresql.postgresql_query:
-        db: molecule_elsewhere
+        login_db: molecule_elsewhere
         query: select count(*) as n from app.sample
       become: true
       become_user: postgres
@@ -378,7 +378,7 @@
     # and start copying the rehearsal's own leftovers.
     - name: The rehearsal left no scratch database behind
       community.postgresql.postgresql_query:
-        db: postgres
+        login_db: postgres
         query: select count(*) from pg_database where datname = 'krot_restore_check'
       become: true
       become_user: postgres
