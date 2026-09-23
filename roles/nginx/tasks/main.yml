@@ -22,19 +22,41 @@
     backup: true
   notify: Reload nginx
 
-# The log format and real-IP restoration used to live here. They belong to
-# whatever generates the vhosts: it knows which format name they reference, and
-# it can refresh the Cloudflare ranges every time it regenerates rather than only
-# when a provisioning run happens. Two writers for one setting drift apart, and
-# an outdated set_real_ip_from silently logs every visitor as the CDN.
-- name: Drop settings the site generator now owns
+# Before the settings below: the packaged site declares `listen 80
+# default_server`, which the default-server guard would rightly refuse.
+- name: Drop the default site
   ansible.builtin.file:
-    path: "{{ item }}"
+    path: "/etc/nginx/sites-enabled/{{ item }}"
     state: absent
   loop:
-    - /etc/nginx/conf.d/krot-real-ip.conf
+    - default
   notify: Reload nginx
 
+# Settings nginx accepts once per machine, whatever networks live on it: a
+# second real_ip_header or default server is a config nginx refuses outright, so
+# two site generators each writing their own cannot share a machine. Each is
+# opt-in — a machine not behind Cloudflare must not get either.
+#
+# The default server goes first: the real-IP script reloads nginx itself, and
+# during the handover from a site generator that reload would otherwise go live
+# with no default server at all — every unclaimed name served by whichever vhost
+# sorts first.
+- name: Configure the default server
+  ansible.builtin.include_tasks: default_server.yml
+  when: nginx_default_server
+
+- name: Remove the default server when it is not wanted
+  ansible.builtin.file:
+    path: /etc/nginx/conf.d/krot-default-server.conf
+    state: absent
+  when: not nginx_default_server
+  notify: Reload nginx
+
+- name: Configure real-IP restoration from Cloudflare
+  ansible.builtin.include_tasks: "{{ nginx_cloudflare_real_ip | ternary('real_ip.yml', 'real_ip_off.yml') }}"
+
+# The log format belongs to whatever generates the vhosts: it knows the name its
+# own configs reference. Named per network, so two networks never collide.
 - name: Find log formats this role used to write
   ansible.builtin.find:
     paths: /etc/nginx/conf.d
@@ -48,14 +70,6 @@
   loop: "{{ nginx_stale_formats.files }}"
   loop_control:
     label: "{{ item.path }}"
-  notify: Reload nginx
-
-- name: Drop the default site
-  ansible.builtin.file:
-    path: "/etc/nginx/sites-enabled/{{ item }}"
-    state: absent
-  loop:
-    - default
   notify: Reload nginx
 
 - name: Provide basic auth for unpublished sites

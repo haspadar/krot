@@ -1,0 +1,35 @@
+{{ ansible_managed | comment }}
+# What answers a hostname no vhost claims. One per machine, whatever networks live
+# on it: nginx accepts exactly one default server per address and port, so two
+# site generators each writing one is a config nginx refuses outright.
+#
+# Without it nginx picks the vhost that sorts first and serves it to anyone asking
+# for anything unrecognised — on busel that was a site behind its password, shown
+# for every www address in the network.
+#
+# 444 rather than a page: nginx closes the connection without answering, so a
+# scanner aiming a domain here learns nothing about what the machine hosts.
+#
+# The certificate only finishes the handshake before refusing, so it is the
+# machine's self-signed one rather than any site's: this file must not know which
+# sites exist, and a connection about to be shut does not care what it names.
+#
+# Nothing here lets an ACME challenge through: the sites' certificates come from
+# Cloudflare. Should an ACME client ever appear, this is the block that has to
+# answer /.well-known — a 444 would fail every issuance without saying why.
+server {
+    listen 443 ssl http2 default_server;
+    server_name _;
+
+    ssl_certificate     {{ nginx_default_certificate }};
+    ssl_certificate_key {{ nginx_default_certificate_key }};
+
+    return 444;
+}
+
+server {
+    listen 80 default_server;
+    server_name _;
+
+    return 444;
+}

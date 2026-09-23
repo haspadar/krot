@@ -11,3 +11,8 @@
     name: nginx
     state: reloaded
   listen: Reload nginx
+
+# After the real-IP units are removed, so systemd forgets them.
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true

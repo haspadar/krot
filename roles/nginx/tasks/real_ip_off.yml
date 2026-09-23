@@ -1,0 +1,40 @@
+---
+# The switch has to switch off: a machine that stops asking for real-IP must not
+# keep a list nobody refreshes any more.
+- name: Look for the real-IP refresh timer
+  ansible.builtin.stat:
+    path: /etc/systemd/system/krot-nginx-real-ip.timer
+  register: nginx_real_ip_timer
+
+- name: Stop refreshing the real-IP ranges
+  ansible.builtin.systemd_service:
+    name: krot-nginx-real-ip.timer
+    state: stopped
+    enabled: false
+  when: nginx_real_ip_timer.stat.exists
+
+# Stopping the timer does not stop a refresh it already started; that one would
+# rewrite the file removed below and reload onto it.
+- name: Stop a refresh already in progress
+  ansible.builtin.systemd_service:
+    name: krot-nginx-real-ip.service
+    state: stopped
+  when: nginx_real_ip_timer.stat.exists
+
+- name: Remove the real-IP refresh units and script
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/systemd/system/krot-nginx-real-ip.timer
+    - /etc/systemd/system/krot-nginx-real-ip.service
+    - /usr/local/sbin/krot-nginx-real-ip
+  notify: Reload systemd
+
+# Also the name an older version of this role used, before real-IP went to the
+# site generator for a while (2026-07-31 → 2026-09-23).
+- name: Remove the real-IP settings
+  ansible.builtin.file:
+    path: "{{ nginx_real_ip_conf }}"
+    state: absent
+  notify: Reload nginx

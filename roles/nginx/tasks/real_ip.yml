@@ -1,0 +1,86 @@
+---
+# Refuse before writing anything. A second real_ip_header or real_ip_recursive
+# makes `nginx -t` fail, and with it the reload of every site on the machine.
+# set_real_ip_from nginx would accept twice — but a second writer of it is what
+# this setting was moved here to end, and the one left behind goes stale.
+- name: Find real-IP settings written by something else
+  ansible.builtin.command:
+    argv:
+      - find
+      - /etc/nginx/conf.d
+      - /etc/nginx/sites-enabled
+      - -maxdepth
+      - "1"
+      - -xtype
+      - f
+      - "!"
+      - -name
+      - krot-*
+      - -exec
+      - grep
+      - -lE
+      - '^\s*(set_real_ip_from|real_ip_header|real_ip_recursive)\s'
+      - "{}"
+      - +
+  register: nginx_foreign_real_ip
+  changed_when: false
+  # find exits 1 both when grep matched nothing and when it could not read a
+  # file, so the code cannot tell them apart; stderr can. An unreadable file
+  # must not pass as "nothing else writes this".
+  failed_when: nginx_foreign_real_ip.stderr | length > 0
+  check_mode: false
+
+- name: Assert nothing else writes the real-IP settings
+  ansible.builtin.assert:
+    that: nginx_foreign_real_ip.stdout_lines | length == 0
+    fail_msg: >-
+      nginx_cloudflare_real_ip is on, but these files already set real-IP:
+      {{ nginx_foreign_real_ip.stdout_lines | join(', ') }}. Writing a second
+      copy would make nginx refuse the whole configuration. Remove the
+      directives from the site generator first, then run the role again.
+    quiet: true
+
+- name: Install curl for the range refresh
+  ansible.builtin.apt:
+    name: curl
+    state: present
+
+- name: Install the real-IP refresh script
+  ansible.builtin.template:
+    src: krot-nginx-real-ip.sh.j2
+    dest: /usr/local/sbin/krot-nginx-real-ip
+    owner: root
+    group: root
+    mode: "0755"
+
+# The script, not a template, writes the file: the timer rewrites it daily, and a
+# template here would be a second writer undoing the timer's newer list on every
+# play. It reloads nginx itself, after `nginx -t`, only when the file changed.
+- name: Write the real-IP settings
+  ansible.builtin.command: /usr/local/sbin/krot-nginx-real-ip
+  register: nginx_real_ip_run
+  changed_when: nginx_real_ip_run.rc == 10
+  failed_when: nginx_real_ip_run.rc not in [0, 10]
+
+- name: Install the real-IP refresh service
+  ansible.builtin.template:
+    src: krot-nginx-real-ip.service.j2
+    dest: /etc/systemd/system/krot-nginx-real-ip.service
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Install the real-IP refresh timer
+  ansible.builtin.template:
+    src: krot-nginx-real-ip.timer.j2
+    dest: /etc/systemd/system/krot-nginx-real-ip.timer
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Enable the real-IP refresh timer
+  ansible.builtin.systemd_service:
+    name: krot-nginx-real-ip.timer
+    state: started
+    enabled: true
+    daemon_reload: true

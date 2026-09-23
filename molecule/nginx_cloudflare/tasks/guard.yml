@@ -1,0 +1,29 @@
+---
+# Plant a foreign file, run the role, expect a refusal naming it, clean up. The
+# file is removed in `always` so a failed check does not poison the next one.
+- name: Plant {{ planted.name }}
+  ansible.builtin.copy:
+    dest: "/etc/nginx/conf.d/{{ planted.name }}"
+    content: "{{ planted.body }}"
+    mode: "0644"
+
+- name: Run the role against it
+  block:
+    - name: Run the nginx role
+      ansible.builtin.include_role:
+        name: nginx
+
+    - name: The role should have refused
+      ansible.builtin.fail:
+        msg: The role accepted a foreign {{ planted.body | trim }} and wrote its own copy.
+  rescue:
+    - name: The refusal names the foreign file
+      ansible.builtin.assert:
+        that: planted.name in (ansible_failed_result.msg | default(''))
+        fail_msg: "Refused, but not by the guard: {{ ansible_failed_result.msg | default(ansible_failed_result) }}"
+        quiet: true
+  always:
+    - name: Remove {{ planted.name }}
+      ansible.builtin.file:
+        path: "/etc/nginx/conf.d/{{ planted.name }}"
+        state: absent
