@@ -17,6 +17,11 @@ CONF={{ nginx_real_ip_conf }}
 V4_URL=${KROT_CF_V4_URL:-{{ nginx_cloudflare_ipv4_url }}}
 V6_URL=${KROT_CF_V6_URL:-{{ nginx_cloudflare_ipv6_url }}}
 
+# The role and the timer can start this at the same moment; both would share
+# the one backup file below.
+exec 9>/run/lock/krot-nginx-real-ip.lock
+flock -w 300 9
+
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -81,22 +86,30 @@ fi
 
 install -m 0644 -o root -g root "$work/new" "$CONF"
 
-if ! nginx -t 2>"$work/test"; then
+restore() {
     if $had_previous; then
         mv "$CONF.krot-previous" "$CONF"
     else
         rm -f "$CONF"
     fi
+}
+
+if ! nginx -t 2>"$work/test"; then
+    restore
     echo "krot-nginx-real-ip: nginx rejected the configuration, previous settings restored:" >&2
     cat "$work/test" >&2
     exit 1
 fi
-rm -f "$CONF.krot-previous"
 
 # A machine where nginx is not running yet picks the file up when it starts.
-if systemctl is-active --quiet nginx; then
-    systemctl reload nginx
+# A failed reload puts the old file back: left in place, the next run would find
+# it identical, exit 0, and nginx would keep the old ranges with nothing failed.
+if systemctl is-active --quiet nginx && ! systemctl reload nginx; then
+    restore
+    echo "krot-nginx-real-ip: nginx reload failed, previous settings restored" >&2
+    exit 1
 fi
+rm -f "$CONF.krot-previous"
 
 echo "krot-nginx-real-ip: applied $total ranges"
 exit 10

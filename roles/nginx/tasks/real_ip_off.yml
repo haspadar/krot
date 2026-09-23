@@ -13,6 +13,14 @@
     enabled: false
   when: nginx_real_ip_timer.stat.exists
 
+# Stopping the timer does not stop a refresh it already started; that one would
+# rewrite the file removed below and reload onto it.
+- name: Stop a refresh already in progress
+  ansible.builtin.systemd_service:
+    name: krot-nginx-real-ip.service
+    state: stopped
+  when: nginx_real_ip_timer.stat.exists
+
 - name: Remove the real-IP refresh units and script
   ansible.builtin.file:
     path: "{{ item }}"
@@ -21,6 +29,7 @@
     - /etc/systemd/system/krot-nginx-real-ip.timer
     - /etc/systemd/system/krot-nginx-real-ip.service
     - /usr/local/sbin/krot-nginx-real-ip
+  notify: Reload systemd
 
 # Also the name an older version of this role used, before real-IP went to the
 # site generator for a while (2026-07-31 → 2026-09-23).

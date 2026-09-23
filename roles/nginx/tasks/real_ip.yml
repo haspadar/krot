@@ -24,8 +24,10 @@
       - +
   register: nginx_foreign_real_ip
   changed_when: false
-  # find exits 1 when grep matched nothing; the answer is in stdout either way.
-  failed_when: false
+  # find exits 1 both when grep matched nothing and when it could not read a
+  # file, so the code cannot tell them apart; stderr can. An unreadable file
+  # must not pass as "nothing else writes this".
+  failed_when: nginx_foreign_real_ip.stderr | length > 0
   check_mode: false
 
 - name: Assert nothing else writes the real-IP settings
