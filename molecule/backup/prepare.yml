@@ -41,7 +41,7 @@
     # tell that check from a broken one.
     - name: Put rows in them
       community.postgresql.postgresql_query:
-        db: "{{ item }}"
+        login_db: "{{ item }}"
         query: |
           create table if not exists sample (id int primary key, note text);
           insert into sample values (1, 'kept') on conflict do nothing;
@@ -54,7 +54,7 @@
 
     - name: And rows somewhere other than public, in the database that has no public tables
       community.postgresql.postgresql_query:
-        db: molecule_elsewhere
+        login_db: molecule_elsewhere
         query: |
           create schema if not exists app;
           create table if not exists app.sample (id int primary key, note text);
@@ -85,7 +85,7 @@
 
     - name: A database shaped like a real one, not like a test fixture
       community.postgresql.postgresql_query:
-        db: molecule_two
+        login_db: molecule_two
         query: |
           create schema if not exists extra authorization molecule_owner;
           create table if not exists extra.side (id int primary key);
