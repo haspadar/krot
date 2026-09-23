@@ -1,0 +1,53 @@
+---
+# Two default servers on one port is a config nginx refuses ("a duplicate
+# default server for 0.0.0.0:80"), taking the reload of every site with it — so
+# look before writing, and name whoever got there first.
+- name: Find default servers declared by something else
+  ansible.builtin.command:
+    argv:
+      - find
+      - /etc/nginx/conf.d
+      - /etc/nginx/sites-enabled
+      - -maxdepth
+      - "1"
+      - -xtype
+      - f
+      - "!"
+      - -name
+      - krot-*
+      - -exec
+      - grep
+      - -lE
+      - '^\s*listen\s[^#;]*\bdefault_server\b'
+      - "{}"
+      - +
+  register: nginx_foreign_default
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Assert nothing else declares a default server
+  ansible.builtin.assert:
+    that: nginx_foreign_default.stdout_lines | length == 0
+    fail_msg: >-
+      nginx_default_server is on, but these files already declare a default
+      server: {{ nginx_foreign_default.stdout_lines | join(', ') }}. nginx
+      accepts one per port. Remove it from the site generator first, then run
+      the role again.
+    quiet: true
+
+# Generates the snakeoil pair on install. It only finishes the handshake before
+# the connection is refused, so a self-signed certificate is enough.
+- name: Install the machine's self-signed certificate
+  ansible.builtin.apt:
+    name: ssl-cert
+    state: present
+
+- name: Install the default server
+  ansible.builtin.template:
+    src: default-server.conf.j2
+    dest: /etc/nginx/conf.d/krot-default-server.conf
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload nginx

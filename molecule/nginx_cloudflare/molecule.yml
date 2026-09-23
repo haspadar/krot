@@ -1,0 +1,49 @@
+---
+# Both once-per-machine settings on: Cloudflare real-IP with its refresh timer,
+# and the 444 default server. A separate scenario because the main one runs the
+# defaults, where both are off and the role must remove them — the two branches
+# cannot share a machine.
+#
+# The ranges are fetched from Cloudflare for real, as on a machine: a fixture
+# here would prove the script parses the fixture.
+driver:
+  name: docker
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-nginx-cf
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      roles_path: ../../roles
+  inventory:
+    host_vars:
+      krot-nginx-cf:
+        nginx_cloudflare_real_ip: true
+        nginx_default_server: true
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible

@@ -1,0 +1,53 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
+    - name: Install nginx and logrotate ahead of the role
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - logrotate
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: The deploy user bootstrap would have created
+      ansible.builtin.user:
+        name: km
+        shell: /bin/bash
+        create_home: true
+
+    # The packaged site declares `listen 80 default_server`. The role drops it,
+    # and must do so BEFORE its guard looks for foreign default servers —
+    # otherwise every fresh machine fails the guard on the package's own file.
+    - name: The packaged default site, enabled
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/default
+        dest: /etc/nginx/sites-enabled/default
+        state: link
+      failed_when: false
+
+    # A vhost that claims a name, so "no vhost claims this host" in verify is
+    # about the default server and not about an empty machine.
+    - name: A site that answers for its own name
+      ansible.builtin.copy:
+        dest: /etc/nginx/sites-enabled/krot-test-site.conf
+        content: |
+          server {
+              listen 80;
+              server_name krot-test.invalid;
+              return 200 "site\n";
+          }
+        mode: "0644"

@@ -6,11 +6,29 @@ nginx_worker_connections: 1024
 nginx_keepalive_timeout: 65
 nginx_client_max_body_size: 16M
 
-# The log format and Cloudflare real-IP restoration are deliberately absent: they
-# belong to whatever generates the vhosts, which knows the format name they
-# reference and refreshes the CF ranges every time it regenerates. This role only
-# guarantees conf.d is included before the vhosts that depend on it.
+# Settings nginx accepts only once per machine. Both off by default so the role
+# is safe on a machine that is not behind Cloudflare; both on for a machine whose
+# sites all are. The log format stays with the site generator: it knows the name
+# its vhosts reference, and each network names its own.
 #
+# Real-IP: set_real_ip_from for Cloudflare's ranges, refreshed daily by a timer,
+# plus real_ip_header CF-Connecting-IP. A stale range list does not fail — it
+# logs every visitor behind the new range as the CDN.
+nginx_cloudflare_real_ip: false
+nginx_real_ip_conf: /etc/nginx/conf.d/krot-real-ip.conf
+nginx_cloudflare_ipv4_url: https://www.cloudflare.com/ips-v4
+nginx_cloudflare_ipv6_url: https://www.cloudflare.com/ips-v6
+# Fewer than this is treated as a truncated answer and refused (22 as of 2026-09).
+nginx_cloudflare_min_ranges: 10
+nginx_cloudflare_refresh_hour: "5"
+
+# A server answering 444 on 80 and 443 for every hostname no vhost claims.
+nginx_default_server: false
+# From the ssl-cert package: the default server only finishes the handshake
+# before closing, so no site's certificate is needed or wanted here.
+nginx_default_certificate: /etc/ssl/certs/ssl-cert-snakeoil.pem
+nginx_default_certificate_key: /etc/ssl/private/ssl-cert-snakeoil.key
+
 # Applied by editing the nginx package's own logrotate config, not by shipping a
 # second one: logrotate accepts exactly one entry per log file and aborts the
 # entire run — every service on the machine — when it finds two.

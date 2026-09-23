@@ -1,0 +1,12 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Refresh nginx real-IP settings from Cloudflare's published ranges
+Documentation=https://www.cloudflare.com/ips/
+After=network-online.target nginx.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/krot-nginx-real-ip
+# 10 means "rewritten and reloaded" — a success, not a failure to report.
+SuccessExitStatus=10

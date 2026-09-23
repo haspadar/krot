@@ -1,0 +1,225 @@
+---
+# Asks the machine, not the files: the loaded configuration through `nginx -T`,
+# the default server through real connections, and the refresh script through
+# the refusals it exists to make — an error page, half a list, a config nginx
+# rejects. Each of those, handled wrongly, still leaves a valid-looking file.
+- name: Verify
+  hosts: all
+  vars:
+    conf: /etc/nginx/conf.d/krot-real-ip.conf
+  tasks:
+    - name: The config on disk is valid
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Read the configuration nginx has actually loaded
+      ansible.builtin.command: nginx -T
+      register: loaded
+      changed_when: false
+
+    - name: Collect the loaded set_real_ip_from ranges
+      ansible.builtin.set_fact:
+        loaded_ranges: >-
+          {{ loaded.stdout_lines
+             | select('match', '^\s*set_real_ip_from\s')
+             | map('regex_replace', '^\s*set_real_ip_from\s+([^;]+);.*$', '\1')
+             | list }}
+
+    # Both families, and more than a handful: half a list reads as working
+    # while every visitor of the missing family is logged as Cloudflare.
+    - name: Real-IP is loaded with both address families
+      ansible.builtin.assert:
+        that:
+          - loaded_ranges | length >= 10
+          - loaded_ranges | select('search', '^[0-9.]+/') | list | length > 0
+          - loaded_ranges | select('search', ':') | list | length > 0
+          - loaded.stdout_lines | select('match', '^\s*real_ip_header CF-Connecting-IP;') | list | length == 1
+          - loaded.stdout_lines | select('match', '^\s*real_ip_recursive on;') | list | length == 1
+        fail_msg: "Loaded real-IP is incomplete: {{ loaded_ranges }}"
+        quiet: true
+
+    - name: The packaged default site is gone
+      ansible.builtin.stat:
+        path: /etc/nginx/sites-enabled/default
+      register: packaged
+      failed_when: packaged.stat.exists
+
+    # 444 closes the connection without a response; curl reports that as exit
+    # 52, "Empty reply from server". A 200 or 404 here would mean a vhost — or
+    # nginx's own page — answered for a name nobody claimed.
+    - name: An unclaimed name on port 80 gets the connection closed
+      ansible.builtin.command:
+        argv: [curl, -sS, -o, /dev/null, -H, 'Host: unclaimed.invalid', 'http://127.0.0.1/']
+      register: plain
+      changed_when: false
+      failed_when: plain.rc != 52
+
+    # Exit 52 over TLS also proves the handshake finished, so the snakeoil pair
+    # is in place; a missing certificate would fail earlier with 35. HTTP/1.1
+    # pinned because over HTTP/2 the same 444 surfaces as a stream reset (92),
+    # which a broken server could produce too.
+    - name: An unclaimed name on port 443 gets the connection closed after the handshake
+      ansible.builtin.command:
+        argv:
+          - curl
+          - -sSk
+          - --http1.1
+          - -o
+          - /dev/null
+          - --resolve
+          - unclaimed.invalid:443:127.0.0.1
+          - https://unclaimed.invalid/
+      register: tls
+      changed_when: false
+      failed_when: tls.rc != 52
+
+    # And the default server does not swallow the names vhosts do claim.
+    - name: A claimed name still reaches its site
+      ansible.builtin.command:
+        argv: [curl, -sS, -H, 'Host: krot-test.invalid', 'http://127.0.0.1/']
+      register: claimed
+      changed_when: false
+      failed_when: claimed.stdout != "site"
+
+    - name: The refresh timer is enabled and waiting
+      ansible.builtin.command: systemctl is-active krot-nginx-real-ip.timer
+      register: timer
+      changed_when: false
+      failed_when: timer.stdout != "active"
+
+    # The unit runs the script, which returns 10 on a rewrite. Without
+    # SuccessExitStatus=10 that would land the service in `failed`.
+    - name: The refresh service itself succeeds
+      ansible.builtin.command: systemctl start krot-nginx-real-ip.service
+      changed_when: false
+
+    - name: A second run with nothing new reports no change
+      ansible.builtin.command: /usr/local/sbin/krot-nginx-real-ip
+      register: rerun
+      changed_when: false
+      failed_when: rerun.rc != 0
+
+    - name: Remember the current file
+      ansible.builtin.stat:
+        path: "{{ conf }}"
+        checksum_algorithm: sha256
+      register: before
+
+    - name: Fixtures for the refusals
+      ansible.builtin.copy:
+        dest: "/tmp/{{ item.name }}"
+        content: "{{ item.body }}"
+        mode: "0644"
+      loop:
+        - {name: error-page, body: "<html><body>Bad gateway</body></html>\n"}
+        - {name: empty, body: ""}
+        - name: v4-small
+          # No trailing newline, as Cloudflare serves its v4 list.
+          body: "{{ ['173.245.48.0/20', '103.21.244.0/22', '103.22.200.0/22', '103.31.4.0/22',
+                    '141.101.64.0/18', '108.162.192.0/18', '190.93.240.0/20', '188.114.96.0/20']
+                   | join('\n') }}"
+        - name: v6-small
+          body: "2400:cb00::/32\n2606:4700::/32\n"
+      loop_control:
+        label: "{{ item.name }}"
+
+    # An error page served with 200 is the realistic bad answer. Skipping the
+    # lines that do not parse would turn it into a short, plausible list.
+    - name: An error page instead of a list is refused
+      ansible.builtin.command: /usr/local/sbin/krot-nginx-real-ip
+      environment:
+        KROT_CF_V4_URL: file:///tmp/error-page
+        KROT_CF_V6_URL: file:///tmp/v6-small
+      register: error_page
+      changed_when: false
+      failed_when: error_page.rc != 1
+
+    - name: Half a list is refused
+      ansible.builtin.command: /usr/local/sbin/krot-nginx-real-ip
+      environment:
+        KROT_CF_V4_URL: file:///tmp/v4-small
+        KROT_CF_V6_URL: file:///tmp/empty
+      register: half
+      changed_when: false
+      failed_when: half.rc != 1
+
+    # A config nginx rejects for an unrelated reason: the script must not leave
+    # its new file in place, nor reload onto it.
+    - name: Something else breaks the config
+      ansible.builtin.copy:
+        dest: /etc/nginx/conf.d/zz-broken.conf
+        content: "this is not a directive\n"
+        mode: "0644"
+
+    - name: A valid new list meets a config nginx rejects
+      ansible.builtin.command: /usr/local/sbin/krot-nginx-real-ip
+      environment:
+        KROT_CF_V4_URL: file:///tmp/v4-small
+        KROT_CF_V6_URL: file:///tmp/v6-small
+      register: rejected
+      changed_when: false
+      failed_when: rejected.rc != 1
+
+    - name: Take the breakage away
+      ansible.builtin.file:
+        path: /etc/nginx/conf.d/zz-broken.conf
+        state: absent
+
+    - name: Read the file after the three refusals
+      ansible.builtin.stat:
+        path: "{{ conf }}"
+        checksum_algorithm: sha256
+      register: after
+
+    - name: No refusal touched the file, and no backup was left in conf.d
+      ansible.builtin.assert:
+        that:
+          - after.stat.checksum == before.stat.checksum
+        fail_msg: A refused run changed {{ conf }}.
+        quiet: true
+
+    - name: No backup copy is left behind
+      ansible.builtin.stat:
+        path: "{{ conf }}.krot-previous"
+      register: backup_left
+      failed_when: backup_left.stat.exists
+
+    - name: The same list with a healthy config is applied
+      ansible.builtin.command: /usr/local/sbin/krot-nginx-real-ip
+      environment:
+        KROT_CF_V4_URL: file:///tmp/v4-small
+        KROT_CF_V6_URL: file:///tmp/v6-small
+      register: applied
+      changed_when: false
+      failed_when: applied.rc != 10
+
+    - name: Put the real list back
+      ansible.builtin.command: /usr/local/sbin/krot-nginx-real-ip
+      register: restored
+      changed_when: false
+      failed_when: restored.rc != 10
+
+    # The guards. Each plants what a site generator used to write and runs the
+    # role again; the role must refuse before writing, and name the file.
+    - name: Guard refusals
+      ansible.builtin.include_tasks: guard.yml
+      loop:
+        - name: busel-shared.conf
+          body: "real_ip_header CF-Connecting-IP;\n"
+        - name: busel-shared.conf
+          body: "set_real_ip_from 173.245.48.0/20;\n"
+        - name: busel-default.conf
+          body: "server {\n    listen 80 default_server;\n    return 444;\n}\n"
+      loop_control:
+        loop_var: planted
+        label: "{{ planted.body | trim | truncate(40) }}"
+
+    - name: The config is still valid after the guards
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    - name: Nothing on the machine is in a failed state
+      ansible.builtin.command: systemctl --failed --no-legend
+      register: failed_units
+      changed_when: false
+      failed_when: failed_units.stdout | trim | length > 0

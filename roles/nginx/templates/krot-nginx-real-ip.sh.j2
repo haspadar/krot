@@ -1,0 +1,102 @@
+#!/usr/bin/env bash
+{{ ansible_managed | comment }}
+#
+# The only writer of {{ nginx_real_ip_conf }}: the role runs it during a play and
+# krot-nginx-real-ip.timer runs it daily. One writer, because two copies of these
+# directives are exactly what nginx refuses ("real_ip_header is duplicate"), and a
+# stale set_real_ip_from does not fail at all — it logs every visitor as the CDN.
+#
+# Exits 0 unchanged, 10 when it rewrote the file and nginx accepted it, 1 when it
+# refused (the previous file is left or put back in place).
+#
+# The URLs can be overridden through the environment so the refusal paths can be
+# exercised against file:// fixtures; nothing on the machine sets them.
+set -euo pipefail
+
+CONF={{ nginx_real_ip_conf }}
+V4_URL=${KROT_CF_V4_URL:-{{ nginx_cloudflare_ipv4_url }}}
+V6_URL=${KROT_CF_V6_URL:-{{ nginx_cloudflare_ipv6_url }}}
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+
+fetch() {
+    if ! curl --fail --silent --show-error --max-time 30 "$1" >"$2"; then
+        echo "krot-nginx-real-ip: fetching $1 failed, keeping current settings" >&2
+        exit 1
+    fi
+    # Cloudflare's v4 body has no trailing newline; without this the two lists
+    # would fuse the last v4 range onto the first v6 one when concatenated.
+    echo >>"$2"
+}
+
+# Every non-empty line must be a range of the expected family. Skipping lines
+# that do not match would turn an error page into a short, plausible list; so
+# anything unexpected rejects the whole answer.
+validate() {
+    local file=$1 pattern=$2 family=$3 count
+    if grep -vE '^\s*$' "$file" | grep -qvE "$pattern"; then
+        echo "krot-nginx-real-ip: the $family answer is not a range list, keeping current settings" >&2
+        exit 1
+    fi
+    count=$(grep -cE "$pattern" "$file" || true)
+    # Half a list is worse than none: v4 alone leaves every IPv6 visitor logged
+    # as Cloudflare, and nothing about the config says so.
+    if [ "$count" -lt 1 ]; then
+        echo "krot-nginx-real-ip: no $family ranges, keeping current settings" >&2
+        exit 1
+    fi
+}
+
+fetch "$V4_URL" "$work/v4"
+fetch "$V6_URL" "$work/v6"
+validate "$work/v4" '^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$' IPv4
+validate "$work/v6" '^[0-9a-fA-F:]+/[0-9]{1,3}$' IPv6
+
+total=$(cat "$work/v4" "$work/v6" | grep -c '/')
+if [ "$total" -lt {{ nginx_cloudflare_min_ranges }} ]; then
+    echo "krot-nginx-real-ip: only $total ranges, implausibly few, keeping current settings" >&2
+    exit 1
+fi
+
+{
+    echo "# Written by krot-nginx-real-ip — do not edit, the next refresh overwrites it."
+    echo "# Every request arrives from Cloudflare; without these \$remote_addr is the CDN."
+    cat "$work/v4" "$work/v6" | grep '/' | sort | sed 's/.*/set_real_ip_from &;/'
+    echo "real_ip_header CF-Connecting-IP;"
+    echo "real_ip_recursive on;"
+} >"$work/new"
+
+if [ -f "$CONF" ] && cmp -s "$work/new" "$CONF"; then
+    exit 0
+fi
+
+# The backup name must not end in .conf: conf.d is included by glob, and a
+# second copy of these directives is the very failure this script exists for.
+had_previous=false
+if [ -f "$CONF" ]; then
+    cp -p "$CONF" "$CONF.krot-previous"
+    had_previous=true
+fi
+
+install -m 0644 -o root -g root "$work/new" "$CONF"
+
+if ! nginx -t 2>"$work/test"; then
+    if $had_previous; then
+        mv "$CONF.krot-previous" "$CONF"
+    else
+        rm -f "$CONF"
+    fi
+    echo "krot-nginx-real-ip: nginx rejected the configuration, previous settings restored:" >&2
+    cat "$work/test" >&2
+    exit 1
+fi
+rm -f "$CONF.krot-previous"
+
+# A machine where nginx is not running yet picks the file up when it starts.
+if systemctl is-active --quiet nginx; then
+    systemctl reload nginx
+fi
+
+echo "krot-nginx-real-ip: applied $total ranges"
+exit 10
