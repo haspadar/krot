@@ -54,8 +54,12 @@ class Http:
         self.attempts = attempts
         self.pause = pause
 
-    def call(self, method, path, query=None, body=None):
-        """Returns (status, decoded JSON or None for an empty body)."""
+    def call(self, method, path, query=None, body=None, form=None):
+        """Returns (status, decoded JSON or None for an empty body).
+
+        `form` sends the fields urlencoded instead of `body` as JSON — the one
+        place that needs it is Google's token exchange.
+        """
         url = self.base + path
         if query:
             url += "?" + urlencode(query)
@@ -64,6 +68,9 @@ class Http:
         if body is not None:
             data = json.dumps(body)
             headers["Content-Type"] = "application/json"
+        elif form is not None:
+            data = urlencode(form)
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
 
         attempts = self.attempts if method in self.REPEATABLE else 1
         reason = "no attempt was made"
@@ -86,7 +93,7 @@ class Http:
             if status in self.RETRIED:
                 reason = "%s %s answered %d" % (method, url_without_secrets(url), status)
                 continue
-            return status, decoded(raw, method, url)
+            return status, decoded(raw, method, url, status)
         if method not in self.REPEATABLE:
             reason += "; whether it took effect is unknown, and the next run looks before writing again"
         raise Unreachable(reason)
@@ -98,12 +105,17 @@ class Http:
             return self.pause
 
 
-def decoded(raw, method, url):
+def decoded(raw, method, url, status=200):
     if not raw:
         return None
     try:
         return json.loads(raw)
     except ValueError:
+        # A refusal is an answer whatever its body: a 404 page from a proxy in
+        # front of Umami says "wrong path" just as clearly as a JSON one, and
+        # the status is what the module decides on.
+        if 400 <= status < 500:
+            return None
         # A captive portal, a proxy's error page, a tunnel that answered for the
         # service: all of them 200 with HTML. Not an answer from the API.
         raise Unreachable("%s %s answered with something that is not JSON" % (method, url_without_secrets(url)))

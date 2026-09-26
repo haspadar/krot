@@ -110,3 +110,26 @@ def test_server_asked_wait_applies_to_that_retry_only(serve, pauses):
     server.outages = [(429, {"Retry-After": "30"}), 503]
     Http(server.url, pause=2).call("GET", "/zones")
     assert pauses == [30, 2]
+
+
+class Form:
+    def handle(self, request):
+        return 200, {"got": request.body}
+
+
+def test_form_is_sent_urlencoded(serve):
+    server = serve(Form())
+    assert Http(server.url).call("POST", "/token", form={"grant_type": "jwt"})[1] == {"got": {"grant_type": "jwt"}}
+
+
+def test_refusal_with_a_page_for_a_body_keeps_its_status(serve):
+    server = serve(Echo())
+    server.outages = [(404, {}, b"<html>Not Found</html>")]
+    assert Http(server.url).call("GET", "/counter/api/auth/login")[0] == 404
+
+
+def test_success_with_a_page_for_a_body_is_still_unreachable(serve):
+    server = serve(Echo())
+    server.outages = ["html"]
+    with pytest.raises(Unreachable):
+        Http(server.url, attempts=1).call("GET", "/zones")
