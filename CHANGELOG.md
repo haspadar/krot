@@ -9,13 +9,16 @@ changing a default that affects production) bump major.
 
 - **`cloudflare_ruleset` takes a rule another tool made word for word as its own.** busel made
   its cache rule without a ref of ours, so Cloudflare assigned one per zone; matched by ref
-  alone, the module would have added a second, identical rule on every live zone. A rule that
-  differs in any field stays someone else's.
+  alone, the module would have added a second, identical rule on every live zone. Only an exact
+  match is taken — no field missing or extra beyond what Cloudflare adds itself, and enabled; one
+  foreign rule answers for one of ours.
 
 ### Added
 
 - **`site_monitor.path`** — the page the keyword monitor watches, `/` by default; busel's is a
   profile page. The word is looked for on that page before the monitor is made.
+- **`uptimerobot_monitor` moves a monitor that watches another address** (action `url`),
+  checking the keyword on the new page first. Before, a changed URL never reached UptimeRobot.
 
 ## 5.6.0
 
