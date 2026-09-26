@@ -11,18 +11,18 @@ DOCUMENTATION = r"""
 module: cloudflare_ruleset
 short_description: Keeps given rules in a Cloudflare zone's phase ruleset
 description:
-  - Cloudflare holds a zone's rules of one phase as one ruleset and replaces it
-    as a whole; there is no "add one rule" call. The module therefore reads the
-    ruleset, puts its own rules into it and writes the whole list back.
-  - Its own rules are recognised by C(ref). Rules with any other ref — added in
-    the dashboard, or by another tool — are written back untouched, so the
-    module never takes away what it did not put there.
+  - Keeps the given rules in a zone's phase ruleset, recognising its own by
+    C(ref). Rules with any other ref — added in the dashboard, or by another
+    tool — are never sent back. Once the ruleset exists, the module adds and
+    updates its rules one at a time, so a rule someone else adds between this
+    module's read and its write survives. Writing the phase as a whole list
+    would roll such a rule back.
+  - The ruleset is read at its phase address. Cloudflare answers 404 there for
+    a zone that never had one, and only then does the module create it — with
+    its own rules, in one write.
   - A rule compares by the fields given only. Cloudflare adds an id, a version
     and a timestamp to every rule; requiring those to match would rewrite a
     correct rule on every run.
-  - The phase ruleset is looked up in the zone's list rather than fetched by
-    phase. The phase address answers 404 on a zone that never had one, and
-    that 404 means "none yet" rather than a failure.
   - In check mode nothing is written.
 options:
   zone_id:
@@ -86,10 +86,6 @@ from ansible_collections.haspadar.krot.plugins.module_utils.cloudflare import (
     Refused,
 )
 
-# Fields Cloudflare keeps for itself and does not take back on a write.
-SERVER_FIELDS = ("version", "last_updated")
-
-
 def holds(existing, wanted):
     """Whether what Cloudflare holds carries every field that was asked for."""
     if isinstance(wanted, dict):
@@ -97,24 +93,25 @@ def holds(existing, wanted):
     return existing == wanted
 
 
-def current_rules(api, zone, phase):
-    rulesets = api.call("GET", "/zones/%s/rulesets" % zone)
-    if not isinstance(rulesets, list):
-        raise Unreachable("Cloudflare answered the zone's rulesets without a list")
-    entry = [r for r in rulesets if isinstance(r, dict) and r.get("phase") == phase and r.get("kind") == "zone"]
-    if not entry:
-        return []
-    ruleset = api.call("GET", "/zones/%s/rulesets/%s" % (zone, entry[0]["id"]))
-    if not isinstance(ruleset, dict):
-        raise Unreachable("Cloudflare answered ruleset %s without a body" % entry[0]["id"])
-    rules = ruleset.get("rules") or []
-    if not isinstance(rules, list):
-        raise Unreachable("Cloudflare answered ruleset %s without a rule list" % entry[0]["id"])
-    return rules
+def entrypoint(api, zone, phase):
+    """The phase ruleset, or None where the zone has never had one."""
+    try:
+        ruleset = api.call("GET", "/zones/%s/rulesets/phases/%s/entrypoint" % (zone, phase))
+    except Refused as refusal:
+        # 404 at this address is Cloudflare's documented "no ruleset in this
+        # phase yet". It still arrived in Cloudflare's own envelope — a page
+        # from anything in between is Unreachable before it gets here.
+        if refusal.status == 404:
+            return None
+        raise
+    if not isinstance(ruleset, dict) or not ruleset.get("id") or not isinstance(ruleset.get("rules", []), list):
+        raise Unreachable("Cloudflare answered the %s ruleset without an id or a rule list" % phase)
+    return ruleset
 
 
-def sendable(rule):
-    return dict((k, v) for k, v in rule.items() if k not in SERVER_FIELDS)
+def by_ref(ruleset):
+    rules = (ruleset or {}).get("rules") or []
+    return dict((r.get("ref"), r) for r in rules if isinstance(r, dict) and r.get("ref"))
 
 
 def main():
@@ -138,33 +135,34 @@ def main():
 
     api = Cloudflare(module.params["api_token"], module.params["api_url"])
     try:
-        held = current_rules(api, zone, phase)
-        by_ref = dict((r.get("ref"), r) for r in held if isinstance(r, dict) and r.get("ref"))
-        differing = [rule["ref"] for rule in wanted if not holds(by_ref.get(rule["ref"]), rule)]
+        ruleset = entrypoint(api, zone, phase)
+        held = by_ref(ruleset)
+        differing = [rule["ref"] for rule in wanted if not holds(held.get(rule["ref"]), rule)]
         if module.check_mode or not differing:
             module.exit_json(changed=bool(differing), changed_refs=differing)
 
-        mine = dict((rule["ref"], rule) for rule in wanted)
-        written = []
-        for rule in held:
-            ref = rule.get("ref") if isinstance(rule, dict) else None
-            if ref in mine:
-                # Updated in place, keeping its id, so the rule keeps its position
-                # and history rather than being deleted and made again.
-                ours = mine.pop(ref)
-                written.append(dict(ours, id=rule["id"]) if ref in differing else sendable(rule))
-            else:
-                written.append(sendable(rule))
-        written.extend(rule for rule in wanted if rule["ref"] in mine)
+        # Rules that are not ours, to check afterwards that none went missing.
+        mine = set(rule["ref"] for rule in wanted)
+        others = set(r.get("id") for r in (ruleset or {}).get("rules") or [] if r.get("ref") not in mine)
+        if ruleset is None:
+            api.call("PUT", "/zones/%s/rulesets/phases/%s/entrypoint" % (zone, phase), body={"rules": wanted})
+        else:
+            base = "/zones/%s/rulesets/%s/rules" % (zone, ruleset["id"])
+            for rule in wanted:
+                if rule["ref"] not in differing:
+                    continue
+                if rule["ref"] in held:
+                    # In place, keeping its id and position.
+                    api.call("PATCH", "%s/%s" % (base, held[rule["ref"]]["id"]), body=rule)
+                else:
+                    api.call("POST", base, body=rule)
 
-        api.call("PUT", "/zones/%s/rulesets/phases/%s/entrypoint" % (zone, phase), body={"rules": written})
-
-        after = current_rules(api, zone, phase)
-        after_refs = dict((r.get("ref"), r) for r in after if isinstance(r, dict) and r.get("ref"))
-        kept = [rule["ref"] for rule in wanted if not holds(after_refs.get(rule["ref"]), rule)]
-        lost = [r["id"] for r in held if isinstance(r, dict) and r.get("id") not in set(a.get("id") for a in after)]
+        after = entrypoint(api, zone, phase)
+        kept = [rule["ref"] for rule in wanted if not holds(by_ref(after).get(rule["ref"]), rule)]
+        remaining = set(r.get("id") for r in (after or {}).get("rules") or [])
+        lost = sorted(i for i in others if i not in remaining)
         if kept or lost:
-            module.fail_json(msg="Cloudflare took the ruleset but did not keep rules %s and lost rules %s"
+            module.fail_json(msg="Cloudflare took the rules but does not hold %s and lost rules %s"
                              % (", ".join(kept) or "none", ", ".join(lost) or "none"), changed=True, changed_refs=differing)
         module.exit_json(changed=True, changed_refs=differing)
     except (Unreachable, Refused) as error:

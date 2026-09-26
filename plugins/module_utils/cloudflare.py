@@ -19,7 +19,11 @@ ARGUMENTS = dict(
 
 
 class Refused(Exception):
-    """Cloudflare answered and said no."""
+    """Cloudflare answered and said no; `status` is the HTTP status it said it with."""
+
+    def __init__(self, message, status=None):
+        super(Refused, self).__init__(message)
+        self.status = status
 
 
 class Cloudflare:
@@ -35,7 +39,8 @@ class Cloudflare:
         if answer.get("success") is not True:
             errors = answer.get("errors") or [{}]
             message = errors[0].get("message") if isinstance(errors[0], dict) else None
-            raise Refused("Cloudflare refused %s %s (HTTP %d): %s" % (method, path, status, message or "no reason given"))
+            raise Refused("Cloudflare refused %s %s (HTTP %d): %s" % (method, path, status, message or "no reason given"),
+                          status)
         if "result" not in answer:
             raise Unreachable("Cloudflare answered %s %s without a result" % (method, path))
         return answer["result"]

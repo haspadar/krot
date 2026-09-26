@@ -1,4 +1,4 @@
-from fakes.cloudflare import TOKEN
+from fakes.cloudflare import OTHER_TOKEN, TOKEN
 from fakes.cloudflare_rulesets import FakeCloudflareRulesets
 
 PHASE = "http_request_cache_settings"
@@ -46,13 +46,11 @@ def test_creates_the_phase_ruleset_when_the_zone_has_none(run, serve):
     assert [r["ref"] for r in rules_of(cloudflare, zone_id)] == ["krot_cache_media"]
 
 
-def test_zone_without_the_phase_is_not_asked_by_phase(run, serve):
+def test_zone_without_the_phase_gets_a_ruleset_of_its_own_rules(run, serve):
     cloudflare = FakeCloudflareRulesets()
     zone_id = zone(cloudflare, "ohnephase.de")
-    server = serve(cloudflare)
-    run("cloudflare_ruleset", args(server, zone_id, [MEDIA]))
-    assert not any(r.method == "GET" and r.path.endswith("/entrypoint") for r in server.requests)
-
+    run("cloudflare_ruleset", args(serve(cloudflare), zone_id, [MEDIA]))
+    assert [r["ref"] for r in cloudflare.rulesets[(zone_id, PHASE)]["rules"]] == ["krot_cache_media"]
 
 def test_rule_held_with_server_fields_is_not_rewritten(run, serve):
     cloudflare = FakeCloudflareRulesets()
@@ -137,7 +135,7 @@ def test_write_that_did_not_take_fails(run, serve):
     cloudflare.ignores_writes = True
     zone_id = zone(cloudflare, "taub.de")
     cloudflare.add_rules(zone_id, PHASE, [HANDMADE])
-    assert "did not keep" in run("cloudflare_ruleset", args(serve(cloudflare), zone_id, [MEDIA]))["msg"]
+    assert "does not hold" in run("cloudflare_ruleset", args(serve(cloudflare), zone_id, [MEDIA]))["msg"]
 
 
 def test_write_that_took_reports_changed_without_failing(run, serve):
@@ -162,3 +160,45 @@ def test_ruleset_of_another_phase_is_not_taken_for_this_one(run, serve):
     cloudflare.add_rules(zone_id, "http_request_firewall_custom", [MEDIA])
     run("cloudflare_ruleset", args(serve(cloudflare), zone_id, [MEDIA]))
     assert [r["ref"] for r in rules_of(cloudflare, zone_id)] == ["krot_cache_media"]
+
+
+def test_rule_added_elsewhere_during_the_run_survives(run, serve):
+    cloudflare = FakeCloudflareRulesets()
+    zone_id = zone(cloudflare, "gleichzeitig.de")
+    cloudflare.add_rules(zone_id, PHASE, [HANDMADE])
+    cloudflare.added_after_read = dict(HANDMADE, ref="dashboard_late_rule", expression='(http.host eq "spaet.de")')
+    run("cloudflare_ruleset", args(serve(cloudflare), zone_id, [MEDIA]))
+    refs = [r["ref"] for r in cloudflare.rulesets[(zone_id, PHASE)]["rules"]]
+    assert "dashboard_late_rule" in refs
+
+
+def test_existing_ruleset_is_never_replaced_whole(run, serve):
+    cloudflare = FakeCloudflareRulesets()
+    zone_id = zone(cloudflare, "stueckweise.de")
+    cloudflare.add_rules(zone_id, PHASE, [HANDMADE])
+    server = serve(cloudflare)
+    run("cloudflare_ruleset", args(server, zone_id, [MEDIA]))
+    assert [r.method for r in server.writes()] == ["POST"]
+
+
+def test_changed_own_rule_is_updated_in_place(run, serve):
+    cloudflare = FakeCloudflareRulesets()
+    zone_id = zone(cloudflare, "ersetzen.de")
+    held = cloudflare.add_rules(zone_id, PHASE, [dict(MEDIA, description="old words")])["rules"][0]
+    server = serve(cloudflare)
+    run("cloudflare_ruleset", args(server, zone_id, [MEDIA]))
+    assert [(r.method, r.path.rsplit("/", 1)[-1]) for r in server.writes()] == [("PATCH", held["id"])]
+
+
+def test_refusal_other_than_404_at_the_phase_writes_nothing(run, serve):
+    server = serve(FakeCloudflareRulesets(OTHER_TOKEN))
+    run("cloudflare_ruleset", args(server, "zone-verboten", [MEDIA]))
+    assert server.writes() == []
+
+
+def test_write_that_loses_another_rule_fails(run, serve):
+    cloudflare = FakeCloudflareRulesets()
+    cloudflare.drops_others = True
+    zone_id = zone(cloudflare, "verlust.de")
+    cloudflare.add_rules(zone_id, PHASE, [HANDMADE])
+    assert "lost rules rule-" in run("cloudflare_ruleset", args(serve(cloudflare), zone_id, [MEDIA]))["msg"]
