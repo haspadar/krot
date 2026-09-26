@@ -1,0 +1,20 @@
+---
+# Stands in for the project's deploy: what matters to the launch is that the
+# site's vhost appears, which site_serve_check then looks for.
+- name: Make the vhost directory nginx would have
+  ansible.builtin.file:
+    path: "{{ site_vhost_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Generate the site's vhost
+  ansible.builtin.copy:
+    dest: "{{ site_vhost_dir }}/{{ site_domain }}.conf"
+    content: |
+      server {
+          listen 443 ssl;
+          server_name {{ site_domain }} www.{{ site_domain }};
+          ssl_certificate     {{ site_certificate_dir }}/{{ site_domain }}.pem;
+          ssl_certificate_key {{ site_certificate_dir }}/{{ site_domain }}.key;
+      }
+    mode: "0644"

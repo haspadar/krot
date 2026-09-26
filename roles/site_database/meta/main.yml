@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    Creates the site's own database, owned by the site's role.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - web
+
+dependencies:
+  - role: haspadar.krot.site

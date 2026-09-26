@@ -1,0 +1,17 @@
+---
+# AFTER the deploy: the vhost must be enabled. The deploy's exit code proves
+# nothing here — a deploy can be green and have generated no vhost for the site.
+
+- name: Look for the site's vhost
+  ansible.builtin.stat:
+    path: "{{ site_vhost_dir }}/{{ site_domain }}.conf"
+  register: site_serve_check_vhost
+
+- name: Stop when the deploy left no vhost for the site
+  ansible.builtin.assert:
+    that: site_serve_check_vhost.stat.exists
+    fail_msg: >-
+      {{ site_vhost_dir }}/{{ site_domain }}.conf is missing after the deploy.
+      The deploy reported success without serving the site.
+    quiet: true
+  when: not ansible_check_mode

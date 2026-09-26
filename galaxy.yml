@@ -27,7 +27,6 @@ build_ignore:
   - .yamllint
   - ansible.cfg
   - inventory
-  - playbooks
   # Development history, not something the installed collection needs to carry.
   - openspec
   # Same reasoning: the scenarios test the roles, they are not part of what a

@@ -1,0 +1,132 @@
+---
+# One site, from a bought domain to a sitemap the search engines took.
+#
+#   ansible-playbook haspadar.krot.site_launch -i <inventory> -e site_machine=<host>
+#
+# The inventory gives the site_* variables (roles/site/defaults/main.yml
+# lists every one) and the project's own task files by absolute path. Run it
+# with --check first: nothing is written, and site_preflight reports what is
+# done and what the launch would do. A run that stops at site_dns_records is
+# waiting for the delegation, not broken — run it again later.
+#
+# Under --check the project's writing steps — fill, results, deploy, open — are
+# not called at all, whatever their own guards: a single shell task in them
+# would otherwise run for real during what was promised to be a dry run. The
+# verification step is still called; it must only read.
+#
+# One machine per run: site_preflight stops a play of several hosts before its
+# first write, because a launch run against a whole inventory would do its
+# cloud steps once, with whichever host came first. A forgotten site_machine
+# therefore fails on an inventory of many rather than launching on all of them.
+#
+# Order is the point of this file. The zone comes before the registrar because
+# Cloudflare picks the nameserver pair; the certificate before the records,
+# because the zone settings they bring switch Cloudflare to strict TLS, and
+# before the deploy, because a vhost generated without it has no 443; the
+# directory check before
+# the deploy and the vhost check after it; the project's own verification before
+# the site is opened; monitoring and search after it is.
+
+- name: Launch a site
+  hosts: "{{ site_machine | default('all') }}"
+  become: true
+  tasks:
+    # Public, so the project's own task files see the same defaults the roles
+    # do — a deploy step that builds a vhost needs site_certificate_dir as much
+    # as site_tls does. Without it, role defaults stay inside each role.
+    - name: Load the site's variables for every step, the project's included
+      ansible.builtin.include_role:
+        name: haspadar.krot.site
+        public: true
+
+    - name: Read everything the launch needs, writing nothing
+      ansible.builtin.include_role:
+        name: haspadar.krot.site_preflight
+
+    # Past this point every step reads the zone, so a dry run of a site that has
+    # none would stop on the first missing value instead of on the report above.
+    - name: End the dry run of a new site at the report above
+      when: ansible_check_mode and not site_preflight_zone.exists
+      block:
+        - name: Say why the dry run ends here
+          ansible.builtin.debug:
+            msg: >-
+              {{ site_domain }} has no zone yet, and every later step depends on
+              it. The report above is the whole plan; run without --check to
+              start the launch.
+
+        - name: End the dry run
+          ansible.builtin.meta: end_play
+
+    - name: Find or create the zone
+      ansible.builtin.include_role:
+        name: haspadar.krot.site_dns_zone
+
+    - name: Delegate the domain to the zone
+      ansible.builtin.include_role:
+        name: haspadar.krot.site_domain
+
+    - name: Put the origin certificate on the machine
+      ansible.builtin.include_role:
+        name: haspadar.krot.site_tls
+
+    - name: Publish the site's records once the delegation is public
+      ansible.builtin.include_role:
+        name: haspadar.krot.site_dns_records
+
+    - name: Create the site's database
+      ansible.builtin.include_role:
+        name: haspadar.krot.site_database
+      when: site_database_name | default('') | length > 0
+
+    - name: Fill the site (project step)
+      ansible.builtin.include_tasks: "{{ site_project_fill }}"
+      when:
+        - not ansible_check_mode
+        - site_project_fill | default('') | length > 0
+
+    - name: Register the site's counters
+      ansible.builtin.include_role:
+        name: haspadar.krot.site_analytics
+
+    - name: Hand the counters' ids to the project (project step)
+      ansible.builtin.include_tasks: "{{ site_results_writer }}"
+      when:
+        - not ansible_check_mode
+        - site_results_writer | default('') | length > 0
+
+    - name: Check the site is in the main about to be deployed
+      ansible.builtin.include_role:
+        name: haspadar.krot.site_serve_precheck
+
+    - name: Deploy (project step)
+      ansible.builtin.include_tasks: "{{ site_project_deploy }}"
+      when:
+        - not ansible_check_mode
+        - site_project_deploy | default('') | length > 0
+
+    - name: Check the deploy left the site served
+      ansible.builtin.include_role:
+        name: haspadar.krot.site_serve_check
+
+    - name: Check the site is fit to open (project step)
+      ansible.builtin.include_tasks: "{{ site_project_verify }}"
+      when: site_project_verify | default('') | length > 0
+
+    - name: Open the site (project step)
+      ansible.builtin.include_tasks: "{{ site_project_open }}"
+      when:
+        - not ansible_check_mode
+        - site_project_open | default('') | length > 0
+
+    - name: Watch the site
+      ansible.builtin.include_role:
+        name: haspadar.krot.site_monitor
+
+    - name: Tell the search engines
+      ansible.builtin.include_role:
+        name: haspadar.krot.site_search
+
+    - name: Look at the launched site from outside
+      ansible.builtin.include_role:
+        name: haspadar.krot.site_check

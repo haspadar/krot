@@ -1,0 +1,37 @@
+---
+# Two monitors per site, named so a person reading the sorted list sees them
+# together: "<domain>" answers at all, "<domain> (Profile)" still carries its
+# word. The second catches what the first cannot — a site answering 200 with
+# nothing left on it.
+
+- name: Skip when the site is not watched
+  ansible.builtin.meta: end_role
+  when: not (site_monitor.enabled | default(false))
+
+- name: Watch the site answer
+  haspadar.krot.uptimerobot_monitor:
+    url: "{{ site_public_url }}/"
+    friendly_name: "{{ site_domain }}"
+    type: http
+    api_key: "{{ site_uptimerobot_key }}"
+    api_url: "{{ site_uptimerobot_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+- name: Watch the site keep its word
+  haspadar.krot.uptimerobot_monitor:
+    url: "{{ site_public_url }}/"
+    friendly_name: "{{ site_domain }} (Profile)"
+    type: keyword
+    keyword: "{{ site_monitor.keyword }}"
+    api_key: "{{ site_uptimerobot_key }}"
+    api_url: "{{ site_uptimerobot_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  when: site_monitor.keyword | default('') | length > 0

@@ -1,0 +1,57 @@
+---
+# Counters for the site. The ids come back as the fact site_analytics_results; the
+# project's own site_results_writer puts them where its application reads them.
+# This role writes nothing of the project's.
+
+- name: Register the site in Umami
+  # On the machine itself, where Umami listens on 127.0.0.1 — no tunnel, and
+  # nobody but Umami writes Umami's database.
+  haspadar.krot.umami_website:
+    domain: "{{ site_domain }}"
+    username: "{{ site_umami_username }}"
+    password: "{{ site_umami_password }}"
+    api_url: "{{ site_umami_api_url }}"
+  when: site_analytics.umami | default(true)
+  register: site_analytics_umami
+
+- name: Pick the GA4 time zone
+  ansible.builtin.set_fact:
+    site_analytics_zone: >-
+      {{ site_analytics_time_zone
+         or site_analytics_time_zones[(site_analytics.country | default('')) | lower] | default('') }}
+  when: site_analytics.ga4 | default(false)
+
+- name: Refuse to guess the time zone
+  ansible.builtin.assert:
+    that: site_analytics_zone | length > 0
+    fail_msg: >-
+      No time zone for GA4: site_analytics.country is '{{ site_analytics.country | default('') }}',
+      which this role does not map. Set site_analytics_time_zone.
+    quiet: true
+  when: site_analytics.ga4 | default(false)
+
+- name: Register the site in GA4
+  haspadar.krot.ga4_property:
+    domain: "{{ site_domain }}"
+    account_id: "{{ site_ga4_account_id }}"
+    time_zone: "{{ site_analytics_zone }}"
+    currency_code: "{{ site_analytics_currency }}"
+    service_account: "{{ site_google_service_account }}"
+    token_uri: "{{ site_google_token_uri }}"
+    api_url: "{{ site_ga4_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  when: site_analytics.ga4 | default(false)
+  register: site_analytics_ga4
+
+- name: Hand the ids to the project
+  ansible.builtin.set_fact:
+    site_analytics_results: >-
+      {{ (site_analytics_results | default({})) | combine({
+           'umami_website_id': site_analytics_umami.website_id | default(''),
+           'ga4_property_id': site_analytics_ga4.property_id | default(''),
+           'ga4_measurement_id': site_analytics_ga4.measurement_id | default('')
+         }) }}

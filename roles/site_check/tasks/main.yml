@@ -1,0 +1,64 @@
+---
+# The launch's last word, from outside: what a visitor and a search engine get.
+# Blockers fail the run; what is only worth knowing is reported and passes.
+# It does not replace the project's own readiness check (site_project_verify),
+# which knows what the site is supposed to contain.
+
+- name: Ask for the site as a visitor would
+  ansible.builtin.uri:
+    url: "{{ item }}/"
+    method: GET
+    status_code: [200]
+  loop:
+    - "{{ site_public_url }}"
+    - "{{ site_public_www_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  check_mode: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  register: site_check_pages
+
+# Answered by Cloudflare, not by the machine directly: a response without its
+# ray id came from somewhere that publishes the origin.
+- name: Check Cloudflare answered for both names
+  ansible.builtin.assert:
+    that: site_check_pages.results | selectattr('cf_ray', 'defined') | list | length == 2
+    fail_msg: "{{ site_domain }} or its www is not served through Cloudflare (no CF-Ray in the answer)."
+    quiet: true
+
+- name: Ask for the sitemap
+  ansible.builtin.uri:
+    url: "{{ site_public_url }}{{ site_sitemap_path }}"
+    method: GET
+    status_code: [200]
+  delegate_to: localhost
+  run_once: true
+  become: false
+  check_mode: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+# Worth knowing, not worth failing over: a site may hide its sitemap under a
+# token on purpose, as gudok does.
+- name: Look for the conventional /sitemap.xml
+  ansible.builtin.uri:
+    url: "{{ site_public_url }}/sitemap.xml"
+    method: GET
+    status_code: [200, 404]
+  delegate_to: localhost
+  run_once: true
+  become: false
+  check_mode: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  register: site_check_conventional
+  when: site_sitemap_path != '/sitemap.xml'
+
+- name: Note that /sitemap.xml is not served
+  ansible.builtin.debug:
+    msg: "{{ site_domain }} serves no /sitemap.xml; engines will find the sitemap only through the submission."
+  when:
+    - site_sitemap_path != '/sitemap.xml'
+    - site_check_conventional.status | default(200) == 404

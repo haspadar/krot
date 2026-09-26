@@ -62,16 +62,33 @@
 
 ## PR 3 — роли и molecule
 
-- [ ] `site_preflight`, `site_dns_zone`, `site_domain`, `site_dns_records` (+ `site_cloudflare_rules`)
-- [ ] `site_tls`, `site_database`
-- [ ] `site_analytics`, `site_serve_precheck`, `site_serve_check`, `site_monitor`, `site_search`, `site_check`
-- [ ] Хуки проекта: fill, deploy, verify, open, results_writer; факт `site_launch_results`
-- [ ] Molecule `site_launch`: контейнер-подделка API, `verify.yml` спрашивает подделку, `idempotence`
-- [ ] Двойное ревью до push
+- [x] `site_preflight`, `site_dns_zone`, `site_domain`, `site_dns_records` (+ `site_cloudflare_rules`)
+- [x] `site_tls`, `site_database`
+- [x] `site_analytics`, `site_serve_precheck`, `site_serve_check`, `site_monitor`, `site_search`, `site_check`
+- [x] Хуки проекта: fill, deploy, verify, open, results_writer; факт `site_analytics_results`
+- [x] Molecule `site_launch`: контейнер-подделка API, `verify.yml` спрашивает подделку, `idempotence`
+- [x] Двойное ревью до push
+
+### Что нашлось двойным ревью PR 3
+
+Codex (adversarial) и свой агент в роли оператора, запускающего плейбук на живом сайте:
+
+- `--check` исполнял пишущие хуки проекта — плейбук больше их не зовёт; сайт без зоны кончает
+  пробный прогон отчётом preflight; molecule начинает с шага `check`, подделка считает записи
+  по прогонам, `verify.yml` требует ноль у пробного. Проверка сразу поймала запрос токена
+  Google, который оказался чтением через POST.
+- Подделка сайта отвечала 200 при любом состоянии — теперь 530 без записи, 401 до открытия;
+  поисковики подтверждают только запись, видимую в активной зоне.
+- `hosts: all` без `-e site_machine` — preflight требует ровно один хост.
+- Настройки зоны (strict) шли до сертификата — `site_tls` перенесён раньше записей, preflight
+  называет настройки, которые изменятся.
+- Любой ответ 200 считался sitemap — теперь нужно тело `<urlset>`/`<sitemapindex>`.
+- Отклонено: перевод A-записи с тем же адресом под прокси — это замысел; `--check` показывает
+  его как changed.
 
 ## PR 4 — плейбук, вики, релиз
 
-- [ ] `playbooks/site_launch.yml` — пример порядка
+- [x] `playbooks/site_launch.yml` — порядок шагов, входит в коллекцию (сделан в PR 3: без него сценарий не собрать)
 - [ ] Вики: страница про запуск сайта (порядок, переменные, что подключает проект)
 - [ ] Вики: `collection-layout.md` — два набора ролей (машина / сайт), раздел про Terraform
 - [ ] `openspec/ARCHITECTURE.md`, `README.md` — тот же пересмотр

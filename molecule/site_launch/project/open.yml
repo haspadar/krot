@@ -1,0 +1,13 @@
+---
+# Stands in for the project's opening step (busel: colony:open lifts the basic
+# auth). Until it runs the fake site answers 401, so the sitemap check and the
+# search engines after it fail exactly as they would on a site still closed.
+# Idempotent the way the real one must be: opening an open site is a no-op.
+- name: Open the site
+  ansible.builtin.uri:
+    url: http://krot-site-fakes:8080/_open
+    method: POST
+    body_format: json
+    body: {}
+  register: site_launch_opened
+  changed_when: site_launch_opened.json.changed

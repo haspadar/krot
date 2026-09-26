@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    Finds or creates the site's Cloudflare zone and learns the nameserver pair it was given.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - web
+
+dependencies:
+  - role: haspadar.krot.site

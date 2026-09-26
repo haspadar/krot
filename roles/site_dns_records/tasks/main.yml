@@ -1,0 +1,95 @@
+---
+# Publishes the site's addresses — only once the domain is really Cloudflare's.
+#
+# ⚠️ Both conditions, not either. Cloudflare keeps a zone "active" after the
+# nameservers have moved away again, and a record written into a zone the world
+# does not ask is not hidden by anything: the address it names lands in DNS
+# history, where it stays for good. So the zone's word is checked against two
+# public resolvers before anything is written.
+
+- name: Stop when there is no zone yet
+  ansible.builtin.meta: end_role
+  when: not (site_dns_zone_found.exists | default(false))
+
+- name: Ask public resolvers who serves the domain
+  haspadar.krot.dns_delegation:
+    domain: "{{ site_domain }}"
+    nameservers: "{{ site_dns_zone_found.name_servers }}"
+    resolvers: "{{ site_doh_resolvers }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  register: site_dns_records_delegation
+
+- name: Ask Cloudflare again whether the zone is active
+  haspadar.krot.cloudflare_zone:
+    domain: "{{ site_domain }}"
+    account_id: "{{ site_cloudflare_account_id | default(omit, true) }}"
+    api_token: "{{ site_cloudflare_token }}"
+    api_url: "{{ site_cloudflare_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  check_mode: true
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  register: site_dns_records_zone
+
+# A wait of minutes to a day is not done inside a play: it ends here with what
+# to do, and the next run picks up from this step.
+- name: Stop until the delegation is visible and the zone is active
+  ansible.builtin.fail:
+    msg: >-
+      Waiting, nothing is broken: {{ site_domain }} is not yet served by
+      {{ site_dns_zone_found.name_servers | join(', ') }} as far as the public resolvers
+      see ({{ site_dns_records_delegation.answers | to_json }}), or the zone is
+      {{ site_dns_records_zone.status }} rather than active. Run the launch again
+      once both are true; the steps before this one will not be repeated.
+  when: >-
+    not site_dns_records_delegation.delegated
+    or site_dns_records_zone.status != 'active'
+
+- name: Bring the zone settings to what a site behind an origin certificate needs
+  haspadar.krot.cloudflare_zone_settings:
+    zone_id: "{{ site_dns_zone_found.zone_id }}"
+    api_token: "{{ site_cloudflare_token }}"
+    api_url: "{{ site_cloudflare_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+- name: Point the domain and www at the machine, through Cloudflare
+  haspadar.krot.cloudflare_record:
+    zone_id: "{{ site_dns_zone_found.zone_id }}"
+    type: A
+    name: "{{ item }}"
+    content: "{{ site_origin_ip }}"
+    proxied: true
+    api_token: "{{ site_cloudflare_token }}"
+    api_url: "{{ site_cloudflare_api_url }}"
+  loop:
+    - "{{ site_domain }}"
+    - "www.{{ site_domain }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+- name: Keep the project's own zone rules
+  haspadar.krot.cloudflare_ruleset:
+    zone_id: "{{ site_dns_zone_found.zone_id }}"
+    phase: "{{ site_cloudflare_rules_phase }}"
+    rules: "{{ site_cloudflare_rules }}"
+    api_token: "{{ site_cloudflare_token }}"
+    api_url: "{{ site_cloudflare_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  when: site_cloudflare_rules | length > 0

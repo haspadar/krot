@@ -1,0 +1,49 @@
+---
+# Search Console as a domain property: the TXT proof goes into the zone between
+# learning it and verifying with it. Ownership, not presence, is what counts,
+# and the owners list is shared with the people who run the site.
+
+- name: Learn Google's proof for the domain
+  haspadar.krot.gsc_site:
+    domain: "{{ site_domain }}"
+    service_account: "{{ site_google_service_account }}"
+    token_uri: "{{ site_google_token_uri }}"
+    api_url: "{{ site_google_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  register: site_search_google
+
+- name: Put Google's proof into the zone
+  haspadar.krot.cloudflare_record:
+    zone_id: "{{ site_dns_zone_found.zone_id }}"
+    type: "{{ site_search_google.verification_record.type }}"
+    name: "{{ site_search_google.verification_record.name }}"
+    content: "{{ site_search_google.verification_record.content }}"
+    api_token: "{{ site_cloudflare_token }}"
+    api_url: "{{ site_cloudflare_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  when: site_search_google.verification_record is defined
+
+- name: Verify with Google, share ownership and hand over the sitemap
+  haspadar.krot.gsc_site:
+    domain: "{{ site_domain }}"
+    verify: true
+    owners: "{{ site_search_console_owners }}"
+    sitemap_url: "{{ site_public_url }}{{ site_sitemap_path }}"
+    wait_attempts: "{{ site_search_wait_attempts }}"
+    wait_delay: "{{ site_search_wait_delay }}"
+    service_account: "{{ site_google_service_account }}"
+    token_uri: "{{ site_google_token_uri }}"
+    api_url: "{{ site_google_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"

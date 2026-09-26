@@ -1,0 +1,51 @@
+---
+# Bing Webmaster: adding the site mints the CNAME name, which already carries
+# the domain — it goes into the zone as it comes, nothing appended.
+
+- name: Add the site to Bing and learn its proof
+  haspadar.krot.bing_site:
+    domain: "{{ site_domain }}"
+    wait_attempts: "{{ site_search_wait_attempts }}"
+    wait_delay: "{{ site_search_wait_delay }}"
+    api_key: "{{ site_bing_key }}"
+    api_url: "{{ site_bing_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  register: site_search_bing
+
+- name: Put Bing's proof into the zone
+  haspadar.krot.cloudflare_record:
+    zone_id: "{{ site_dns_zone_found.zone_id }}"
+    type: "{{ site_search_bing.verification_record.type }}"
+    name: "{{ site_search_bing.verification_record.name }}"
+    content: "{{ site_search_bing.verification_record.content }}"
+    # The proof is looked up by Bing's resolver, not by visitors, and a
+    # proxied CNAME would answer with Cloudflare's address instead of the name.
+    proxied: false
+    allow_unproxied: true
+    api_token: "{{ site_cloudflare_token }}"
+    api_url: "{{ site_cloudflare_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  when: site_search_bing.verification_record is defined
+
+- name: Verify with Bing and hand over the sitemap
+  haspadar.krot.bing_site:
+    domain: "{{ site_domain }}"
+    verify: true
+    sitemap_url: "{{ site_public_url }}{{ site_sitemap_path }}"
+    wait_attempts: "{{ site_search_wait_attempts }}"
+    wait_delay: "{{ site_search_wait_delay }}"
+    api_key: "{{ site_bing_key }}"
+    api_url: "{{ site_bing_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"

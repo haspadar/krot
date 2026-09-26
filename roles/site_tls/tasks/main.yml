@@ -1,0 +1,106 @@
+---
+# The Origin CA pair, on the machine before the first deploy: a vhost generated
+# without it comes out with no 443 and no www, and nothing regenerates it — the
+# site answers 521 and its www lands on another site of the machine.
+#
+# The key is made HERE and never leaves: only the signing request goes to the
+# control machine and on to Cloudflare. Cloudflare cannot show a certificate's
+# key again either way, so there is nothing to fetch back — a pair that exists
+# is kept, and one that does not is made whole.
+
+- name: Look at the pair the machine holds
+  ansible.builtin.stat:
+    path: "{{ site_certificate_dir }}/{{ site_domain }}.{{ item }}"
+  loop: [pem, key]
+  register: site_tls_held
+
+# Both, and non-empty. An empty file passes a plain existence test and fails
+# nginx; a truncated write is exactly what an interrupted run leaves behind.
+- name: Decide whether a certificate is needed
+  ansible.builtin.set_fact:
+    site_tls_needed: >-
+      {{ site_tls_held.results | rejectattr('stat.exists') | list | length > 0
+         or site_tls_held.results | selectattr('stat.exists')
+            | selectattr('stat.size', 'equalto', 0) | list | length > 0 }}
+
+- name: Make the pair
+  when: site_tls_needed | bool
+  block:
+    - name: Make the certificate directory
+      ansible.builtin.file:
+        path: "{{ site_certificate_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # Created with its final mode BEFORE anything is written into it. Writing
+    # first and fixing the mode after leaves the key world-readable for the
+    # window in between — umask 022 made it 644 on busel's machine, a host that
+    # runs php-fpm for several sites.
+    - name: Create the key file closed to everyone but root
+      ansible.builtin.command:
+        cmd: install -m 600 -o root -g root /dev/null {{ site_certificate_dir }}/{{ site_domain }}.key.new
+      changed_when: true
+      when: not ansible_check_mode
+
+    - name: Make the key and a signing request
+      ansible.builtin.command:
+        cmd: >-
+          openssl req -new -newkey rsa:2048 -nodes -sha256
+          -subj /CN={{ site_domain }}
+          -keyout {{ site_certificate_dir }}/{{ site_domain }}.key.new
+      changed_when: true
+      when: not ansible_check_mode
+      register: site_tls_request
+
+    - name: Have Cloudflare sign it
+      haspadar.krot.cloudflare_origin_cert:
+        csr: "{{ site_tls_request.stdout }}"
+        hostnames:
+          - "{{ site_domain }}"
+          - "*.{{ site_domain }}"
+        api_token: "{{ site_cloudflare_token }}"
+        api_url: "{{ site_cloudflare_api_url }}"
+      delegate_to: localhost
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      when: not ansible_check_mode
+      register: site_tls_issued
+
+    - name: Write the certificate beside the key
+      ansible.builtin.copy:
+        content: "{{ site_tls_issued.certificate }}"
+        dest: "{{ site_certificate_dir }}/{{ site_domain }}.pem.new"
+        owner: root
+        group: root
+        mode: "0644"
+      when: not ansible_check_mode
+
+    # Both into place together. Half a pair — a certificate whose key is
+    # missing — makes nginx refuse its whole configuration, taking every site
+    # of the machine down with the new one.
+    - name: Move both halves into place
+      ansible.builtin.command:
+        cmd: >-
+          sh -c 'mv -f "$0.key.new" "$0.key" && mv -f "$0.pem.new" "$0.pem"'
+          {{ site_certificate_dir }}/{{ site_domain }}
+      changed_when: true
+      when: not ansible_check_mode
+
+- name: Read the pair back
+  ansible.builtin.stat:
+    path: "{{ site_certificate_dir }}/{{ site_domain }}.{{ item }}"
+  loop: [pem, key]
+  register: site_tls_placed
+  when: not ansible_check_mode
+
+- name: Check both halves are there, non-empty, and the key closed
+  ansible.builtin.assert:
+    that:
+      - site_tls_placed.results | selectattr('stat.exists') | selectattr('stat.size', 'gt', 0) | list | length == 2
+      - (site_tls_placed.results | selectattr('item', 'equalto', 'key') | first).stat.mode == '0600'
+    fail_msg: "The certificate pair of {{ site_domain }} is not whole on the machine, or its key is readable by others."
+    quiet: true
+  when: not ansible_check_mode

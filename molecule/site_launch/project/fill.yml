@@ -1,0 +1,11 @@
+---
+# Stands in for the project's fill step, and runs on the control machine the
+# way busel's does (its data comes from a developer's Matilda). Leaves a mark
+# verify.yml looks for, and makes it only once.
+- name: Mark the site as filled
+  ansible.builtin.copy:
+    dest: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/filled-{{ site_domain }}"
+    content: "filled\n"
+    mode: "0644"
+  delegate_to: localhost
+  become: false

@@ -1,0 +1,15 @@
+---
+# Stands in for the project's own readiness check (busel: colony:check). It
+# reads and asserts; a blocker here stops the launch before the site opens.
+- name: Check the counters' ids reached the application
+  ansible.builtin.slurp:
+    src: /var/www/krot-launch/shared/counters.json
+  register: project_counters
+
+- name: Refuse to open a site without its counters
+  ansible.builtin.assert:
+    that:
+      - (project_counters.content | b64decode | from_json).umami_website_id | length > 0
+      - (project_counters.content | b64decode | from_json).ga4_measurement_id | length > 0
+    fail_msg: "The site would open without its counters."
+    quiet: true
