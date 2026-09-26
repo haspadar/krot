@@ -32,13 +32,15 @@
 
 ## PR 2 — остальные модули
 
-- [ ] `dynadot_ns` + юниты (включая проверку делегирования по DoH)
-- [ ] `umami_website` + юниты
-- [ ] `ga4_property` + юниты (часовой пояс из страны, валюта — параметр)
-- [ ] `uptimerobot_monitor` + юниты
-- [ ] `gsc_site` + юниты
-- [ ] `yandex_site` + юниты
-- [ ] `cloudflare_ruleset` + юниты (правила зоны для `site_cloudflare_rules`)
+- [x] `dns_delegation` + юниты: делегирование по DoH двумя резолверами, только чтение — его зовут
+      и `dynadot_ns`, и `site_dns_records`, поэтому модуль, а не копия проверки в двух местах
+- [x] `dynadot_ns` + юниты
+- [x] `umami_website` + юниты
+- [x] `ga4_property` + юниты (часовой пояс из страны, валюта — параметр)
+- [x] `uptimerobot_monitor` + юниты
+- [x] `gsc_site` + юниты
+- [x] `yandex_site` + юниты
+- [x] `cloudflare_ruleset` + юниты (правила зоны для `site_cloudflare_rules`)
 - [ ] Двойное ревью до push
 
 ## PR 3 — роли и molecule
