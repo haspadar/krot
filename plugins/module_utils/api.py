@@ -93,7 +93,7 @@ class Http:
             if status in self.RETRIED:
                 reason = "%s %s answered %d" % (method, url_without_secrets(url), status)
                 continue
-            return status, decoded(raw, method, url, status)
+            return status, decoded(raw, method, url)
         if method not in self.REPEATABLE:
             reason += "; whether it took effect is unknown, and the next run looks before writing again"
         raise Unreachable(reason)
@@ -105,17 +105,16 @@ class Http:
             return self.pause
 
 
-def decoded(raw, method, url, status=200):
+def decoded(raw, method, url):
     if not raw:
         return None
     try:
         return json.loads(raw)
     except ValueError:
-        # A refusal is an answer whatever its body: a 404 page from a proxy in
-        # front of Umami says "wrong path" just as clearly as a JSON one, and
-        # the status is what the module decides on.
-        if 400 <= status < 500:
-            return None
+        # Whatever the status. A proxy's 403 page or a 404 from the wrong path
+        # is not the service saying no — read as a refusal, it lets a module
+        # that treats 403/404 as "not verified yet" act on a site that is.
+        # Found by review on 2026-09-26, after this was briefly relaxed.
         # A captive portal, a proxy's error page, a tunnel that answered for the
         # service: all of them 200 with HTML. Not an answer from the API.
         raise Unreachable("%s %s answered with something that is not JSON" % (method, url_without_secrets(url)))

@@ -122,10 +122,11 @@ def test_form_is_sent_urlencoded(serve):
     assert Http(server.url).call("POST", "/token", form={"grant_type": "jwt"})[1] == {"got": {"grant_type": "jwt"}}
 
 
-def test_refusal_with_a_page_for_a_body_keeps_its_status(serve):
+def test_refusal_with_a_page_for_a_body_is_unreachable(serve):
     server = serve(Echo())
-    server.outages = [(404, {}, b"<html>Not Found</html>")]
-    assert Http(server.url).call("GET", "/counter/api/auth/login")[0] == 404
+    server.outages = [(403, {}, b"<html>blocked by proxy</html>")]
+    with pytest.raises(Unreachable):
+        Http(server.url).call("GET", "/siteVerification/v1/webResource/dns%3A%2F%2Fgesperrt.de")
 
 
 def test_success_with_a_page_for_a_body_is_still_unreachable(serve):
