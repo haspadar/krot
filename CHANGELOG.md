@@ -3,6 +3,43 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 5.5.0
+
+### Added
+
+- **Site roles and the `site_launch` playbook** — a site from a bought domain to a sitemap the
+  search engines took: preflight, Cloudflare zone, Dynadot nameservers, Origin CA certificate,
+  records once two public resolvers see the delegation, the site's database, Umami and GA4,
+  UptimeRobot, Google Search Console, Yandex Webmaster and Bing Webmaster, and a smoke check from
+  outside. The roles know one site, not the project it belongs to: filling, deploying, opening
+  and recording the counters' ids are the project's task files, passed by absolute path.
+
+  **Run it with `--check` first.** Nothing is written; the project's writing steps are not
+  called at all, and preflight reports what is done, what the launch would do, and which zone
+  settings would change — read that line before the first real run on a site that is already
+  live, since the settings switch Cloudflare to strict TLS.
+
+- **Modules for the cloud side**: `cloudflare_zone`, `cloudflare_zone_settings`,
+  `cloudflare_record`, `cloudflare_ruleset`, `cloudflare_origin_cert`, `dns_delegation`,
+  `dynadot_ns`, `umami_website`, `ga4_property`, `uptimerobot_monitor`, `gsc_site`,
+  `yandex_site`, `bing_site`. Each takes its API address as a parameter, is safe under check
+  mode, finds before it creates, and reads back what it wrote. A request that could not be asked
+  is a failure, never "absent", and a POST is never repeated after a failure.
+
+### Changed
+
+- **Two sets of roles instead of "a role knows the host, not the applications on it".** Machine
+  roles still know nothing about sites; site roles know one. Cloudflare zones and records and the
+  registrar moved into the site roles rather than to a future Terraform.
+
+## 5.4.0
+
+### Added
+
+- **Real-IP for Cloudflare and a default server from the `nginx` role** (`nginx_cloudflare_real_ip`,
+  `nginx_default_server`, both off by default): nginx takes both once per machine, and a machine
+  can serve more than one network. The range list is refreshed daily by a timer.
+
 ## 5.3.0
 
 ### Added

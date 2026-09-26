@@ -2,7 +2,7 @@
 kind: runbook
 title: Поднять машину с нуля
 owner: haspadar
-verified: 2026-09-23
+verified: 2026-09-26
 roles: [backup, bootstrap, common, cron, deploy_keys, docker, fail2ban, firewall, nginx, php, postgresql, umami]
 ---
 
@@ -155,6 +155,11 @@ systemctl list-timers 'krot-*'      # задачи приложения, коп�
 выше их там минимум три источника: `cron` ставит задачи приложения, `backup` — ночную копию и
 ежемесячную проверку восстановления, `firewall` — обновление диапазонов Cloudflare. Пусто значит,
 что роль не отработала, а не что объявлять было нечего.
+
+## Дальше — сайты
+
+Машина готова принимать сайты; каждый запускается плейбуком `haspadar.krot.site_launch` —
+[Запустить сайт](launch-a-site.md).
 
 ## Мелочь, которая сбивает
 

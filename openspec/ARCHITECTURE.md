@@ -9,9 +9,11 @@ the machines of both.
 
 ## What this is
 
-A collection of roles, not a playbook. The repository has **no inventory and no site.yml** for
-particular machines: those live in busel and matilda, each with its own hosts and variables. Krot
-is the source of roles, and projects wire it in as a dependency:
+A collection of roles, not a machine playbook. The repository has **no inventory and no site.yml**
+for particular machines: those live in busel and matilda, each with its own hosts and variables.
+Krot is the source of roles, and projects wire it in as a dependency. Its one playbook,
+`site_launch`, is the order in which a site is launched: a project plugs its own steps in but does
+not reorder them.
 
 ```yaml
 # the project's requirements.yml
@@ -29,15 +31,30 @@ Why a collection rather than a set of roles: `ansible-galaxy` can install a git 
 role**, not as a directory of roles. A collection is the only form in which a set of roles installs
 with a single command and is versioned as a whole.
 
-## The main principle: a role knows about the host, not about the applications on it
+## The main principle: two sets of roles, and neither knows the project
 
 This is not a matter of style; it is what keeps the roles portable. The moment a role learns the
-name of a site or a database, it stops being general and turns into the config of one machine.
+name of a project, its config or its commands, it stops being general and turns into the config of
+one machine.
+
+- **Machine roles** (`common`, `nginx`, `postgresql` …) know nothing about sites.
+- **Site roles** (`site_*`) know **one** site — the one passed in the `site_*` variables: its
+  domain, zone and database. They do not know **whose** it is: filling, deploying, opening and
+  recording the counters' ids are the project's own task files.
+
+Until 2026-09-26 the principle read "a role knows about the host, not about the applications on
+it", and launching a site was left to the projects. It then lived in two places, busel's commands
+and gudok's steps, and a trap found in one was rediscovered in the other. The owner's decision:
+one tool, the roles in krot (change `2026-09-26-site-launch`). The cloud side — Cloudflare zones
+and records, the Dynadot registrar — moved into the site roles with it, rather than to a future
+Terraform: a launch needs an order of steps (zone, nameservers, waiting for the delegation,
+records, certificate before deploy) that declared state does not express.
 
 | Layer | What it does | Tool |
 |------|-----------|-----------|
-| Provisioning the **machine** | user, packages, firewall, fail2ban, (docker \| php+pg+nginx) | **Krot (Ansible)** |
-| Provisioning the **site** | domain, CF zone, vhost, the site's database, Bearer token to Matilda | **`recipient:*` console commands** in busel |
+| Provisioning the **machine** | user, packages, firewall, fail2ban, (docker \| php+pg+nginx) | krot **machine roles** |
+| Launching the **site** | zone, registrar nameservers, records, Origin CA, the site's database, counters, search engines | krot **site roles**, the `site_launch` playbook |
+| The site's project steps | filling, vhost, deploy, opening, recording ids | the project's task files |
 | Deploying the **code** | releases, symlink, reload | **Deployer** (`deploy.php`) in each project |
 
 Ansible and Deployer overlap in exactly one place: Ansible creates the `km` user and the
@@ -51,8 +68,8 @@ Ansible and Deployer overlap in exactly one place: Ansible creates the `km` user
   its configs refer to, and refreshes the CF ranges on every generation rather than once per Ansible
   run. Two writers on one setting inevitably drift apart, and a stale `set_real_ip_from` silently
   logs the CDN's address instead of the visitor's.
-- **Databases of particular applications.** The `postgresql` role installs the server only; the
-  site's database and role are created by site provisioning.
+- **Databases of particular applications.** The `postgresql` role installs the server only; a
+  site's database is created by the site role `site_database`, owned by the site's own role.
 - **Code deployment.** The `deploy` role only launches the project's Deployer — releases, symlink
   and rollback stay in `deploy.php`.
 
@@ -71,6 +88,7 @@ Ansible and Deployer overlap in exactly one place: Ansible creates the `km` user
 | `deploy_keys` | A separate SSH key per private repository + host aliases | all |
 | `deploy` | Runs the project's Deployer from the control machine | all |
 | `cron` | Periodic application jobs as systemd timers; the job list is an inventory variable | all |
+| `site_*` | Launching one site: zone, registrar, TLS, records, database, counters, monitor, search | busel and gudok, as they move to it |
 
 Two sets: busel — `common + php + postgresql + nginx + firewall + fail2ban` (several sites on one
 machine behind Cloudflare); matilda — `common + docker + firewall + fail2ban` (a bare host for
