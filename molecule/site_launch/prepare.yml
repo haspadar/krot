@@ -65,10 +65,11 @@
         state: directory
         mode: "0755"
 
+    # Names without values: preflight reads only the names, never what they hold.
     - name: Give the project an env file with the names it needs
       ansible.builtin.copy:
         dest: /var/www/krot-launch/shared/.env.local
         content: |
-          APP_SECRET=molecule-app-secret
-          MATILDA_TOKEN=molecule-matilda-token
+          APP_SECRET=
+          MATILDA_TOKEN=
         mode: "0600"

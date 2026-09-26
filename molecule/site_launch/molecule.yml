@@ -108,6 +108,9 @@ scenario:
     - destroy
     - create
     - prepare
+    # The dry run first, on a site with nothing made yet — busel's dry-run
+    # nearly created a zone. verify.yml checks the fakes got no write from it.
+    - check
     - converge
     - idempotence
     - verify

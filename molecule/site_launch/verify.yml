@@ -23,6 +23,23 @@
         zone: "{{ fakes.json.zones | selectattr('name', 'equalto', domain) | list }}"
         records: "{{ fakes.json.records }}"
 
+    - name: The dry run wrote nothing, the launch did, and the repeat only resent sitemaps
+      ansible.builtin.assert:
+        that:
+          - state.runs | map(attribute='mode') | list == ['check', 'apply', 'apply']
+          - state.runs[0].writes == []
+          - state.runs[1].writes | length > 0
+          - state.runs[2].writes | reject('search', sitemap) | list == []
+        fail_msg: "{{ state.runs | to_json }}"
+        quiet: true
+      vars:
+        sitemap: "sitemaps|SubmitFeed|user-added-sitemaps"
+
+    - name: The site was opened
+      ansible.builtin.assert:
+        that: state.opened
+        quiet: true
+
     - name: One zone, and the registrar points at its pair
       ansible.builtin.assert:
         that:

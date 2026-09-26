@@ -4,12 +4,18 @@ The same fakes the unit tests use, routed by the first path segment:
 /cloudflare, /dynadot, /doh/google, /doh/cloudflare, /umami, /google,
 /google-token, /yandex, /bing, /uptimerobot, and /site, /site-www for the site
 itself. /_state answers what every fake holds, which is what verify.yml reads.
+/_run starts a new run of the launch and names its mode; every write a run
+sends is kept under it, so verify.yml can tell a dry run that wrote nothing
+from one that did. /_open is the project's opening step.
 
 Wired together the way the real ones are, because the launch's most dangerous
 decision depends on it: the public resolvers answer what the registrar holds,
 and Cloudflare calls a zone active only once the registrar points at its pair.
 A launch that wrote records before the delegation was public would therefore
-fail here, not only in production.
+fail here, not only in production. The same goes further down: the site
+answers only once its record is in an active zone, and only with 200 once the
+project opened it; a search engine verifies only a proof it can find in the
+zone.
 
 Run in the scenario's second container:  python3 launch.py <port> <public-url>
 The public URL is where the control machine reaches this server; Google's
@@ -56,10 +62,24 @@ class Tokens(FakeTokens):
 
 
 class Site:
-    """The launched site as a visitor and a search engine see it: through Cloudflare."""
+    """The launched site as a visitor and a search engine see it: through Cloudflare.
+
+    Reachable only through a proxied record of an active zone — without one a
+    real visitor gets no answer at all, here 530. Behind basic auth until the
+    project opens it: roksasex.pl handed Google a sitemap answering 401, and
+    Google marked the submission failed within the hour.
+    """
+
+    def __init__(self, launch, host):
+        self.launch = launch
+        self.host = host
 
     def handle(self, request):
+        if not self.launch.proxied(self.host):
+            return 530, "error code: 1016", {"Content-Type": "text/plain"}
         headers = {"CF-Ray": "8c0ffee000000000-FRA", "Server": "cloudflare"}
+        if not self.launch.opened:
+            return 401, "", dict(headers, **{"WWW-Authenticate": 'Basic realm="closed"'})
         if request.path.endswith(".xml"):
             return 200, '<?xml version="1.0"?><urlset/>', dict(headers, **{"Content-Type": "application/xml"})
         return 200, "<html><body>%s</body></html>" % WORD, dict(headers, **{"Content-Type": "text/html"})
@@ -83,10 +103,55 @@ class Launch:
             "yandex": FakeYandex(),
             "bing": FakeBing(),
             "uptimerobot": FakeUptimeRobot(),
-            "site": Site(),
-            "site-www": Site(),
+            "site": Site(self, DOMAIN),
+            "site-www": Site(self, "www." + DOMAIN),
         }
         self.service_account = service_account(self.tokens.uri)
+        self.opened = False
+        # One entry per run of the launch: its mode and every write it sent.
+        self.runs = []
+
+    def zone(self):
+        return next((z for z in self.cloudflare.zones if z["name"] == DOMAIN), None)
+
+    def published(self):
+        """Records the world can see: those of the zone, once it is active."""
+        self.wire()
+        zone = self.zone()
+        if zone is None or zone["status"] != "active":
+            return []
+        return [dict(r, content=r["content"].strip('"')) for r in self.cloudflare.zone_records(zone["id"])]
+
+    def proxied(self, host):
+        return any(r["type"] == "A" and r["name"] == host and r.get("proxied") for r in self.published())
+
+    def proofs(self):
+        """Let each engine verify only what it could find in public DNS."""
+        records = self.published()
+        texts = {r["content"] for r in records if r["type"] == "TXT" and r["name"] == DOMAIN}
+        cnames = {(r["name"], r["content"]) for r in records
+                  if r["type"] == "CNAME" and not r.get("proxied")}
+        google = "google-site-verification=v-%s" % DOMAIN.split(".")[0]
+        self.google.dns_visible_after = 0 if google in texts else 1
+        yandex = self.routes["yandex"]
+        yandex.fails_verification = any(
+            "yandex-verification: %s" % yandex._verification(host)["verification_uin"] not in texts
+            for host in yandex.states)
+        bing = self.routes["bing"]
+        bing.verify_after = 0 if all((s["DnsVerificationCode"], "verify.bing.com") in cnames
+                                     for s in bing.sites) else 1
+
+    def note(self, head, request):
+        """Keep a write under the run that sent it; reads and sign-ins are not writes."""
+        signs_in = head == "google-token" or request.path.endswith("/auth/login")
+        # A POST that reads: Site Verification's getToken only hands out the
+        # TXT value and records nothing on Google's side.
+        asks_token = head == "google" and request.path == "/siteVerification/v1/token"
+        # And a GET that writes: Dynadot takes every command as a query.
+        sets_ns = head == "dynadot" and request.query.get("command") == "set_ns"
+        if (request.method not in ("GET", "HEAD") and not signs_in and not asks_token) or sets_ns:
+            if self.runs:
+                self.runs[-1]["writes"].append("%s /%s%s" % (request.method, head, request.path))
 
     def wire(self):
         """What follows from the registrar: resolvers and zone status."""
@@ -104,6 +169,12 @@ class Launch:
                 return 200, self.state()
             if head == "_setup":
                 return 200, {"service_account": self.service_account}
+            if head == "_run":
+                self.runs.append({"mode": request.body["mode"], "writes": []})
+                return 200, {"run": len(self.runs)}
+            if head == "_open":
+                was_open, self.opened = self.opened, True
+                return 200, {"changed": not was_open}
             if head == "doh":
                 request.path = "/" + "/".join(segments[2:])
                 return self.wire().handle(request)
@@ -111,8 +182,11 @@ class Launch:
             if app is None:
                 return 404, {"error": "no fake at /%s" % head}
             request.path = "/" + "/".join(segments[1:])
+            self.note(head, request)
             if head == "cloudflare":
                 self.wire()
+            if head in ("google", "yandex", "bing"):
+                self.proofs()
             return app.handle(request)
 
     def state(self):
@@ -131,6 +205,8 @@ class Launch:
             "yandex": getattr(yandex, "hosts", None),
             "bing": {"sites": bing.sites, "feeds": bing.feeds},
             "monitors": self.routes["uptimerobot"].monitors,
+            "opened": self.opened,
+            "runs": self.runs,
         })
 
 

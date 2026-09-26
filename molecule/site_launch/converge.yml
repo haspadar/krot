@@ -19,6 +19,19 @@
         site_google_service_account: "{{ site_launch_setup.json.service_account }}"
       no_log: true
 
+    # Each run is announced, so every write the fakes receive is filed under
+    # the run that sent it: verify.yml then holds the dry run to none at all.
+    - name: Tell the fakes a run begins, and whether it is a dry one
+      ansible.builtin.uri:
+        url: http://127.0.0.1:47180/_run
+        method: POST
+        body_format: json
+        body:
+          mode: "{{ 'check' if ansible_check_mode else 'apply' }}"
+      delegate_to: localhost
+      become: false
+      check_mode: false
+
 # The project's steps, as a project would write them: each answers "already
 # done?" itself and changes nothing under --check.
 - name: Set the project's task files
