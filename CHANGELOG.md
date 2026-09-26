@@ -9,7 +9,8 @@ changing a default that affects production) bump major.
 
 - **`site_launch` stops when `site_machine` names no host, or more than one.** A name that
   matched nothing skipped the whole play and exited 0 — a launch that did nothing read as one
-  that passed. The check is the playbook's first play, on the control machine, and runs under
+  that passed. The check is the playbook's first play, over the hosts `--limit` leaves — a play
+  on localhost would itself be skipped by a limit that leaves localhost out — and runs under
   `--tags` too.
 - **Preflight reads GA4 and names what would change** — each drifted field of an existing
   property with its current and new value. A new time zone moves where every past day of the
