@@ -47,7 +47,7 @@ class FakeServer:
     with those headers, and a third element is the raw body.
     """
 
-    def __init__(self, app):
+    def __init__(self, app, host="127.0.0.1", port=0):
         self.app = app
         self.requests = []
         self.outages = []
@@ -79,21 +79,30 @@ class FakeServer:
                         page = outage[2] if len(outage) > 2 else b""
                         return self.answer(outage[0], page, outage[1])
                     return self.answer(outage, b"")
-                status, body = server.app.handle(request)
+                answer = server.app.handle(request)
+                status, body = answer[0], answer[1]
+                # A third element makes it a page rather than JSON: the body is
+                # sent as it is, with these headers — a sitemap, a home page
+                # carrying Cloudflare's CF-Ray.
+                if len(answer) > 2:
+                    raw = body.encode() if isinstance(body, str) else body
+                    return self.answer(status, raw, answer[2])
                 self.answer(status, json.dumps(body).encode() if body is not None else b"")
 
             def answer(self, status, payload, headers=None):
                 self.send_response(status)
-                for name, value in (headers or {}).items():
+                headers = dict(headers or {})
+                for name, value in headers.items():
                     self.send_header(name, value)
-                self.send_header("Content-Type", "application/json")
+                if "Content-Type" not in headers:
+                    self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
                 self.wfile.write(payload)
 
             do_GET = do_POST = do_PUT = do_PATCH = do_DELETE = handle_any
 
-        self.httpd = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.httpd = ThreadingHTTPServer((host, port), Handler)
         self.thread = threading.Thread(target=self.httpd.serve_forever, args=(0.01,), daemon=True)
         self.thread.start()
 
