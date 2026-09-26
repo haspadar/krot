@@ -14,6 +14,7 @@
     method: GET
     follow_redirects: none
     status_code: [200]
+    return_content: true
   delegate_to: localhost
   run_once: true
   become: false
@@ -21,6 +22,17 @@
   vars:
     ansible_python_interpreter: "{{ ansible_playbook_python }}"
   register: site_search_sitemap
+
+# A 200 alone is not a sitemap: a catch-all route answers 200 with the home
+# page to any path, and the engines would be handed that address.
+- name: Check the answer is a sitemap
+  ansible.builtin.assert:
+    that: site_search_sitemap.content is search('<(urlset|sitemapindex)[\\s>/]')
+    fail_msg: >-
+      {{ site_public_url }}{{ site_sitemap_path }} answers 200 but not with a
+      sitemap; set site_sitemap_path to the site's real one.
+    quiet: true
+  run_once: true
 
 - name: Tell each engine about the site
   ansible.builtin.include_tasks: "{{ engine }}.yml"
