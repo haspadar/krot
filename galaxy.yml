@@ -1,14 +1,15 @@
 ---
 namespace: haspadar
 name: krot
-version: 5.4.0
+version: 5.5.0
 readme: README.md
 authors:
   - haspadar
 description: >-
   Ansible roles for provisioning Ubuntu machines: operator access, firewall with
   an optional Cloudflare-only lock, fail2ban, PHP-FPM, PostgreSQL, nginx, Docker
-  and periodic application jobs.
+  and periodic application jobs. Site roles and modules launch a site: Cloudflare
+  zone and records, registrar nameservers, Origin CA, counters, search engines.
 license:
   - MIT
 tags:
