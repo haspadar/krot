@@ -16,8 +16,8 @@ description:
   - Authenticated origin pulls are not a zone setting and are not handled
     here — Cloudflare keeps them under C(origin_tls_client_auth). The
     similarly named C(tls_client_auth) setting is a different feature and is
-    refused, so it cannot be switched on by mistake for the one that was meant:
-    either, turned on before the origin is ready, cuts the site off.
+    refused, so it cannot be switched on by mistake for the one that was meant.
+    Either of them, turned on before the origin is ready, cuts the site off.
   - The defaults are what a site behind an origin certificate needs. The
     browser cache TTL is 0 ("respect existing headers") on purpose, since
     Cloudflare's default of four hours replaces the origin's Cache-Control

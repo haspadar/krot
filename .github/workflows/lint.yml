@@ -118,6 +118,11 @@ jobs:
       - name: Module unit tests
         run: python3 -m pytest tests/unit -q -p no:cacheprovider
 
+      # DOCUMENTATION is YAML inside a Python string: yamllint skips .py files and
+      # pytest never parses it, so a broken one reaches main unseen — it did once.
+      - name: Module documentation parses
+        run: python3 scripts/module-docs.py
+
       - name: wiki-lint
         run: python3 scripts/wiki-lint.py
 
