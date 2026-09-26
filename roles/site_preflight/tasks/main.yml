@@ -51,6 +51,14 @@
   when: item.needed | bool
   no_log: true
 
+# The cloud steps run once, with this host's variables; a second host in the
+# play would get a machine prepared for a site whose zone was never its own.
+- name: Check the launch runs against one machine
+  ansible.builtin.assert:
+    that: ansible_play_hosts_all | length == 1
+    fail_msg: "A launch is for one machine; this play has {{ ansible_play_hosts_all | join(', ') }}."
+    quiet: true
+
 - name: Reach the machine
   ansible.builtin.ping:
 
@@ -100,6 +108,22 @@
       vars:
         ansible_python_interpreter: "{{ ansible_playbook_python }}"
       register: site_preflight_delegation
+      when: site_preflight_zone.exists
+
+    # On a live zone this is the one step that changes how Cloudflare talks to
+    # the origin: strict TLS against a certificate that is not Origin CA or
+    # public breaks the site. The report names what would change.
+    - name: Zone settings
+      haspadar.krot.cloudflare_zone_settings:
+        zone_id: "{{ site_preflight_zone.zone_id }}"
+        api_token: "{{ site_cloudflare_token }}"
+        api_url: "{{ site_cloudflare_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_settings
       when: site_preflight_zone.exists
 
     - name: Registrar
@@ -199,6 +223,8 @@
       delegation: >-
         {{ 'done' if site_preflight_delegation.delegated | default(false)
            else 'pending' if site_preflight_zone.exists else 'after the zone' }}
+      zone settings to change: >-
+        {{ (site_preflight_settings.changed_settings | default({})) | list | join(', ') or 'none' }}
       certificate: >-
         {{ 'done' if site_preflight_pair.results | selectattr('stat.exists') | selectattr('stat.size', 'gt', 0)
            | list | length == 2 else 'pending' }}
