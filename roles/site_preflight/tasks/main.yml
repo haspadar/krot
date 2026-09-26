@@ -73,6 +73,16 @@
     fail_msg: "A launch is for one machine; this play has {{ ansible_play_hosts_all | join(', ') }}."
     quiet: true
 
+# site_analytics refuses the same, but only after the zone and the records.
+- name: Check GA4 has a time zone to count the site's days in
+  ansible.builtin.assert:
+    that: site_analytics_zone | length > 0
+    fail_msg: >-
+      No time zone for GA4: site_analytics.country is '{{ site_analytics.country | default('') }}',
+      which the roles do not map. Set site_analytics_time_zone.
+    quiet: true
+  when: site_analytics.ga4 | default(false)
+
 - name: Reach the machine
   ansible.builtin.ping:
 
@@ -203,6 +213,23 @@
       register: site_preflight_umami
       when: site_analytics.umami | default(true)
 
+    - name: GA4
+      haspadar.krot.ga4_property:
+        domain: "{{ site_domain }}"
+        account_id: "{{ site_ga4_account_id }}"
+        time_zone: "{{ site_analytics_zone }}"
+        currency_code: "{{ site_analytics_currency }}"
+        service_account: "{{ site_google_service_account }}"
+        token_uri: "{{ site_google_token_uri }}"
+        api_url: "{{ site_ga4_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_ga4
+      when: site_analytics.ga4 | default(false)
+
     - name: Monitor
       haspadar.krot.uptimerobot_monitor:
         url: "{{ site_public_url }}/"
@@ -275,6 +302,13 @@
       # differently from anything else.
       zone settings to change: >-
         {{ dict(changed | zip(changed | map('extract', wanted))) if changed else 'none' }}
+      # A new time zone moves where every past day of the reports begins; named
+      # with what it is now and what it becomes, not only as "changed".
+      ga4: >-
+        {{ 'skipped' if site_preflight_ga4 is skipped
+           else 'pending (new property)' if not site_preflight_ga4.property_id
+           else site_preflight_ga4.drift if site_preflight_ga4.drift
+           else 'pending (web stream)' if site_preflight_ga4.changed else 'done' }}
       certificate: >-
         {{ 'done' if site_preflight_pair.results | selectattr('stat.exists') | selectattr('stat.size', 'gt', 0)
            | list | length == 2 else 'pending' }}

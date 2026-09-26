@@ -3,6 +3,20 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 5.8.0
+
+### Changed
+
+- **`site_launch` stops when `site_machine` names no host, or more than one.** A name that
+  matched nothing skipped the whole play and exited 0 — a launch that did nothing read as one
+  that passed. The check is the playbook's first play, over the hosts `--limit` leaves — a play
+  on localhost would itself be skipped by a limit that leaves localhost out — and runs under
+  `--tags` too.
+- **Preflight reads GA4 and names what would change** — each drifted field of an existing
+  property with its current and new value. A new time zone moves where every past day of the
+  reports begins. `ga4_property` returns it as `drift`. A missing time zone now stops preflight
+  instead of the analytics step, after the zone and the records.
+
 ## 5.7.0
 
 ### Changed

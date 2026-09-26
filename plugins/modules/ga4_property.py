@@ -79,6 +79,14 @@ measurement_id:
   description: The web stream's measurement id (C(G-...)). Empty in check mode when it would be created.
   type: str
   returned: always
+drift:
+  description:
+    - Each field of an existing property that differs, with what it holds and
+      what it gets. A new time zone moves where every past day of the reports
+      begins, so a dry run names it rather than only saying "changed".
+  type: dict
+  returned: always
+  sample: {timeZone: {from: Europe/Minsk, to: Europe/Berlin}}
 """
 
 from ansible.module_utils.basic import AnsibleModule, missing_required_lib
@@ -187,7 +195,7 @@ def main():
 
         if found is None:
             if module.check_mode:
-                module.exit_json(changed=True, property_id="", measurement_id="")
+                module.exit_json(changed=True, property_id="", measurement_id="", drift={})
             call(admin.http, "POST", "/properties", body=dict(
                 parent="accounts/" + p["account_id"], displayName=domain, **wanted))
             changed = True
@@ -197,9 +205,11 @@ def main():
 
         property_id = number(found)
         drift = sorted(field for field, value in wanted.items() if found.get(field) != value)
+        moves = dict((field, {"from": found.get(field), "to": wanted[field]}) for field in drift)
         if drift:
             if module.check_mode:
-                module.exit_json(changed=True, property_id=property_id, measurement_id=admin.measurement(property_id) or "")
+                module.exit_json(changed=True, property_id=property_id,
+                                 measurement_id=admin.measurement(property_id) or "", drift=moves)
             call(admin.http, "PATCH", "/properties/%s" % property_id,
                  query=dict(updateMask=",".join(drift)), body=dict((field, wanted[field]) for field in drift))
             changed = True
@@ -209,7 +219,7 @@ def main():
             # Half-created: the property exists, its stream does not. Finishing
             # it here is what lets a rerun heal an interrupted launch.
             if module.check_mode:
-                module.exit_json(changed=True, property_id=property_id, measurement_id="")
+                module.exit_json(changed=True, property_id=property_id, measurement_id="", drift=moves)
             admin.add_stream(property_id, domain)
             changed = True
             measurement = admin.measurement(property_id)
@@ -224,7 +234,7 @@ def main():
                 module.fail_json(msg="Analytics accepted but did not keep: %s" % ", ".join(kept),
                                  changed=changed, property_id=property_id, measurement_id=measurement)
 
-        module.exit_json(changed=changed, property_id=property_id, measurement_id=measurement)
+        module.exit_json(changed=changed, property_id=property_id, measurement_id=measurement, drift=moves)
     except (Unreachable, Refused) as error:
         module.fail_json(msg=str(error), changed=changed)
 
