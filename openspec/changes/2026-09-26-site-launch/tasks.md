@@ -1,0 +1,66 @@
+# Задачи
+
+Цепочка PR, каждый мержится в `main` отдельно.
+
+## PR 1 — change и модули, нужные обоим проектам
+
+- [x] Подтверждение владельцем: переоткрытие двух решений (см. `proposal.md`)
+- [x] `plugins/module_utils/`: HTTP-клиент с ретраями, различение «нет» и «не смог спросить»
+- [x] Инфраструктура юнитов: pytest, поддельный HTTP-сервер, запуск в job'е `lint`
+- [x] `cloudflare_zone` + юниты
+- [x] `cloudflare_zone_settings` + юниты
+- [x] `cloudflare_origin_cert` + юниты
+- [x] `bing_site` + юниты
+- [x] Двойное ревью до push
+
+### Что нашлось двойным ревью PR 1
+
+Проходы не пересеклись. Codex смотрел контракт с настоящими API, свой агент — механику:
+
+- **POST повторялся после неясного сбоя** (Codex). Ответ потерян, а сертификат или зона уже
+  созданы — повтор делал второй. Теперь повторяются только GET/PUT/PATCH/DELETE; сбой POST — отказ
+  «исход неизвестен», следующий прогон сперва смотрит. Подделка научилась «записать и ответить 502»;
+- **`tls_client_auth` — не Authenticated Origin Pulls** (Codex). AOP живёт на
+  `origin_tls_client_auth`, а зонная настройка с похожим именем — другая функция. Модуль
+  настроек её теперь отвергает, AOP не трогает вовсе; неизвестное имя настройки — отказ до записи;
+- **`certificate: null` при перечитывании** давал трейсбек вместо отказа (агент);
+- **429 без `Retry-After`** (агент) — ждём, сколько просит сервер, но не дольше минуты;
+- **настройки читались по одной** (агент) — теперь одним запросом.
+
+Отклонено: общий `try/except` трёх модулей в module_utils — три строки, а вынос спрятал бы,
+что именно ловит модуль.
+
+## PR 2 — остальные модули
+
+- [ ] `dynadot_ns` + юниты (включая проверку делегирования по DoH)
+- [ ] `umami_website` + юниты
+- [ ] `ga4_property` + юниты (часовой пояс из страны, валюта — параметр)
+- [ ] `uptimerobot_monitor` + юниты
+- [ ] `gsc_site` + юниты
+- [ ] `yandex_site` + юниты
+- [ ] `cloudflare_ruleset` + юниты (правила зоны для `site_cloudflare_rules`)
+- [ ] Двойное ревью до push
+
+## PR 3 — роли и molecule
+
+- [ ] `site_preflight`, `site_dns_zone`, `site_domain`, `site_dns_records` (+ `site_cloudflare_rules`)
+- [ ] `site_tls`, `site_database`
+- [ ] `site_analytics`, `site_serve_precheck`, `site_serve_check`, `site_monitor`, `site_search`, `site_check`
+- [ ] Хуки проекта: fill, deploy, verify, open, results_writer; факт `site_launch_results`
+- [ ] Molecule `site_launch`: контейнер-подделка API, `verify.yml` спрашивает подделку, `idempotence`
+- [ ] Двойное ревью до push
+
+## PR 4 — плейбук, вики, релиз
+
+- [ ] `playbooks/site_launch.yml` — пример порядка
+- [ ] Вики: страница про запуск сайта (порядок, переменные, что подключает проект)
+- [ ] Вики: `collection-layout.md` — два набора ролей (машина / сайт), раздел про Terraform
+- [ ] `openspec/ARCHITECTURE.md`, `README.md` — тот же пересмотр
+- [ ] `galaxy.yml`: минорная версия, описание
+- [ ] Двойное ревью до push
+- [ ] Архивация change последним коммитом
+
+## Приёмка
+
+- [ ] `--check` на `tbl-telefon.de`
+- [ ] Живой прогон на `tbl-telefon.de` — только с подтверждения владельца; ok, `changed=0`
