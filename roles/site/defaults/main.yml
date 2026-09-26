@@ -111,8 +111,11 @@ site_google_token_uri: https://oauth2.googleapis.com/token
 
 site_monitor:
   enabled: false
-  # A word that must be on the home page, case as written. Empty: HTTP only.
+  # A word that must be on the watched page, case as written. Empty: HTTP only.
   keyword: ""
+  # The page the keyword monitor watches: busel's is a profile page (profil/,
+  # profiel/, begleitung/ …), where losing the feed shows first.
+  path: /
 site_uptimerobot_api_url: https://api.uptimerobot.com/v3
 
 # --- Search -------------------------------------------------------------------

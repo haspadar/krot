@@ -87,7 +87,7 @@ provisioner:
 
         site_ga4_account_id: "301144"
         site_analytics: {umami: true, ga4: true, country: de}
-        site_monitor: {enabled: true, keyword: Anzeigen}
+        site_monitor: {enabled: true, keyword: Anzeigen, path: /profil/}
         site_search_console_owners: [operator@krot-launch.de]
         site_search_wait_delay: 1
         # One setting of the project's own over the base: verify.yml checks the
