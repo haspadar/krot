@@ -27,6 +27,25 @@
 # the deploy and the vhost check after it; the project's own verification before
 # the site is opened; monitoring and search after it is.
 
+# Before the launch, on the control machine: a name that matches no host would
+# otherwise skip the whole play and exit 0 — a launch that did nothing reads as
+# one that passed. site_preflight catches several hosts, but with none it never
+# runs at all.
+- name: Check the launch names one machine
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Resolve site_machine against the inventory
+      ansible.builtin.assert:
+        that: query('ansible.builtin.inventory_hostnames', site_machine | default('all')) | length == 1
+        fail_msg: >-
+          site_machine is '{{ site_machine | default('') }}', which names
+          {{ query('ansible.builtin.inventory_hostnames', site_machine | default('all')) | length }}
+          host(s) of this inventory; a launch is for exactly one. Pass -e site_machine=<host>.
+        quiet: true
+      # Also under --tags: a run narrowed to some steps is still one machine's.
+      tags: [always]
+
 - name: Launch a site
   hosts: "{{ site_machine | default('all') }}"
   become: true
