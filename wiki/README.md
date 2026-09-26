@@ -2,7 +2,7 @@
 kind: guide
 title: Вики Krot
 owner: haspadar
-verified: 2026-08-17
+verified: 2026-09-26
 roles: []
 ---
 
@@ -44,6 +44,7 @@ Ansible-коллекция `haspadar.krot` — переносимые роли, 
 | Runbook | Статус |
 |---|---|
 | [Поднять машину с нуля](runbooks/provision-a-machine.md) | рабочий порядок |
+| [Запустить сайт](runbooks/launch-a-site.md) | от купленного домена до sitemap у поисковиков; что подключает проект |
 
 ## Справочники
 
