@@ -1,0 +1,133 @@
+---
+# The variables every site_* role reads, in one place. The role is called just
+# "site" so that its name is the prefix they all carry. Each site role depends on
+# this one, so a default is written once: copies in eleven defaults files would
+# drift one at a time, and a role reading its own stale copy fails no test.
+#
+# The roles know ONE site — the one named here — and nothing about whose it is.
+# Project steps (fill, deploy, verify, open, writing the ids back) come in as the
+# project's own task files, listed at the end.
+
+# --- The site -----------------------------------------------------------------
+
+# The registered domain, without www.
+site_domain: ""
+
+# The machine's address. It goes into proxied A records only, so Cloudflare
+# never publishes it — see site_dns_records.
+site_origin_ip: ""
+
+# Where the site is asked for from outside. Tests point these at a fake; in
+# production they are the site itself.
+site_public_url: "https://{{ site_domain }}"
+site_public_www_url: "https://www.{{ site_domain }}"
+
+# --- Secrets ------------------------------------------------------------------
+#
+# Values, never names of vault entries: no role of this collection goes to a
+# password manager (wiki/operations/secrets.md). The consumer's inventory holds
+# the lookup; being lazy, it is evaluated where site_preflight asserts the value
+# is non-empty — so a missing secret stops the launch before anything is created.
+
+site_cloudflare_token: ""
+site_dynadot_key: ""
+site_umami_username: ""
+site_umami_password: ""
+site_google_service_account: ""
+site_yandex_token: ""
+site_bing_key: ""
+site_uptimerobot_key: ""
+
+# --- Cloudflare ---------------------------------------------------------------
+
+# The account the zone lives in. Cloudflare hands out the nameserver pair per
+# account, so a site moved to another account gets another pair.
+site_cloudflare_account_id: ""
+site_cloudflare_api_url: https://api.cloudflare.com/client/v4
+
+# Extra rules for the zone, as cloudflare_ruleset takes them (each with a ref).
+# busel's is the cache rule for photos served by routes.
+site_cloudflare_rules: []
+site_cloudflare_rules_phase: http_request_cache_settings
+
+# --- Registrar ----------------------------------------------------------------
+
+# dynadot, or none for a domain held elsewhere: then site_domain only reports
+# the nameservers to set by hand.
+site_registrar: dynadot
+site_dynadot_api_url: https://api.dynadot.com/api3.json
+
+# Two independent public resolvers over DNS-over-HTTPS; both must answer.
+site_doh_resolvers:
+  - https://dns.google/resolve
+  - https://cloudflare-dns.com/dns-query
+
+# --- Machine ------------------------------------------------------------------
+
+# Where the vhost generators of busel and gudok read the pair and write vhosts.
+site_certificate_dir: /etc/nginx/ssl
+site_vhost_dir: /etc/nginx/sites-enabled
+
+# A directory that must already be on the machine before the deploy — the
+# site's own directory inside the deployed main. Empty skips the precheck.
+site_serve_precheck_path: ""
+
+# --- Database (optional) ------------------------------------------------------
+
+site_database_name: ""
+site_database_owner: ""
+
+# --- Analytics ----------------------------------------------------------------
+
+site_analytics:
+  umami: true
+  ga4: false
+  # Two letters; picks the GA4 time zone unless site_analytics_time_zone is set.
+  country: ""
+site_analytics_time_zone: ""
+site_analytics_currency: EUR
+
+# Umami answers on the machine itself; port and base path are the umami role's
+# own variables, so the number is written in one place.
+site_umami_api_url: "http://127.0.0.1:{{ umami_port | default(3000) }}{{ umami_base_path | default('') }}"
+
+site_ga4_account_id: ""
+site_ga4_api_url: https://analyticsadmin.googleapis.com/v1beta
+site_google_token_uri: https://oauth2.googleapis.com/token
+
+# --- Monitoring (optional) ----------------------------------------------------
+
+site_monitor:
+  enabled: false
+  # A word that must be on the home page, case as written. Empty: HTTP only.
+  keyword: ""
+site_uptimerobot_api_url: https://api.uptimerobot.com/v3
+
+# --- Search -------------------------------------------------------------------
+
+site_search_engines: [google, yandex, bing]
+site_sitemap_path: /sitemap.xml
+# People who should see the Search Console property, besides the account.
+site_search_console_owners: []
+site_google_api_url: https://www.googleapis.com
+site_yandex_api_url: https://api.webmaster.yandex.net/v4
+site_bing_api_url: https://ssl.bing.com/webmaster/api.svc/json
+
+# How long to wait for an engine to see a DNS record: attempts x seconds.
+site_search_wait_attempts: 6
+site_search_wait_delay: 20
+
+# --- Project ------------------------------------------------------------------
+
+# Names (not values) that must be in the project's env file on the machine.
+site_env_file: ""
+site_env_required: []
+
+# The project's own task files. Each answers "already done?" itself, changes
+# nothing under --check, and runs wherever it chooses (delegate_to: localhost
+# included). Empty skips the step.
+site_project_fill: ""
+site_project_deploy: ""
+site_project_verify: ""
+site_project_open: ""
+site_results_writer: ""

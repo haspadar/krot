@@ -1,0 +1,40 @@
+---
+# Points the domain at the zone's nameservers. Runs after site_dns_zone, whose
+# answer is the only place the pair comes from.
+
+- name: Stop when there is no zone to delegate to
+  ansible.builtin.meta: end_role
+  when: not (site_dns_zone_found.exists | default(false))
+
+- name: Delegate at Dynadot
+  when: site_registrar == 'dynadot'
+  block:
+    - name: Point the domain at the zone's nameservers
+      haspadar.krot.dynadot_ns:
+        domain: "{{ site_domain }}"
+        nameservers: "{{ site_dns_zone_found.name_servers }}"
+        resolvers: "{{ site_doh_resolvers }}"
+        api_key: "{{ site_dynadot_key }}"
+        api_url: "{{ site_dynadot_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_domain_delegation
+
+    # Not a failure: a domain bought elsewhere is delegated by hand, and the
+    # next step waits for the delegation whichever way it is made.
+    - name: Say where to set the nameservers when Dynadot does not hold the domain
+      ansible.builtin.debug:
+        msg: >-
+          {{ site_domain }} is not in this Dynadot account. Set its nameservers
+          at the registrar that holds it: {{ site_dns_zone_found.name_servers | join(', ') }}
+      when: not (site_domain_delegation.registrar_holds | default(true))
+
+- name: Say which nameservers to set by hand
+  ansible.builtin.debug:
+    msg: >-
+      {{ site_domain }} has no registrar this collection drives. Set its
+      nameservers by hand: {{ site_dns_zone_found.name_servers | join(', ') }}
+  when: site_registrar == 'none'

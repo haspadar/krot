@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    Defaults shared by the site_* roles. Has no tasks: every site role depends
+    on it so that each variable has one default.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - web
+
+dependencies: []

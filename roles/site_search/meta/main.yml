@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    Proves the site to Google, Yandex and Bing and submits its sitemap, served without auth.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - web
+
+dependencies:
+  - role: haspadar.krot.site

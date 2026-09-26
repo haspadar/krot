@@ -1,0 +1,22 @@
+---
+# BEFORE the deploy: the site's directory must already be in the main the
+# machine deploys. Deploying a main that does not have the site yet is a green
+# deploy that did nothing for it — and after the deploy this check can no
+# longer save anything.
+
+- name: Skip when the project names no directory to look for
+  ansible.builtin.meta: end_role
+  when: site_serve_precheck_path | length == 0
+
+- name: Look for the site's directory on the machine
+  ansible.builtin.stat:
+    path: "{{ site_serve_precheck_path }}"
+  register: site_serve_precheck_found
+
+- name: Stop until the site is merged
+  ansible.builtin.assert:
+    that: site_serve_precheck_found.stat.isdir | default(false)
+    fail_msg: >-
+      {{ site_serve_precheck_path }} is not on the machine: {{ site_domain }} is
+      not in the main being deployed yet. Merge the site first, then run again.
+    quiet: true

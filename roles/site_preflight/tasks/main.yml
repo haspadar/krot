@@ -1,0 +1,215 @@
+---
+# Reads everything the launch will need and writes nothing. It exists because of
+# busel/tsbelgie: with no Cloudflare token for search, that launch created the
+# zone, the certificate and the database before failing on the very last step.
+# Every missing name, secret or credential stops the launch here instead.
+#
+# Every module below runs in check mode; each one's "changed" is read as
+# "this step is still to do".
+
+- name: Check the site is named and the choices are known
+  ansible.builtin.assert:
+    that:
+      - site_domain | length > 0
+      - site_origin_ip | length > 0
+      - site_registrar in ['dynadot', 'none']
+      - site_search_engines | difference(['google', 'yandex', 'bing']) | length == 0
+    fail_msg: >-
+      site_domain and site_origin_ip must be set; site_registrar is dynadot or
+      none; engines are google, yandex, bing.
+    quiet: true
+
+# The consumer's inventory holds the lookups; this is where they are evaluated,
+# so an entry missing from the vault stops the launch before its first write.
+- name: Check every secret this launch needs is there
+  ansible.builtin.assert:
+    that: item.value | length > 0
+    fail_msg: "{{ item.name }} is empty, and this launch needs it."
+    quiet: true
+  loop:
+    - {name: site_cloudflare_token, value: "{{ site_cloudflare_token }}", needed: true}
+    - {name: site_dynadot_key, value: "{{ site_dynadot_key }}", needed: "{{ site_registrar == 'dynadot' }}"}
+    - name: site_umami_username
+      value: "{{ site_umami_username }}"
+      needed: "{{ site_analytics.umami | default(true) }}"
+    - name: site_umami_password
+      value: "{{ site_umami_password }}"
+      needed: "{{ site_analytics.umami | default(true) }}"
+    - name: site_google_service_account
+      value: "{{ site_google_service_account }}"
+      needed: "{{ (site_analytics.ga4 | default(false)) or 'google' in site_search_engines }}"
+    - name: site_ga4_account_id
+      value: "{{ site_ga4_account_id }}"
+      needed: "{{ site_analytics.ga4 | default(false) }}"
+    - {name: site_yandex_token, value: "{{ site_yandex_token }}", needed: "{{ 'yandex' in site_search_engines }}"}
+    - {name: site_bing_key, value: "{{ site_bing_key }}", needed: "{{ 'bing' in site_search_engines }}"}
+    - name: site_uptimerobot_key
+      value: "{{ site_uptimerobot_key }}"
+      needed: "{{ site_monitor.enabled | default(false) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: item.needed | bool
+  no_log: true
+
+- name: Reach the machine
+  ansible.builtin.ping:
+
+# Names only: awk prints what is left of each "=", so no value leaves the
+# machine or reaches the log.
+- name: Read the names in the project's env file
+  ansible.builtin.command:
+    cmd: awk -F= '/^[A-Za-z_][A-Za-z0-9_]*=/ { print $1 }' {{ site_env_file }}
+  become: true
+  check_mode: false
+  changed_when: false
+  register: site_preflight_env
+  when: site_env_required | length > 0
+
+- name: Check the project's env file has every name it needs
+  ansible.builtin.assert:
+    that: site_env_required | difference(site_preflight_env.stdout_lines) | length == 0
+    fail_msg: >-
+      {{ site_env_file }} is missing {{ site_env_required | difference(site_preflight_env.stdout_lines) | join(', ') }}.
+    quiet: true
+  when: site_env_required | length > 0
+
+- name: Read the state of every step, writing nothing
+  check_mode: true
+  block:
+    - name: Zone
+      haspadar.krot.cloudflare_zone:
+        domain: "{{ site_domain }}"
+        account_id: "{{ site_cloudflare_account_id | default(omit, true) }}"
+        api_token: "{{ site_cloudflare_token }}"
+        api_url: "{{ site_cloudflare_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_zone
+
+    - name: Delegation
+      haspadar.krot.dns_delegation:
+        domain: "{{ site_domain }}"
+        nameservers: "{{ site_preflight_zone.name_servers }}"
+        resolvers: "{{ site_doh_resolvers }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_delegation
+      when: site_preflight_zone.exists
+
+    - name: Registrar
+      haspadar.krot.dynadot_ns:
+        domain: "{{ site_domain }}"
+        nameservers: "{{ site_preflight_zone.name_servers }}"
+        resolvers: "{{ site_doh_resolvers }}"
+        api_key: "{{ site_dynadot_key }}"
+        api_url: "{{ site_dynadot_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_registrar
+      when:
+        - site_registrar == 'dynadot'
+        - site_preflight_zone.exists
+
+    - name: Certificate pair
+      ansible.builtin.stat:
+        path: "{{ site_certificate_dir }}/{{ site_domain }}.{{ item }}"
+      loop: [pem, key]
+      register: site_preflight_pair
+
+    - name: Umami
+      haspadar.krot.umami_website:
+        domain: "{{ site_domain }}"
+        username: "{{ site_umami_username }}"
+        password: "{{ site_umami_password }}"
+        api_url: "{{ site_umami_api_url }}"
+      register: site_preflight_umami
+      when: site_analytics.umami | default(true)
+
+    - name: Monitor
+      haspadar.krot.uptimerobot_monitor:
+        url: "{{ site_public_url }}/"
+        friendly_name: "{{ site_domain }}"
+        type: http
+        page_check: false
+        api_key: "{{ site_uptimerobot_key }}"
+        api_url: "{{ site_uptimerobot_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_monitor
+      when: site_monitor.enabled | default(false)
+
+    - name: Google
+      haspadar.krot.gsc_site:
+        domain: "{{ site_domain }}"
+        service_account: "{{ site_google_service_account }}"
+        token_uri: "{{ site_google_token_uri }}"
+        api_url: "{{ site_google_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_google
+      when: "'google' in site_search_engines"
+
+    - name: Yandex
+      haspadar.krot.yandex_site:
+        domain: "{{ site_domain }}"
+        wait_attempts: 1
+        oauth_token: "{{ site_yandex_token }}"
+        api_url: "{{ site_yandex_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_yandex
+      when: "'yandex' in site_search_engines"
+
+    - name: Bing
+      haspadar.krot.bing_site:
+        domain: "{{ site_domain }}"
+        wait_attempts: 1
+        api_key: "{{ site_bing_key }}"
+        api_url: "{{ site_bing_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_bing
+      when: "'bing' in site_search_engines"
+
+- name: Report what is done and what the launch will do
+  ansible.builtin.debug:
+    msg:
+      zone: "{{ 'done (' ~ site_preflight_zone.status ~ ')' if site_preflight_zone.exists else 'pending' }}"
+      delegation: >-
+        {{ 'done' if site_preflight_delegation.delegated | default(false)
+           else 'pending' if site_preflight_zone.exists else 'after the zone' }}
+      certificate: >-
+        {{ 'done' if site_preflight_pair.results | selectattr('stat.exists') | selectattr('stat.size', 'gt', 0)
+           | list | length == 2 else 'pending' }}
+      umami: >-
+        {{ 'skipped' if site_preflight_umami is skipped
+           else 'pending' if site_preflight_umami.changed else 'done' }}
+      monitor: >-
+        {{ 'skipped' if site_preflight_monitor is skipped
+           else 'pending' if site_preflight_monitor.changed else 'done' }}
+      # true: verified already; false: the launch will verify; skipped: not asked for.
+      verified:
+        google: "{{ site_preflight_google.verified | default('skipped') }}"
+        yandex: "{{ site_preflight_yandex.verified | default('skipped') }}"
+        bing: "{{ site_preflight_bing.verified | default('skipped') }}"

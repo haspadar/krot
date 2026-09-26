@@ -1,0 +1,29 @@
+---
+# The sitemap is asked for as a search engine would — no auth, from outside —
+# BEFORE any engine is told about it. roksasex.pl handed Google a sitemap that
+# answered 401 from behind basic auth, and within the hour the submission was
+# marked failed; an engine remembers that longer than it takes to fix.
+
+- name: Stop when there is no zone to put proofs into (check mode on a new site)
+  ansible.builtin.meta: end_role
+  when: not (site_dns_zone_found.exists | default(false))
+
+- name: Fetch the sitemap the way a search engine will
+  ansible.builtin.uri:
+    url: "{{ site_public_url }}{{ site_sitemap_path }}"
+    method: GET
+    follow_redirects: none
+    status_code: [200]
+  delegate_to: localhost
+  run_once: true
+  become: false
+  check_mode: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  register: site_search_sitemap
+
+- name: Tell each engine about the site
+  ansible.builtin.include_tasks: "{{ engine }}.yml"
+  loop: "{{ site_search_engines }}"
+  loop_control:
+    loop_var: engine

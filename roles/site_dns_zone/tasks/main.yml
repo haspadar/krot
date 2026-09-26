@@ -1,0 +1,25 @@
+---
+# First of the DNS steps, and first on purpose: Cloudflare hands out the
+# nameserver pair per account when the zone is made, so the registrar cannot be
+# told where to delegate until the zone exists.
+
+- name: Find or create the zone
+  haspadar.krot.cloudflare_zone:
+    domain: "{{ site_domain }}"
+    account_id: "{{ site_cloudflare_account_id | default(omit, true) }}"
+    api_token: "{{ site_cloudflare_token }}"
+    api_url: "{{ site_cloudflare_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  # Registered facts outlive the role: the later DNS, TLS and search steps
+  # read the zone from here.
+  register: site_dns_zone_found
+
+- name: Report the nameservers Cloudflare gave the zone
+  ansible.builtin.debug:
+    msg: >-
+      {{ site_domain }}: zone {{ site_dns_zone_found.status | default('not created yet (check mode)') }},
+      nameservers {{ site_dns_zone_found.name_servers | default([]) | join(', ') or 'not known yet' }}
