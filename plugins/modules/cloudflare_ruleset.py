@@ -20,6 +20,12 @@ description:
   - The ruleset is read at its phase address. Cloudflare answers 404 there for
     a zone that never had one, and only then does the module create it — with
     its own rules, in one write.
+  - A rule another tool already made word for word — same fields, only a ref
+    Cloudflare assigned itself — counts as this module's and is left as it is.
+    busel created its cache rule that way on every zone; without this the
+    module would add a second, identical rule beside it. Only an identical
+    rule is taken; one that differs stays someone else's, and this module's
+    own is added.
   - A rule compares by the fields given only. Cloudflare adds an id, a version
     and a timestamp to every rule; requiring those to match would rewrite a
     correct rule on every run.
@@ -114,6 +120,43 @@ def by_ref(ruleset):
     return dict((r.get("ref"), r) for r in rules if isinstance(r, dict) and r.get("ref"))
 
 
+def bare(rule):
+    """A rule without its ref: what a rule another tool made is compared by."""
+    return dict((key, value) for key, value in rule.items() if key != "ref")
+
+
+# What Cloudflare adds to every rule by itself; not part of what a rule does.
+SERVER_FIELDS = ("id", "ref", "version", "last_updated")
+
+
+def same(existing, rule):
+    """Whether a rule someone else made does exactly what this one asks: every
+    field equal, none extra — a rule carrying one more action parameter does
+    more than asked and stays theirs. Enabled unless it says otherwise."""
+    theirs = dict((k, v) for k, v in existing.items() if k not in SERVER_FIELDS)
+    ours = bare(rule)
+    return theirs.pop("enabled", True) == ours.pop("enabled", True) and theirs == ours
+
+
+def taken(ruleset, wanted):
+    """This module's rules by ref, counting rules another tool made word for word."""
+    held = by_ref(ruleset)
+    mine = set(rule["ref"] for rule in wanted)
+    # One foreign rule answers for one of ours: two rules asked alike would
+    # otherwise both settle on it, and the second would never be made.
+    claimed = set()
+    for rule in wanted:
+        if rule["ref"] in held:
+            continue
+        for existing in (ruleset or {}).get("rules") or []:
+            if (isinstance(existing, dict) and existing.get("ref") not in mine
+                    and id(existing) not in claimed and same(existing, rule)):
+                held[rule["ref"]] = existing
+                claimed.add(id(existing))
+                break
+    return held
+
+
 def main():
     module = AnsibleModule(
         argument_spec=dict(
@@ -136,8 +179,10 @@ def main():
     api = Cloudflare(module.params["api_token"], module.params["api_url"])
     try:
         ruleset = entrypoint(api, zone, phase)
-        held = by_ref(ruleset)
-        differing = [rule["ref"] for rule in wanted if not holds(held.get(rule["ref"]), rule)]
+        held = taken(ruleset, wanted)
+        # Without the ref: an own rule was found by it, and a taken one carries
+        # the ref Cloudflare gave it, which comparing would PATCH away.
+        differing = [rule["ref"] for rule in wanted if not holds(held.get(rule["ref"]), bare(rule))]
         if module.check_mode or not differing:
             module.exit_json(changed=bool(differing), changed_refs=differing)
 
@@ -158,7 +203,8 @@ def main():
                     api.call("POST", base, body=rule)
 
         after = entrypoint(api, zone, phase)
-        kept = [rule["ref"] for rule in wanted if not holds(by_ref(after).get(rule["ref"]), rule)]
+        now = taken(after, wanted)
+        kept = [rule["ref"] for rule in wanted if not holds(now.get(rule["ref"]), bare(rule))]
         remaining = set(r.get("id") for r in (after or {}).get("rules") or [])
         lost = sorted(i for i in others if i not in remaining)
         if kept or lost:

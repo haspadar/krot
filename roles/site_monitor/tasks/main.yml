@@ -3,6 +3,10 @@
 # together: "<domain>" answers at all, "<domain> (Profile)" still carries its
 # word. The second catches what the first cannot — a site answering 200 with
 # nothing left on it.
+#
+# The word is looked for on the watched page before the monitor is made, by the
+# module itself: a keyword that is not there would alert from the first check,
+# and the monitor's type cannot be changed later without making it anew.
 
 - name: Skip when the site is not watched
   ansible.builtin.meta: end_role
@@ -23,7 +27,8 @@
 
 - name: Watch the site keep its word
   haspadar.krot.uptimerobot_monitor:
-    url: "{{ site_public_url }}/"
+    # A dict given in the inventory replaces the default whole, hence the default here.
+    url: "{{ site_public_url }}{{ site_monitor.path | default('/') }}"
     friendly_name: "{{ site_domain }} (Profile)"
     type: keyword
     keyword: "{{ site_monitor.keyword }}"

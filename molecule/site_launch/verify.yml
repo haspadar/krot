@@ -150,6 +150,9 @@
           - >-
             (state.monitors | selectattr('friendlyName', 'equalto', domain + ' (Profile)') | first).keywordValue
             == 'Anzeigen'
+          - >-
+            (state.monitors | selectattr('friendlyName', 'equalto', domain + ' (Profile)') | first).url
+            is search('/profil/$')
         quiet: true
 
     - name: Find the site's database

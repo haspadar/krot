@@ -1,7 +1,9 @@
 from fakes.uptimerobot import KEY, FakePage, FakeUptimeRobot
 
 
-def args(server, name, url="https://example.invalid/", **extra):
+def args(server, name, url=None, **extra):
+    # The address a seeded monitor already watches, unless a test moves it.
+    url = url or "https://%s/" % name.split(" ")[0]
     return dict(url=url, friendly_name=name, api_key=KEY, api_url=server.url, **extra)
 
 
@@ -149,6 +151,21 @@ def test_changed_keyword_is_patched_in_place(run, serve):
     page = serve(FakePage("Profile"))
     run("uptimerobot_monitor", keyword_args(serve(robot), page, "neuwort.de (Profile)", "Profile"))
     assert (old["id"], old["keywordValue"]) == (robot.monitors[0]["id"], "Profile")
+
+
+def test_monitor_on_another_page_is_moved(run, serve):
+    robot = FakeUptimeRobot()
+    watched = robot.add_monitor("umzug.de")
+    run("uptimerobot_monitor", args(serve(robot), "umzug.de", url="https://umzug.de/profil/"))
+    assert watched["url"] == "https://umzug.de/profil/"
+
+
+def test_moved_keyword_monitor_looks_for_the_word_on_the_new_page(run, serve):
+    robot = FakeUptimeRobot()
+    robot.add_monitor("seitenwechsel.de (Profile)", type_="KEYWORD", keyword="Anzeigen")
+    page = serve(FakePage("nothing to see"))
+    result = run("uptimerobot_monitor", keyword_args(serve(robot), page, "seitenwechsel.de (Profile)", "Anzeigen"))
+    assert result["failed"] is True
 
 
 def test_monitor_telling_nobody_gets_the_contacts(run, serve):

@@ -39,6 +39,59 @@ def args(server, zone_id, rules):
     return dict(zone_id=zone_id, rules=rules, api_token=TOKEN, api_url=server.url)
 
 
+# busel's cache rule as Cloudflare holds it: made without a ref of ours, so the
+# ref is one Cloudflare assigned.
+BUSEL_MADE = dict(MEDIA, ref="8d2f41c07a9e4b7c")
+
+
+def test_rule_another_tool_made_word_for_word_is_not_added_twice(run, serve):
+    cloudflare = FakeCloudflareRulesets()
+    zone_id = zone(cloudflare, "uebernommen.de")
+    cloudflare.add_rules(zone_id, PHASE, [BUSEL_MADE])
+    run("cloudflare_ruleset", args(serve(cloudflare), zone_id, [MEDIA]))
+    assert [r["ref"] for r in rules_of(cloudflare, zone_id)] == ["8d2f41c07a9e4b7c"]
+
+
+def test_rule_another_tool_made_word_for_word_reports_unchanged(run, serve):
+    cloudflare = FakeCloudflareRulesets()
+    zone_id = zone(cloudflare, "gleichlaut.de")
+    cloudflare.add_rules(zone_id, PHASE, [BUSEL_MADE])
+    assert run("cloudflare_ruleset", args(serve(cloudflare), zone_id, [MEDIA]), check=True)["changed"] is False
+
+
+def test_rule_another_tool_made_differently_stays_and_ours_is_added(run, serve):
+    cloudflare = FakeCloudflareRulesets()
+    zone_id = zone(cloudflare, "abweichend.de")
+    cloudflare.add_rules(zone_id, PHASE, [dict(BUSEL_MADE, expression='(starts_with(http.request.uri.path, "/media/"))')])
+    run("cloudflare_ruleset", args(serve(cloudflare), zone_id, [MEDIA]))
+    assert [r["ref"] for r in rules_of(cloudflare, zone_id)] == ["8d2f41c07a9e4b7c", "krot_cache_media"]
+
+
+def test_rule_another_tool_made_doing_more_stays_and_ours_is_added(run, serve):
+    cloudflare = FakeCloudflareRulesets()
+    zone_id = zone(cloudflare, "mehrfach.de")
+    more = dict(MEDIA["action_parameters"], browser_ttl={"mode": "override_origin", "default": 86400})
+    cloudflare.add_rules(zone_id, PHASE, [dict(BUSEL_MADE, action_parameters=more)])
+    run("cloudflare_ruleset", args(serve(cloudflare), zone_id, [MEDIA]))
+    assert [r["ref"] for r in rules_of(cloudflare, zone_id)] == ["8d2f41c07a9e4b7c", "krot_cache_media"]
+
+
+def test_disabled_rule_another_tool_made_is_not_taken(run, serve):
+    cloudflare = FakeCloudflareRulesets()
+    zone_id = zone(cloudflare, "abgeschaltet.de")
+    cloudflare.add_rules(zone_id, PHASE, [dict(BUSEL_MADE, enabled=False)])
+    run("cloudflare_ruleset", args(serve(cloudflare), zone_id, [MEDIA]))
+    assert [r["ref"] for r in rules_of(cloudflare, zone_id)] == ["8d2f41c07a9e4b7c", "krot_cache_media"]
+
+
+def test_one_rule_another_tool_made_answers_for_one_of_ours(run, serve):
+    cloudflare = FakeCloudflareRulesets()
+    zone_id = zone(cloudflare, "einzeln.de")
+    cloudflare.add_rules(zone_id, PHASE, [BUSEL_MADE])
+    run("cloudflare_ruleset", args(serve(cloudflare), zone_id, [MEDIA, dict(MEDIA, ref="krot_cache_media_twin")]))
+    assert [r["ref"] for r in rules_of(cloudflare, zone_id)] == ["8d2f41c07a9e4b7c", "krot_cache_media_twin"]
+
+
 def test_creates_the_phase_ruleset_when_the_zone_has_none(run, serve):
     cloudflare = FakeCloudflareRulesets()
     zone_id = zone(cloudflare, "erstregel.de")
