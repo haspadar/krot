@@ -90,6 +90,9 @@ provisioner:
         site_monitor: {enabled: true, keyword: Anzeigen}
         site_search_console_owners: [operator@krot-launch.de]
         site_search_wait_delay: 1
+        # One setting of the project's own over the base: verify.yml checks the
+        # others stayed, which is what laying over rather than replacing means.
+        site_cloudflare_settings: {browser_cache_ttl: 14400}
         site_cloudflare_rules:
           - ref: krot_cache_media
             action: set_cache_settings

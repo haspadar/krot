@@ -45,6 +45,18 @@ site_uptimerobot_key: ""
 site_cloudflare_account_id: ""
 site_cloudflare_api_url: https://api.cloudflare.com/client/v4
 
+# Zone settings: what a site behind an origin certificate needs. The browser
+# cache TTL is 0 ("respect existing headers") because Cloudflare's default of
+# four hours replaces the site's own Cache-Control.
+site_cloudflare_settings_base:
+  ssl: strict
+  always_use_https: "on"
+  browser_cache_ttl: 0
+# The project's own values, laid over the base one by one, so naming one
+# setting never drops the others. gudok keeps browser_cache_ttl at 14400: its
+# pages go out no-cache and nothing it serves reads the TTL.
+site_cloudflare_settings: {}
+
 # Extra rules for the zone, as cloudflare_ruleset takes them (each with a ref).
 # busel's is the cache rule for photos served by routes.
 site_cloudflare_rules: []

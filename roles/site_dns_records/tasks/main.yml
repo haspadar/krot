@@ -54,6 +54,7 @@
 - name: Bring the zone settings to what a site behind an origin certificate needs
   haspadar.krot.cloudflare_zone_settings:
     zone_id: "{{ site_dns_zone_found.zone_id }}"
+    settings: "{{ site_cloudflare_settings_base | combine(site_cloudflare_settings) }}"
     api_token: "{{ site_cloudflare_token }}"
     api_url: "{{ site_cloudflare_api_url }}"
   delegate_to: localhost

@@ -3,6 +3,18 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 5.6.0
+
+### Added
+
+- **`site_cloudflare_settings`** — a project's own zone settings, laid over
+  `site_cloudflare_settings_base` (strict TLS, HTTPS only, browser cache TTL 0) one by one, so
+  naming one setting never drops the others. `ssl` and `always_use_https` cannot be
+  overridden: preflight stops the launch, since a downgrade would read like any other setting.
+  The preflight report now names each setting with the value it would get. gudok keeps the browser cache TTL at 14400: its
+  pages go out `no-cache`, and the dry run on tbl-telefon.de showed that TTL as the only
+  difference from the roles' base.
+
 ## 5.5.0
 
 ### Added
