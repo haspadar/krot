@@ -138,6 +138,12 @@ class FakeGoogle:
             self._stream(number, domain)
         return number
 
+    def add_app_stream(self, number):
+        """An Android stream: a stream, but no web one, and it has no measurement id."""
+        self.streams[number].insert(0, {"name": "properties/%s/dataStreams/%d" % (number, next(self.numbers)),
+                                        "type": "ANDROID_APP_DATA_STREAM", "displayName": "app",
+                                        "androidAppStreamData": {"packageName": "de.beispiel.app"}})
+
     def _stream(self, number, domain):
         self.streams[number].append({"name": "properties/%s/dataStreams/%d" % (number, next(self.numbers)),
                                      "type": "WEB_DATA_STREAM", "displayName": domain,
@@ -260,7 +266,12 @@ class FakeGoogle:
             return 200, found
         if len(parts) == 3 and parts[2] == "dataStreams" and request.method == "GET":
             streams = self.streams.get(number, [])
-            return 200, ({"dataStreams": streams} if streams else {})
+            start = int(request.query.get("pageToken") or 0)
+            page = streams[start:start + self.page_size]
+            answer = {"dataStreams": page} if page else {}
+            if start + self.page_size < len(streams):
+                answer["nextPageToken"] = str(start + self.page_size)
+            return 200, answer
         if len(parts) == 3 and parts[2] == "dataStreams" and request.method == "POST":
             self._stream(number, request.body["displayName"])
             return 200, self.streams[number][-1]

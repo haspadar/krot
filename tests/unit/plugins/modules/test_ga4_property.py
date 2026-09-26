@@ -152,3 +152,12 @@ def test_unreadable_property_list_is_not_read_as_no_property(run, serve, tokens)
     server.outages = ["html", "html", "html"]
     run("ga4_property", args(server, tokens, "portal.de"))
     assert server.writes() == []
+
+
+def test_web_stream_on_a_later_page_is_not_created_again(run, serve, tokens):
+    google = FakeGoogle()
+    number = google.add_property("seitenweise.de")
+    google.page_size = 1
+    google.add_app_stream(number)
+    run("ga4_property", args(serve(google), tokens, "seitenweise.de"))
+    assert len(google.streams[number]) == 2

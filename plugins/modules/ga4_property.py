@@ -124,17 +124,27 @@ class Admin:
             query = dict(query, pageToken=page)
 
     def measurement(self, property_id):
-        answer = call(self.http, "GET", "/properties/%s/dataStreams" % property_id)
-        if not isinstance(answer, dict):
-            raise Unreachable("Analytics answered the stream list without a body")
-        streams = answer.get("dataStreams", [])
-        if not isinstance(streams, list):
-            raise Unreachable("Analytics answered the stream list without a list")
-        for stream in streams:
-            web = stream.get("webStreamData") if isinstance(stream, dict) else None
-            if isinstance(web, dict) and web.get("measurementId"):
-                return web["measurementId"]
-        return None
+        """The web stream's measurement id, or None when the property has none."""
+        query = dict(pageSize=200)
+        while True:
+            answer = call(self.http, "GET", "/properties/%s/dataStreams" % property_id, query=query)
+            if not isinstance(answer, dict):
+                raise Unreachable("Analytics answered the stream list without a body")
+            streams = answer.get("dataStreams", [])
+            if not isinstance(streams, list):
+                raise Unreachable("Analytics answered the stream list without a list")
+            for stream in streams:
+                web = stream.get("webStreamData") if isinstance(stream, dict) else None
+                if isinstance(web, dict) and web.get("measurementId"):
+                    return web["measurementId"]
+            # Every page, as with properties: "no web stream" is what triggers
+            # creating one, and a web stream behind app streams on a later page
+            # would be answered with a second one — two measurement ids, the
+            # site's traffic split between them.
+            page = answer.get("nextPageToken")
+            if not page:
+                return None
+            query = dict(query, pageToken=page)
 
     def add_stream(self, property_id, domain):
         call(self.http, "POST", "/properties/%s/dataStreams" % property_id, body=dict(
