@@ -125,16 +125,34 @@ def bare(rule):
     return dict((key, value) for key, value in rule.items() if key != "ref")
 
 
+# What Cloudflare adds to every rule by itself; not part of what a rule does.
+SERVER_FIELDS = ("id", "ref", "version", "last_updated")
+
+
+def same(existing, rule):
+    """Whether a rule someone else made does exactly what this one asks: every
+    field equal, none extra — a rule carrying one more action parameter does
+    more than asked and stays theirs. Enabled unless it says otherwise."""
+    theirs = dict((k, v) for k, v in existing.items() if k not in SERVER_FIELDS)
+    ours = bare(rule)
+    return theirs.pop("enabled", True) == ours.pop("enabled", True) and theirs == ours
+
+
 def taken(ruleset, wanted):
     """This module's rules by ref, counting rules another tool made word for word."""
     held = by_ref(ruleset)
     mine = set(rule["ref"] for rule in wanted)
+    # One foreign rule answers for one of ours: two rules asked alike would
+    # otherwise both settle on it, and the second would never be made.
+    claimed = set()
     for rule in wanted:
         if rule["ref"] in held:
             continue
         for existing in (ruleset or {}).get("rules") or []:
-            if isinstance(existing, dict) and existing.get("ref") not in mine and holds(existing, bare(rule)):
+            if (isinstance(existing, dict) and existing.get("ref") not in mine
+                    and id(existing) not in claimed and same(existing, rule)):
                 held[rule["ref"]] = existing
+                claimed.add(id(existing))
                 break
     return held
 
