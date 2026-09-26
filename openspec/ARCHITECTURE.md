@@ -88,7 +88,7 @@ Ansible and Deployer overlap in exactly one place: Ansible creates the `km` user
 | `deploy_keys` | A separate SSH key per private repository + host aliases | all |
 | `deploy` | Runs the project's Deployer from the control machine | all |
 | `cron` | Periodic application jobs as systemd timers; the job list is an inventory variable | all |
-| `site_*` | Launching one site: zone, registrar, TLS, records, database, counters, monitor, search | busel, gudok |
+| `site_*` | Launching one site: zone, registrar, TLS, records, database, counters, monitor, search | busel and gudok, as they move to it |
 
 Two sets: busel — `common + php + postgresql + nginx + firewall + fail2ban` (several sites on one
 machine behind Cloudflare); matilda — `common + docker + firewall + fail2ban` (a bare host for
