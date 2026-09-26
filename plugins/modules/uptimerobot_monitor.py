@@ -94,7 +94,7 @@ monitor_id:
   type: str
   returned: when exists
 actions:
-  description: What was (or in check mode would be) done — created, replaced, keyword, contacts.
+  description: What was (or in check mode would be) done — created, replaced, url, keyword, contacts.
   type: list
   elements: str
   returned: always
@@ -236,8 +236,11 @@ def main():
                     actions=actions)
             actions.append("replaced")
 
+        # A monitor left on another page watches the wrong thing while looking
+        # healthy: moving site_monitor.path must reach UptimeRobot.
+        moved = monitor is not None and "replaced" not in actions and monitor.get("url") != p["url"]
         needs_word = keyword and (
-            monitor is None or "replaced" in actions or monitor.get("keywordValue") != p["keyword"])
+            monitor is None or "replaced" in actions or moved or monitor.get("keywordValue") != p["keyword"])
         if needs_word and p["page_check"] and not page_has(p["url"], p["keyword"]):
             module.fail_json(msg="%s does not carry %r (case-sensitive); the monitor would alert from its first check"
                                  % (p["url"], p["keyword"]), actions=actions)
@@ -245,6 +248,8 @@ def main():
         if monitor is None:
             actions.append("created")
         elif "replaced" not in actions:
+            if moved:
+                actions.append("url")
             if keyword and monitor.get("keywordValue") != p["keyword"]:
                 actions.append("keyword")
             if not assigned(monitor):
@@ -269,6 +274,8 @@ def main():
             changed = True
         else:
             patch = {}
+            if "url" in actions:
+                patch["url"] = p["url"]
             if "keyword" in actions:
                 patch.update(keyword_fields())
             if "contacts" in actions:
@@ -280,7 +287,8 @@ def main():
         monitor = robot.monitor(p["friendly_name"])
         if monitor is None:
             module.fail_json(msg="UptimeRobot accepted %s but does not list it" % p["friendly_name"], changed=True, actions=actions)
-        if kind(monitor) != wanted or (keyword and monitor.get("keywordValue") != p["keyword"]):
+        if kind(monitor) != wanted or monitor.get("url") != p["url"] or (
+                keyword and monitor.get("keywordValue") != p["keyword"]):
             module.fail_json(msg="UptimeRobot lists %s other than it was written" % p["friendly_name"], changed=True, actions=actions)
         if "assignedAlertContacts" in monitor and not assigned(monitor):
             module.fail_json(msg="UptimeRobot lists %s with nobody to tell" % p["friendly_name"], changed=True, actions=actions)
