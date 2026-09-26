@@ -116,7 +116,7 @@ def main():
         # Read back by id: the certificate that goes on the machine has to be one
         # Cloudflare holds and will accept from the origin.
         held = api.call("GET", "/certificates/%s" % issued["id"])
-        if not isinstance(held, dict) or held.get("certificate", "").strip() != issued["certificate"].strip():
+        if not isinstance(held, dict) or (held.get("certificate") or "").strip() != issued["certificate"].strip():
             module.fail_json(msg="Certificate %s does not read back as issued" % issued["id"])
         module.exit_json(
             changed=True,

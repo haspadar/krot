@@ -49,11 +49,12 @@ class Cloudflare:
             raise Unreachable("Cloudflare answered the zone lookup without a list")
         return found
 
-    def setting(self, zone_id, name):
-        result = self.call("GET", "/zones/%s/settings/%s" % (zone_id, name))
-        if not isinstance(result, dict) or "value" not in result:
-            raise Unreachable("Cloudflare answered setting %s without a value" % name)
-        return result["value"]
+    def settings(self, zone_id):
+        """Every setting of the zone in one request, as name to value."""
+        result = self.call("GET", "/zones/%s/settings" % zone_id)
+        if not isinstance(result, list):
+            raise Unreachable("Cloudflare answered the zone settings without a list")
+        return dict((item["id"], item.get("value")) for item in result if isinstance(item, dict) and "id" in item)
 
 
 def comparable(value):
@@ -71,4 +72,4 @@ def sendable(value):
     # Cloudflare refuses "0" where it wants 0, and the refusal names a field the
     # caller believes it set.
     text = comparable(value)
-    return int(text) if text.isdigit() else text
+    return int(text) if text.lstrip("-").isdigit() else text

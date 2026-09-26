@@ -13,6 +13,11 @@ short_description: Brings a Cloudflare zone's settings to the given values
 description:
   - Reads every named setting, writes only the ones that differ, and reads them
     back. A write that Cloudflare accepted but did not keep fails the module.
+  - Authenticated origin pulls are not a zone setting and are not handled
+    here — Cloudflare keeps them under C(origin_tls_client_auth). The
+    similarly named C(tls_client_auth) setting is a different feature and is
+    refused, so it cannot be switched on by mistake for the one that was meant:
+    either, turned on before the origin is ready, cuts the site off.
   - The defaults are what a site behind an origin certificate needs. The
     browser cache TTL is 0 ("respect existing headers") on purpose, since
     Cloudflare's default of four hours replaces the origin's Cache-Control
@@ -31,13 +36,6 @@ options:
       ssl: strict
       always_use_https: "on"
       browser_cache_ttl: 0
-  origin_certificate_installed:
-    description:
-      - Must be true for C(tls_client_auth) (authenticated origin pulls) to be
-        turned on. Turned on before the origin holds its certificate, it breaks
-        every request to the site.
-    type: bool
-    default: false
   api_token:
     description: Cloudflare API token with Zone Settings Edit.
     type: str
@@ -85,7 +83,6 @@ def main():
         argument_spec=dict(
             zone_id=dict(type="str", required=True),
             settings=dict(type="dict", default=DEFAULTS),
-            origin_certificate_installed=dict(type="bool", default=False),
             **ARGUMENTS
         ),
         supports_check_mode=True,
@@ -93,22 +90,24 @@ def main():
     zone = module.params["zone_id"]
     wanted = module.params["settings"]
 
-    if comparable(wanted.get("tls_client_auth", "off")) == "on" and not module.params["origin_certificate_installed"]:
-        module.fail_json(msg="tls_client_auth before the origin certificate is installed would cut the site off")
+    if "tls_client_auth" in wanted:
+        module.fail_json(msg="tls_client_auth is not authenticated origin pulls; this module does not set either")
 
     api = Cloudflare(module.params["api_token"], module.params["api_url"])
     try:
-        differing = sorted(
-            name for name, value in wanted.items()
-            if comparable(api.setting(zone, name)) != comparable(value)
-        )
+        held = api.settings(zone)
+        unknown = sorted(set(wanted) - set(held))
+        if unknown:
+            module.fail_json(msg="Cloudflare has no zone setting named %s" % ", ".join(unknown))
+        differing = sorted(name for name, value in wanted.items() if comparable(held[name]) != comparable(value))
         if module.check_mode or not differing:
             module.exit_json(changed=bool(differing), changed_settings=differing)
 
         for name in differing:
             api.call("PATCH", "/zones/%s/settings/%s" % (zone, name), body={"value": sendable(wanted[name])})
 
-        kept = [name for name in differing if comparable(api.setting(zone, name)) != comparable(wanted[name])]
+        held = api.settings(zone)
+        kept = [name for name in differing if comparable(held.get(name)) != comparable(wanted[name])]
         if kept:
             module.fail_json(msg="Cloudflare accepted but did not keep: %s" % ", ".join(kept), changed_settings=differing)
         module.exit_json(changed=True, changed_settings=differing)

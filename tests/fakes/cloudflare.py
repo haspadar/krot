@@ -14,6 +14,10 @@ PAIRS = {
     "acc-gudok": ["cruz.ns.cloudflare.com", "dina.ns.cloudflare.com"],
 }
 
+# Made-up tokens: they exist only between a test and this fake, on 127.0.0.1.
+TOKEN = "cf-token"  # secret-lint: allow — fake token, never leaves the test process
+OTHER_TOKEN = "other-cf-token"  # secret-lint: allow — the fake's side of a token mismatch
+
 DEFAULT_SETTINGS = {"ssl": "full", "always_use_https": "off", "browser_cache_ttl": 14400,
                     "tls_client_auth": "off"}
 
@@ -27,7 +31,7 @@ def refused(status, message, code=1000):
 
 
 class FakeCloudflare:
-    def __init__(self, token="cf-token"):
+    def __init__(self, token=TOKEN):
         self.token = token
         self.zones = []
         self.settings = {}
@@ -65,11 +69,18 @@ class FakeCloudflare:
                 self.zones.remove(zone)
             return ok(zone)
 
+        every = re.match(r"^/zones/([^/]+)/settings$", path)
+        if every and method == "GET":
+            if every.group(1) not in self.settings:
+                return refused(404, "Invalid zone identifier", 7003)
+            return ok([{"id": k, "value": v, "editable": True} for k, v in self.settings[every.group(1)].items()])
         setting = re.match(r"^/zones/([^/]+)/settings/([^/]+)$", path)
         if setting:
             zone, name = setting.groups()
             if zone not in self.settings:
                 return refused(404, "Invalid zone identifier", 7003)
+            if name not in DEFAULT_SETTINGS:
+                return refused(400, "Undefined zone setting", 1006)
             if method == "PATCH" and not self.forgets_settings:
                 self.settings[zone][name] = request.body["value"]
             return ok({"id": name, "value": self.settings[zone].get(name), "editable": True})
@@ -88,8 +99,10 @@ class FakeCloudflare:
         if held and method == "GET":
             if held.group(1) not in self.certificates:
                 return refused(404, "Certificate not found", 1001)
-            if self.certificates_drift:
-                return ok(dict(self.certificates[held.group(1)], certificate="-----BEGIN CERTIFICATE-----\nother\n"))
+            # True reads back another certificate, None reads back a null one.
+            if self.certificates_drift is not False:
+                other = "-----BEGIN CERTIFICATE-----\nother\n" if self.certificates_drift else None
+                return ok(dict(self.certificates[held.group(1)], certificate=other))
             return ok(self.certificates[held.group(1)])
 
         return refused(404, "No route for %s %s" % (method, path), 7000)

@@ -6,6 +6,9 @@ record, and SubmitFeed is refused with InvalidParameter for a while after
 verification.
 """
 
+# Made-up key: it exists only between a test and this fake, on 127.0.0.1.
+KEY = "bing-key"  # secret-lint: allow — fake key, never leaves the test process
+
 THROTTLE_USER = 4
 INVALID_PARAMETER = 8
 
@@ -15,7 +18,7 @@ def refused(code, message):
 
 
 class FakeBing:
-    def __init__(self, key="bing-key"):
+    def __init__(self, key=KEY):
         self.key = key
         self.sites = []
         self.feeds = {}

@@ -1,8 +1,8 @@
-from fakes.cloudflare import PAIRS, FakeCloudflare
+from fakes.cloudflare import FakeCloudflare, OTHER_TOKEN, PAIRS, TOKEN
 
 
 def args(server, domain, **extra):
-    return dict(domain=domain, api_token="cf-token", api_url=server.url, **extra)
+    return dict(domain=domain, api_token=TOKEN, api_url=server.url, **extra)
 
 
 def test_finds_existing_zone_without_writing(run, serve):
@@ -82,13 +82,13 @@ def test_one_outage_is_retried(run, serve):
 
 
 def test_wrong_token_is_not_retried(run, serve):
-    server = serve(FakeCloudflare(token="real-token"))
+    server = serve(FakeCloudflare(OTHER_TOKEN))
     run("cloudflare_zone", args(server, "fremd.de"))
     assert len(server.requests) == 1
 
 
 def test_wrong_token_fails_with_cloudflares_reason(run, serve):
-    result = run("cloudflare_zone", args(serve(FakeCloudflare(token="real-token")), "fremd.de"))
+    result = run("cloudflare_zone", args(serve(FakeCloudflare(OTHER_TOKEN)), "fremd.de"))
     assert "Authentication error" in result["msg"]
 
 
@@ -111,3 +111,24 @@ def test_zone_accepted_but_not_listed_fails(run, serve):
     cloudflare = FakeCloudflare()
     cloudflare.hides_new_zones = True
     assert run("cloudflare_zone", args(serve(cloudflare), "verschwunden.de"))["failed"] is True
+
+
+def test_creation_whose_answer_was_lost_is_not_repeated(run, serve):
+    cloudflare = FakeCloudflare()
+    server = serve(cloudflare)
+    server.outages = [None, "lost"]
+    run("cloudflare_zone", args(server, "antwortweg.de"))
+    assert len(cloudflare.zones) == 1
+
+
+def test_creation_whose_answer_was_lost_fails_as_unknown(run, serve):
+    server = serve(FakeCloudflare())
+    server.outages = [None, "lost"]
+    assert "unknown" in run("cloudflare_zone", args(server, "antwortweg.de"))["msg"]
+
+
+def test_rerun_after_a_lost_answer_finds_the_zone(run, serve):
+    server = serve(FakeCloudflare())
+    server.outages = [None, "lost"]
+    run("cloudflare_zone", args(server, "antwortweg.de"))
+    assert run("cloudflare_zone", args(server, "antwortweg.de"))["changed"] is False

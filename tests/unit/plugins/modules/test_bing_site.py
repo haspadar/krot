@@ -1,8 +1,8 @@
-from fakes.bing import FakeBing
+from fakes.bing import KEY, FakeBing
 
 
 def args(server, domain, **extra):
-    return dict(domain=domain, api_key="bing-key", api_url=server.url, **extra)
+    return dict(domain=domain, api_key=KEY, api_url=server.url, **extra)
 
 
 def test_adds_absent_site(run, serve):
@@ -123,7 +123,7 @@ def test_full_run_twice_is_unchanged_the_second_time(run, serve):
 def test_key_does_not_leak_into_the_failure_message(run, serve):
     server = serve(FakeBing())
     server.outages = ["drop", "drop", "drop"]
-    assert "bing-key" not in run("bing_site", args(server, "geheim.de"))["msg"]
+    assert KEY not in run("bing_site", args(server, "geheim.de"))["msg"]
 
 
 def test_site_list_that_is_not_a_list_is_not_read_as_no_site(run, serve):
@@ -132,3 +132,11 @@ def test_site_list_that_is_not_a_list_is_not_read_as_no_site(run, serve):
     server = serve(bing)
     run("bing_site", args(server, "leereliste.de"))
     assert server.writes() == []
+
+
+def test_add_whose_answer_was_lost_is_not_repeated(run, serve):
+    bing = FakeBing()
+    server = serve(bing)
+    server.outages = [None, "lost"]
+    run("bing_site", args(server, "einmalig.de"))
+    assert len(bing.sites) == 1

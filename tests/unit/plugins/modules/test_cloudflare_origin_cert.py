@@ -1,10 +1,10 @@
-from fakes.cloudflare import FakeCloudflare
+from fakes.cloudflare import FakeCloudflare, TOKEN
 
 CSR = "-----BEGIN CERTIFICATE REQUEST-----\nMIIBfake\n-----END CERTIFICATE REQUEST-----\n"
 
 
 def args(server, domain, csr=CSR):
-    return dict(csr=csr, hostnames=[domain, "*." + domain], api_token="cf-token", api_url=server.url)
+    return dict(csr=csr, hostnames=[domain, "*." + domain], api_token=TOKEN, api_url=server.url)
 
 
 def test_returns_the_certificate_cloudflare_holds(run, serve):
@@ -52,3 +52,17 @@ def test_certificate_that_reads_back_different_fails(run, serve):
     cloudflare = FakeCloudflare()
     cloudflare.certificates_drift = True
     assert "does not read back" in run("cloudflare_origin_cert", args(serve(cloudflare), "abweichung.de"))["msg"]
+
+
+def test_issue_whose_answer_was_lost_is_not_repeated(run, serve):
+    cloudflare = FakeCloudflare()
+    server = serve(cloudflare)
+    server.outages = ["lost"]
+    run("cloudflare_origin_cert", args(server, "einzertifikat.de"))
+    assert len(cloudflare.certificates) == 1
+
+
+def test_certificate_read_back_as_null_fails_cleanly(run, serve):
+    cloudflare = FakeCloudflare()
+    cloudflare.certificates_drift = None
+    assert "does not read back" in run("cloudflare_origin_cert", args(serve(cloudflare), "nullzert.de"))["msg"]
