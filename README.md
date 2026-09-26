@@ -3,8 +3,10 @@
 The `haspadar.krot` Ansible collection — portable roles for provisioning Ubuntu machines.
 A mole (*krot*) digs under the services and fixes the plumbing unseen; hence the name.
 
-Roles know about the **host**, not about the applications on it: project specifics live in its
-`inventory`/`group_vars`, not inside a role.
+Two sets of roles. **Machine roles** know about the host, not about the sites on it. **Site
+roles** (`site_*`) know one site — the one passed in `site_*` variables — but not the project it
+belongs to. Project specifics live in its `inventory`/`group_vars` and its own task files, not
+inside a role.
 
 ## Installation
 
@@ -67,6 +69,7 @@ ansible-playbook bootstrap.yml -u root -k
 | `cron` | Periodic application jobs as systemd timers: output to the journal, exit code visible to `systemctl` |
 | `backup` | Nightly `pg_dump` of every database in the cluster to S3-compatible storage, a monthly restore rehearsal that judges by the data rather than by `pg_restore`'s exit code, and `krot-restore` — the way back, written down rather than retyped from memory |
 | `umami` | The visit counter as a system service: built on the machine, bound to the loopback, its schema migrated on deploy |
+| `site_*` | Launching one site, run in order by the `site_launch` playbook — see below |
 
 Every role is atomic and applicable on its own. All parameters live in
 `roles/<role>/defaults/main.yml`.
@@ -79,11 +82,40 @@ the operator's business, not the machine's.
 
 - **Vhosts for specific sites** — the project generates those itself; the `nginx` role owns only
   the `sites-available`/`sites-enabled` directories and their permissions.
-- **Databases for specific applications** — the `postgresql` role installs the server only.
+- **Databases for specific applications** — the `postgresql` role installs the server only; a
+  site's database comes from the site role `site_database`.
 - **Code deployment** — that is the project's Deployer/CI. There is exactly one overlap: the
   directory where releases are later placed is created with its permissions here — by the `nginx`
   role, from `nginx_deploy_root`. The operator account itself comes from `bootstrap`; the `deploy`
   role creates neither, it only runs the project's Deployer.
+
+## Launching a site
+
+From a bought domain to a sitemap the search engines took, in one playbook the collection ships:
+
+```bash
+ansible-playbook haspadar.krot.site_launch -i <inventory> -e site_machine=<host> --check
+ansible-playbook haspadar.krot.site_launch -i <inventory> -e site_machine=<host>
+```
+
+The order: preflight (reads everything, writes nothing) → Cloudflare zone → nameservers at the
+registrar → Origin CA certificate → records, once two public resolvers see the delegation →
+the site's database → counters (Umami, optionally GA4) → a directory check before the project's
+deploy and a vhost check after it → monitoring → Google, Yandex and Bing → a smoke check from
+outside. A run that stops at the records is waiting for the delegation, not broken: run it again
+later.
+
+Every variable, with its default, is in `roles/site/defaults/main.yml`. Secrets are passed as
+values; the lookup stays in the project's inventory. The project's own steps — fill, deploy,
+verify, open, and writing the counters' ids — are task files passed by absolute path
+(`site_project_fill`, `site_project_deploy`, `site_project_verify`, `site_project_open`,
+`site_results_writer`); under `--check` the writing ones are not called at all.
+
+The cloud modules this needs are in the collection too (`plugins/modules`): `cloudflare_zone`,
+`cloudflare_zone_settings`, `cloudflare_record`, `cloudflare_ruleset`, `cloudflare_origin_cert`,
+`dns_delegation`, `dynadot_ns`, `umami_website`, `ga4_property`, `uptimerobot_monitor`,
+`gsc_site`, `yandex_site`, `bing_site`. What bites and why the order is what it is —
+`wiki/runbooks/launch-a-site.md`.
 
 ## Deployment
 
