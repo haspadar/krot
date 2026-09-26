@@ -1,0 +1,39 @@
+---
+# The Google service account is minted by the fake, so it is fetched on every
+# converge — the idempotence run included — rather than written down anywhere.
+- name: Fetch the fake's Google service account
+  hosts: krot-site
+  gather_facts: false
+  tasks:
+    - name: Ask the fakes for it
+      ansible.builtin.uri:
+        url: http://127.0.0.1:47180/_setup
+        return_content: true
+      delegate_to: localhost
+      become: false
+      check_mode: false
+      register: site_launch_setup
+
+    - name: Hand it to the launch
+      ansible.builtin.set_fact:
+        site_google_service_account: "{{ site_launch_setup.json.service_account }}"
+      no_log: true
+
+# The project's steps, as a project would write them: each answers "already
+# done?" itself and changes nothing under --check.
+- name: Set the project's task files
+  hosts: krot-site
+  gather_facts: false
+  tasks:
+    - name: Point the launch at them
+      ansible.builtin.set_fact:
+        site_project_fill: "{{ playbook_dir }}/project/fill.yml"
+        site_results_writer: "{{ playbook_dir }}/project/write-results.yml"
+        site_project_deploy: "{{ playbook_dir }}/project/deploy.yml"
+        site_project_verify: "{{ playbook_dir }}/project/verify.yml"
+        site_project_open: "{{ playbook_dir }}/project/open.yml"
+
+- name: Launch
+  ansible.builtin.import_playbook: haspadar.krot.site_launch
+  vars:
+    site_machine: krot-site

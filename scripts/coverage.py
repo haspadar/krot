@@ -55,6 +55,15 @@ PLANNED = []
 EXTRA_SCENARIOS = {
     "firewall_cloudflare": "firewall",
     "nginx_auth": "nginx",
+    # A launch is one sequence, and its roles only mean something in order: the
+    # records step needs the zone step's answer, the search step the records'.
+    # So one scenario runs them all, and each role it runs is named here —
+    # site included, as its defaults are what every other one reads.
+    "site_launch": [
+        "site", "site_preflight", "site_dns_zone", "site_domain", "site_dns_records",
+        "site_tls", "site_database", "site_analytics", "site_serve_precheck",
+        "site_serve_check", "site_monitor", "site_search", "site_check",
+    ],
 }
 
 # A ratchet: what has been covered stays covered. Raised by hand, in a commit,
@@ -69,8 +78,8 @@ EXTRA_SCENARIOS = {
 #
 # These two cannot be moved that way. Deleting a scenario, or gutting the roles
 # it covers, drops covered_tasks below the floor; adding tasks anywhere does not.
-MIN_COVERED_ROLES = 10
-MIN_COVERED_TASKS = 176
+MIN_COVERED_ROLES = 23
+MIN_COVERED_TASKS = 256
 
 
 def count_tasks(role: Path) -> int:
@@ -87,7 +96,10 @@ def main() -> int:
         if (ROOT / "molecule").is_dir()
         else set()
     )
-    scenarios = {EXTRA_SCENARIOS.get(name, name) for name in directories}
+    scenarios = set()
+    for name in directories:
+        covered = EXTRA_SCENARIOS.get(name, name)
+        scenarios.update([covered] if isinstance(covered, str) else covered)
 
     rows = [(r.name, count_tasks(r), r.name in scenarios) for r in roles]
     total_tasks = sum(t for _, t, _ in rows)

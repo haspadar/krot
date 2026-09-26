@@ -1,0 +1,117 @@
+---
+# A whole launch against fakes of every service it talks to. The second
+# container serves them all from tests/fakes — the same fakes the modules' unit
+# tests use — wired so that the public resolvers answer what the registrar
+# holds and a zone turns active only once the registrar points at it.
+#
+# Two addresses for the same server, because the launch talks to it from two
+# places: the control machine (every cloud API) through a port published on
+# 127.0.0.1, and the site's machine (Umami, which listens beside the site)
+# over the scenario's network.
+driver:
+  name: docker
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-site
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+    networks:
+      - name: krot-site-net
+
+  - name: krot-site-fakes
+    # The machine's own image rather than a slim Python one: it already carries
+    # python3 and cryptography, which the Google fake needs to check a signed
+    # token, so nothing is installed from the network when the scenario starts.
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: python3 /srv/krot-tests/fakes/launch.py 8080 http://127.0.0.1:47180
+    pre_build_image: true
+    volumes:
+      - "${MOLECULE_PROJECT_DIRECTORY}/tests:/srv/krot-tests:ro"
+    published_ports:
+      - "127.0.0.1:47180:8080"
+    networks:
+      - name: krot-site-net
+
+provisioner:
+  name: ansible
+  env:
+    # The roles call the collection's own modules by their full names, so the
+    # collection has to be importable: prepare.yml links this checkout into
+    # the ephemeral directory as ansible_collections/haspadar/krot. Put in
+    # front of whatever path the run came with, so community.docker and the
+    # rest are still found where they were installed.
+    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_EPHEMERAL_DIRECTORY}/collections:${ANSIBLE_COLLECTIONS_PATH:-${HOME}/.ansible/collections}"  # yamllint disable-line rule:line-length
+  inventory:
+    host_vars:
+      krot-site:
+        site_domain: krot-launch.de
+        site_origin_ip: 203.0.113.7
+        site_public_url: http://127.0.0.1:47180/site
+        site_public_www_url: http://127.0.0.1:47180/site-www
+
+        # Made-up secrets, the ones the fakes expect. They live only between
+        # the control machine and the fake container.
+        site_cloudflare_token: cf-token  # secret-lint: allow — the fake's own token
+        site_dynadot_key: dynadot-key  # secret-lint: allow — the fake's own key
+        site_umami_username: admin
+        site_umami_password: umami-pass  # secret-lint: allow — the fake's own password
+        site_yandex_token: ya-oauth  # secret-lint: allow — the fake's own token
+        site_bing_key: bing-key  # secret-lint: allow — the fake's own key
+        site_uptimerobot_key: ur-key  # secret-lint: allow — the fake's own key
+        # The Google service account is minted by the fake; prepare.yml fetches it.
+
+        site_cloudflare_api_url: http://127.0.0.1:47180/cloudflare
+        site_dynadot_api_url: http://127.0.0.1:47180/dynadot/
+        site_doh_resolvers:
+          - http://127.0.0.1:47180/doh/google/resolve
+          - http://127.0.0.1:47180/doh/cloudflare/dns-query
+        site_umami_api_url: http://krot-site-fakes:8080/umami/counter
+        site_google_token_uri: http://127.0.0.1:47180/google-token/token
+        site_google_api_url: http://127.0.0.1:47180/google
+        site_ga4_api_url: http://127.0.0.1:47180/google
+        site_yandex_api_url: http://127.0.0.1:47180/yandex
+        site_bing_api_url: http://127.0.0.1:47180/bing
+        site_uptimerobot_api_url: http://127.0.0.1:47180/uptimerobot
+
+        site_ga4_account_id: "301144"
+        site_analytics: {umami: true, ga4: true, country: de}
+        site_monitor: {enabled: true, keyword: Anzeigen}
+        site_search_console_owners: [operator@krot-launch.de]
+        site_search_wait_delay: 1
+        site_cloudflare_rules:
+          - ref: krot_cache_media
+            action: set_cache_settings
+            expression: '(starts_with(http.request.uri.path, "/media/"))'
+            description: Cache immutable assets served by routes
+            action_parameters:
+              cache: true
+              edge_ttl: {mode: respect_origin}
+
+        site_database_name: krot_launch
+        site_database_owner: krot_launch
+        site_serve_precheck_path: /var/www/krot-launch/current/sites/krot-launch.de
+        site_env_file: /var/www/krot-launch/shared/.env.local
+        site_env_required: [APP_SECRET, MATILDA_TOKEN]
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible

@@ -1,0 +1,162 @@
+---
+# What the launch left behind, asked of the fakes themselves and of the machine
+# — not of the launch's own report, which is the thing under test.
+- name: Verify
+  hosts: krot-site
+  gather_facts: false
+  vars:
+    domain: krot-launch.de
+    origin: 203.0.113.7
+    yandex_proof: "^yandex-verification: "
+  tasks:
+    - name: Ask the fakes what they hold
+      ansible.builtin.uri:
+        url: http://127.0.0.1:47180/_state
+        return_content: true
+      delegate_to: localhost
+      become: false
+      register: fakes
+
+    - name: Name what they hold
+      ansible.builtin.set_fact:
+        state: "{{ fakes.json }}"
+        zone: "{{ fakes.json.zones | selectattr('name', 'equalto', domain) | list }}"
+        records: "{{ fakes.json.records }}"
+
+    - name: One zone, and the registrar points at its pair
+      ansible.builtin.assert:
+        that:
+          - zone | length == 1
+          - state.registrar[domain] | map('lower') | sort == zone[0].name_servers | sort
+          - zone[0].status == 'active'
+        quiet: true
+
+    - name: Zone settings are what a site behind an origin certificate needs
+      ansible.builtin.assert:
+        that:
+          - state.settings[zone[0].id].ssl == 'strict'
+          - state.settings[zone[0].id].always_use_https == 'on'
+          - state.settings[zone[0].id].browser_cache_ttl | int == 0
+        quiet: true
+
+    - name: The domain and www point at the machine through Cloudflare, once each
+      ansible.builtin.assert:
+        that:
+          - addresses | length == 1
+          - addresses[0].content == origin
+          - addresses[0].proxied
+        quiet: true
+      vars:
+        addresses: "{{ records | selectattr('type', 'equalto', 'A') | selectattr('name', 'equalto', item) | list }}"
+      loop:
+        - "{{ domain }}"
+        - "www.{{ domain }}"
+
+    - name: Each engine's proof is in the zone beside the others
+      ansible.builtin.assert:
+        that:
+          - proofs | selectattr('content', 'search', yandex_proof) | list | length == 1
+          - proofs | rejectattr('content', 'search', yandex_proof) | list | length == 1
+          - bing | length == 1
+          - not (bing[0].proxied | default(false))
+        quiet: true
+      vars:
+        proofs: "{{ records | selectattr('type', 'equalto', 'TXT') | list }}"
+        bing: >-
+          {{ records | selectattr('type', 'equalto', 'CNAME')
+             | selectattr('content', 'equalto', 'verify.bing.com') | list }}
+
+    - name: The project's cache rule is in the zone
+      ansible.builtin.assert:
+        that: rules | selectattr('ref', 'equalto', 'krot_cache_media') | list | length == 1
+        quiet: true
+      vars:
+        rules: "{{ state.rulesets | map(attribute='rules') | flatten }}"
+
+    - name: One origin certificate was issued, for the domain and its wildcard
+      ansible.builtin.assert:
+        that:
+          - state.certificates | length == 1
+          - state.certificates[0].hostnames == [domain, '*.' + domain]
+        quiet: true
+
+    - name: Look at the pair on the machine
+      ansible.builtin.stat:
+        path: "/etc/nginx/ssl/{{ domain }}.{{ item }}"
+      loop: [pem, key]
+      register: pair
+
+    - name: Both halves are there, the key closed to everyone but root
+      ansible.builtin.assert:
+        that:
+          - pair.results | selectattr('stat.exists') | selectattr('stat.size', 'gt', 0) | list | length == 2
+          - pair.results[0].stat.mode == '0644'
+          - pair.results[1].stat.mode == '0600'
+          - pair.results[1].stat.pw_name == 'root'
+        quiet: true
+
+    - name: Umami holds the site once
+      ansible.builtin.assert:
+        that: state.umami | selectattr('domain', 'equalto', domain) | list | length == 1
+        quiet: true
+
+    - name: Google holds the site as its owner, shared, with the sitemap
+      ansible.builtin.assert:
+        that:
+          - "'operator@' + domain in state.google.resources['dns://' + domain]"
+          - state.google.sites['sc-domain:' + domain] == 'siteOwner'
+          - state.google.sitemaps['sc-domain:' + domain] | length == 1
+        quiet: true
+
+    - name: GA4 holds one property with one web stream, counted in the site's own time zone
+      ansible.builtin.assert:
+        that:
+          - state.google.properties | selectattr('displayName', 'equalto', domain) | list | length == 1
+          - (state.google.properties | selectattr('displayName', 'equalto', domain) | first).timeZone == 'Europe/Berlin'
+          - state.google.streams | dict2items | map(attribute='value') | flatten | list | length == 1
+        quiet: true
+
+    - name: Bing holds the site verified, with the sitemap
+      ansible.builtin.assert:
+        that:
+          - >-
+            state.bing.sites | selectattr('Url', 'equalto', 'https://' + domain + '/')
+            | map(attribute='IsVerified') | list == [true]
+          - state.bing.feeds['https://' + domain + '/'] | length == 1
+        quiet: true
+
+    - name: UptimeRobot watches the site twice, telling someone each time
+      ansible.builtin.assert:
+        that:
+          - state.monitors | map(attribute='friendlyName') | sort == [domain, domain + ' (Profile)']
+          - state.monitors | selectattr('assignedAlertContacts') | list | length == 2
+          - >-
+            (state.monitors | selectattr('friendlyName', 'equalto', domain + ' (Profile)') | first).keywordValue
+            == 'Anzeigen'
+        quiet: true
+
+    - name: Find the site's database
+      community.postgresql.postgresql_query:
+        login_db: postgres
+        query: >-
+          SELECT pg_get_userbyid(datdba) AS owner FROM pg_database WHERE datname = 'krot_launch'
+      become: true
+      become_user: postgres
+      register: database
+
+    - name: The database is there, owned by the site's role
+      ansible.builtin.assert:
+        that: "database.query_result == [{'owner': 'krot_launch'}]"
+        quiet: true
+
+    - name: Read what the project's writer received
+      ansible.builtin.slurp:
+        src: /var/www/krot-launch/shared/counters.json
+      register: counters
+
+    - name: The project got both counters' ids
+      ansible.builtin.assert:
+        that:
+          - (counters.content | b64decode | from_json).umami_website_id == (state.umami | first).id
+          - (counters.content | b64decode | from_json).ga4_measurement_id | length > 0
+        quiet: true

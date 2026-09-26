@@ -1,0 +1,9 @@
+---
+# Stands in for the project's opening step (busel: colony:open lifts the basic
+# auth). Idempotent the way the real one must be: opening an open site is a
+# no-op.
+- name: Open the site
+  ansible.builtin.copy:
+    dest: /var/www/krot-launch/shared/opened
+    content: "{{ site_domain }}\n"
+    mode: "0644"

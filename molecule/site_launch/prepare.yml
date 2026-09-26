@@ -1,0 +1,74 @@
+---
+- name: Make the collection importable for the scenario
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Make the namespace directory
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/collections/ansible_collections/haspadar"
+        state: directory
+        mode: "0755"
+
+    # A link rather than an installed copy, so the scenario runs the files in
+    # this checkout — the ones under review — and never a stale build.
+    - name: Link this checkout in as haspadar.krot
+      ansible.builtin.file:
+        src: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+        dest: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/collections/ansible_collections/haspadar/krot"
+        state: link
+
+    - name: Wait for the fakes to answer
+      ansible.builtin.uri:
+        url: http://127.0.0.1:47180/_setup
+      register: site_fakes
+      retries: 30
+      delay: 1
+      until: site_fakes.status == 200
+
+- name: Prepare the machine as a project would have it before a launch
+  hosts: krot-site
+  tasks:
+    - name: Install Postgres and what the roles need beside it
+      ansible.builtin.apt:
+        name:
+          - postgresql
+          - python3-psycopg2
+          - openssl
+        state: present
+        update_cache: true
+
+    - name: Start the cluster
+      ansible.builtin.systemd_service:
+        name: postgresql
+        state: started
+
+    # The project creates the site's role; site_database only creates the
+    # database and refuses an owner that is not there.
+    - name: Create the site's database role
+      community.postgresql.postgresql_user:
+        name: krot_launch
+        login_db: postgres
+      become: true
+      become_user: postgres
+
+    # The site's directory inside the deployed main, which site_serve_precheck
+    # requires before the deploy.
+    - name: Put the site into the deployed main
+      ansible.builtin.file:
+        path: /var/www/krot-launch/current/sites/krot-launch.de
+        state: directory
+        mode: "0755"
+
+    - name: Make the shared directory
+      ansible.builtin.file:
+        path: /var/www/krot-launch/shared
+        state: directory
+        mode: "0755"
+
+    - name: Give the project an env file with the names it needs
+      ansible.builtin.copy:
+        dest: /var/www/krot-launch/shared/.env.local
+        content: |
+          APP_SECRET=molecule-app-secret
+          MATILDA_TOKEN=molecule-matilda-token
+        mode: "0600"

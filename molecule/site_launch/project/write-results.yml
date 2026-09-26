@@ -1,0 +1,8 @@
+---
+# Stands in for the project's writer of the counters' ids. The launch hands
+# them over as site_analytics_results; where they go is the project's decision.
+- name: Write the ids where the application reads them
+  ansible.builtin.copy:
+    dest: /var/www/krot-launch/shared/counters.json
+    content: "{{ site_analytics_results | to_nice_json }}\n"
+    mode: "0644"
