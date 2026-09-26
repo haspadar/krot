@@ -11,8 +11,8 @@ busel или gudok. Юнит-тест модуля покрывает свои �
 | `cloudflare_zone` | get-or-create зоны, возвращает NS и status | В check-mode не создавать ничего (у busel dry-run чуть не создал зону). Аккаунт/токен задаётся на сайт: пара NS выдаётся на аккаунт. |
 | `cloudflare_zone_settings` | ssl=strict, always_use_https=on, browser_cache_ttl=0 | Кеш 4 ч по умолчанию ЗАМЕНЯЕТ Cache-Control origin. strict_origin_pull не включать до установки серта. |
 | `cloudflare_origin_cert` | выпуск Origin CA | Ключ выдаётся один раз. Если оба файла на машине непустые — не выпускать. |
-| `umami_website` | сайт в Umami, возвращает id | Поиск по домену до создания. Способ доступа — один (см. ниже). |
-| `ga4_property` | свойство GA4 (Analytics Admin API) | Часовой пояс из страны сайта (stadtdame резал сутки по Europe/Minsk). Поиск до создания. |
+| `umami_website` | сайт в Umami, возвращает id | Поиск по домену до создания. Способ доступа — один: API на машине (см. ниже). |
+| `ga4_property` | свойство GA4 (Analytics Admin API) | Часовой пояс из страны сайта (stadtdame резал сутки по Europe/Minsk). Валюта — параметр (у busel зашит EUR). Поиск до создания. |
 | `uptimerobot_monitor` | мониторы HTTP и keyword | Keyword регистрозависим, тревога на отсутствие; тип не меняется, только пересоздание; слово проверять на главной до создания. Нет активного alert contact → блок. |
 | `gsc_site` | verify DNS_TXT, sites.add, owners, sitemap | verify: 6×20 с. 400 = ещё не видно, ретрай; 401/403 = не ретраить. Проверять ВЛАДЕНИЕ (siteOwner), а не присутствие; перечитывать 4×3 с. Owners — PUT всего списка вместе с самим SA (`SEARCH_CONSOLE_OWNER`). Sitemap — на каждом прогоне. Нужны три API: Search Console, Site Verification, Web Search Indexing. |
 | `yandex_site` | POST /hosts, TXT, verify, sitemap | verification_uin появляется с задержкой. TXT — строка целиком «yandex-verification: <uin>». IN_PROGRESS опрашивать. Sitemap — в user-added-sitemaps. SITEMAP_ALREADY_ADDED = успех. HOST_NOT_LOADED неделями — норма. |
@@ -26,7 +26,9 @@ Cloudflare}`; устройство запросов Origin CA — из роли 
 
 ## Грабли ролей
 
-- **`site_dns`**: Cloudflare держит зону active и после ухода NS, а A-запись засвечивает origin в
+- **`site_dns_zone` → `site_domain` → `site_dns_records`**: зона создаётся до регистратора, потому
+  что пара NS выдаётся на аккаунт и заранее неизвестна.
+- **`site_dns_records`**: Cloudflare держит зону active и после ухода NS, а A-запись засвечивает origin в
   DNS-истории навсегда. Поэтому условие записи — оба факта: active **и** публичные резолверы
   видят NS Cloudflare.
 - **`site_tls`**: vhost, собранный без сертификата, остаётся без 443/www и сам не
@@ -37,8 +39,13 @@ Cloudflare}`; устройство запросов Origin CA — из роли 
 - **`site_database`**: `createdb -O <роль сайта>`, не от postgres. Наличие — по `pg_database`, а
   не подключением. Роль включена, а имени нет → стоп: иначе сайт тихо делит базу с первым сайтом
   машины. psql — всегда `ON_ERROR_STOP=1`.
-- **`site_serve_check`**: код возврата деплоя не доказательство — деплой бывает зелёным и
-  ничего не делающим. Проверяется vhost в `sites-enabled` и каталог сайта в текущем релизе.
+- **`site_serve_precheck`** (до деплоя): каталог сайта есть в `main` на машине. После деплоя
+  эта проверка уже ничего не спасает.
+- **`site_serve_check`** (после деплоя): vhost в `sites-enabled`. Код возврата деплоя не
+  доказательство — деплой бывает зелёным и ничего не делающим.
+- **`site_cloudflare_rules`**: необязательные правила зоны. У busel — кеширование фото
+  (`Colony/Cloudflare/CacheRule`): без него каждое фото идёт на origin. Фазовый ruleset
+  отвечает 404, пока его нет, — это «ещё нет», а не сбой: сперва список rulesets.
 - **`site_search`**: sitemap сперва запрашивается без авторизации и должен ответить 200. Путь —
   переменная (у gudok скрытый `/sitemap-<токен>.xml`).
 
@@ -46,9 +53,11 @@ Cloudflare}`; устройство запросов Origin CA — из роли 
 
 - **Облачные API** (Dynadot, Cloudflare, GA4, UptimeRobot, GSC, Яндекс, Bing) — на
   control-машине, `delegate_to: localhost`, `run_once`. Токены не уезжают на сервер сайта.
-- **Umami** — на самой машине, запросом к API на `127.0.0.1:<umami_port>`. Тоннель не нужен, в
-  базу Umami никто, кроме Umami, не пишет. Порт — из той же переменной, что у роли `umami`:
-  одно число в одном месте.
+- **Umami** — на самой машине (`delegate_to` на неё), запросом к API на
+  `127.0.0.1:{{ umami_port }}{{ umami_base_path }}` (у busel base path — `/counter`). Тоннель не
+  нужен, в базу Umami никто, кроме Umami, не пишет. Порт и путь — те же переменные, что у роли
+  `umami`: одно число в одном месте; путь проверяется одним запросом до работы. Учётка — запись
+  менеджера секретов. Согласовано с busel и gudok 2026-09-26.
 - **Файлы и база** (`site_tls`, `site_database`, `site_serve_check`) — на машине.
 
 ## Проверка делегирования
@@ -56,6 +65,7 @@ Cloudflare}`; устройство запросов Origin CA — из роли 
 Публичные резолверы спрашиваются по DNS-over-HTTPS (JSON API), двумя независимыми: ответ
 обязан прийти от обоих и совпасть. Это HTTP — значит, подделка в молекуле отвечает и за него,
 а модули не тянут `dnspython`. Пустой ответ или сбой — «не смог спросить», а не «NS не наши».
+Согласовано с busel 2026-09-26.
 
 ## Секреты
 
@@ -88,8 +98,11 @@ site_monitor: {enabled: false, keyword: null}
 site_search_engines: [google, yandex, bing]
 site_sitemap_path: /sitemap-<token>.xml
 site_env_required: [TELEGRAM_BOT_TOKEN, UMAMI_...]
+site_cloudflare_rules: []                # доп. правила зоны, у busel кеш фото
+site_analytics_currency: EUR
 site_project_fill: tasks/fill.yml        # task-файлы проекта, необязательны
 site_project_deploy: tasks/deploy.yml
+site_project_verify: tasks/verify.yml
 site_project_open: tasks/open.yml
 site_results_writer: tasks/write-results.yml
 ```

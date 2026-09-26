@@ -17,17 +17,19 @@
 
 - [ ] `dynadot_ns` + юниты (включая проверку делегирования по DoH)
 - [ ] `umami_website` + юниты
-- [ ] `ga4_property` + юниты
+- [ ] `ga4_property` + юниты (часовой пояс из страны, валюта — параметр)
 - [ ] `uptimerobot_monitor` + юниты
 - [ ] `gsc_site` + юниты
 - [ ] `yandex_site` + юниты
+- [ ] `cloudflare_ruleset` + юниты (правила зоны для `site_cloudflare_rules`)
 - [ ] Двойное ревью до push
 
 ## PR 3 — роли и molecule
 
-- [ ] `site_preflight`, `site_domain`, `site_dns`, `site_tls`, `site_database`
-- [ ] `site_analytics`, `site_serve_check`, `site_monitor`, `site_search`, `site_check`
-- [ ] Подключение task-файлов проекта; факт `site_launch_results`
+- [ ] `site_preflight`, `site_dns_zone`, `site_domain`, `site_dns_records` (+ `site_cloudflare_rules`)
+- [ ] `site_tls`, `site_database`
+- [ ] `site_analytics`, `site_serve_precheck`, `site_serve_check`, `site_monitor`, `site_search`, `site_check`
+- [ ] Хуки проекта: fill, deploy, verify, open, results_writer; факт `site_launch_results`
 - [ ] Molecule `site_launch`: контейнер-подделка API, `verify.yml` спрашивает подделку, `idempotence`
 - [ ] Двойное ревью до push
 
