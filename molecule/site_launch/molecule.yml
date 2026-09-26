@@ -49,8 +49,10 @@ provisioner:
     # collection has to be importable: prepare.yml links this checkout into
     # the ephemeral directory as ansible_collections/haspadar/krot. Put in
     # front of whatever path the run came with, so community.docker and the
-    # rest are still found where they were installed.
-    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_EPHEMERAL_DIRECTORY}/collections:${ANSIBLE_COLLECTIONS_PATH:-${HOME}/.ansible/collections}"  # yamllint disable-line rule:line-length
+    # rest are still found where they were installed. The default holds no
+    # variable of its own: molecule does not expand one nested in ${X:-...},
+    # and CI, which sets no path, got "/.ansible/collections}" instead.
+    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_EPHEMERAL_DIRECTORY}/collections:${HOME}/.ansible/collections:${ANSIBLE_COLLECTIONS_PATH:-/usr/share/ansible/collections}"  # yamllint disable-line rule:line-length
   inventory:
     host_vars:
       krot-site:
