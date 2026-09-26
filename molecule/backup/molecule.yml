@@ -2,7 +2,9 @@
 # Two containers, and the second one is the point: the upload is signed with
 # SigV4 written by hand, and a scenario that stubbed the storage would test
 # everything except the part most likely to be wrong. MinIO speaks the same
-# protocol R2 does, so a signature this scenario accepts is one R2 accepts.
+# protocol R2 does, so a signature it rejects R2 would reject too. Acceptance is
+# strong evidence rather than proof: MinIO is not R2, and nothing here runs
+# against R2 itself.
 driver:
   name: docker
 
@@ -29,9 +31,13 @@ platforms:
     # ("pull access denied", CI 2026-09-23) and then quay.io/minio/minio
     # ("unauthorized", CI 2026-09-26, twice). pgsty/minio is a maintained fork
     # that still publishes multi-arch releases and, like upstream, carries mc,
-    # which prepare.yml and verify.yml run inside this container. A floating tag
-    # is how a scenario starts failing with no change in the repo.
-    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    # which prepare.yml and verify.yml run inside this container.
+    #
+    # Pinned by digest, not by tag: the fork's Docker Hub repository has tag
+    # immutability off, so RELEASE.2026-08-04T00-00-00Z could be re-pushed with
+    # different contents and no trace here. The digest is the multi-arch index
+    # of that release (amd64 for CI, arm64 for a Mac).
+    image: pgsty/minio@sha256:b6bfe7239bfc83fb90d31612d9704d86039dd714f7904b3f1ad68f211e602372
     command: server /data
     pre_build_image: true
     env:
