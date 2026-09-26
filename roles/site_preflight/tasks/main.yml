@@ -81,6 +81,36 @@
     quiet: true
   when: site_env_required | length > 0
 
+# The same checks site_database makes, made here: there they come after the
+# zone, the certificate and the records, and a launch stopped at the database
+# leaves a site published with nothing behind it.
+- name: Check the database is named together with its owner
+  ansible.builtin.assert:
+    that: site_database_owner | length > 0
+    fail_msg: "site_database_name is {{ site_database_name }}, but site_database_owner is empty."
+    quiet: true
+  when: site_database_name | length > 0
+
+- name: Look for the database owner in the cluster
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    query: SELECT 1 FROM pg_roles WHERE rolname = %(owner)s
+    named_args:
+      owner: "{{ site_database_owner }}"
+  become: true
+  become_user: postgres
+  check_mode: false
+  changed_when: false
+  register: site_preflight_owner
+  when: site_database_name | length > 0
+
+- name: Check the database owner exists
+  ansible.builtin.assert:
+    that: site_preflight_owner.rowcount == 1
+    fail_msg: "Role {{ site_database_owner }} is not in the cluster; the project creates it before the launch."
+    quiet: true
+  when: site_database_name | length > 0
+
 - name: Read the state of every step, writing nothing
   check_mode: true
   block:
