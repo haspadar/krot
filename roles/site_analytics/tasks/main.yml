@@ -14,13 +14,6 @@
   when: site_analytics.umami | default(true)
   register: site_analytics_umami
 
-- name: Pick the GA4 time zone
-  ansible.builtin.set_fact:
-    site_analytics_zone: >-
-      {{ site_analytics_time_zone
-         or site_analytics_time_zones[(site_analytics.country | default('')) | lower] | default('') }}
-  when: site_analytics.ga4 | default(false)
-
 - name: Refuse to guess the time zone
   ansible.builtin.assert:
     that: site_analytics_zone | length > 0

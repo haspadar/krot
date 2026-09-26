@@ -99,6 +99,37 @@ site_analytics:
 site_analytics_time_zone: ""
 site_analytics_currency: EUR
 
+# A site's day, for GA4, is its country's day. A property left on whatever zone
+# its creator happened to be in cuts every German day an hour off — stadtdame
+# counted its days by Europe/Minsk. Countries with more than one zone are not
+# here on purpose: those name site_analytics_time_zone themselves.
+site_analytics_time_zones:
+  at: Europe/Vienna
+  be: Europe/Brussels
+  ch: Europe/Zurich
+  cz: Europe/Prague
+  de: Europe/Berlin
+  dk: Europe/Copenhagen
+  es: Europe/Madrid
+  fi: Europe/Helsinki
+  fr: Europe/Paris
+  gb: Europe/London
+  hu: Europe/Budapest
+  ie: Europe/Dublin
+  it: Europe/Rome
+  lu: Europe/Luxembourg
+  nl: Europe/Amsterdam
+  "no": Europe/Oslo
+  pl: Europe/Warsaw
+  pt: Europe/Lisbon
+  se: Europe/Stockholm
+  sk: Europe/Bratislava
+# The zone GA4 gets: named, or from the country. Here rather than in
+# site_analytics, so site_preflight reports the same zone the launch writes.
+site_analytics_zone: >-
+  {{ site_analytics_time_zone
+     or site_analytics_time_zones[(site_analytics.country | default('')) | lower] | default('') }}
+
 # Umami answers on the machine itself; port and base path are the umami role's
 # own variables, so the number is written in one place.
 site_umami_api_url: "http://127.0.0.1:{{ umami_port | default(3000) }}{{ umami_base_path | default('') }}"
