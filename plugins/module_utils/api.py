@@ -54,8 +54,12 @@ class Http:
         self.attempts = attempts
         self.pause = pause
 
-    def call(self, method, path, query=None, body=None):
-        """Returns (status, decoded JSON or None for an empty body)."""
+    def call(self, method, path, query=None, body=None, form=None):
+        """Returns (status, decoded JSON or None for an empty body).
+
+        `form` sends the fields urlencoded instead of `body` as JSON — the one
+        place that needs it is Google's token exchange.
+        """
         url = self.base + path
         if query:
             url += "?" + urlencode(query)
@@ -64,6 +68,9 @@ class Http:
         if body is not None:
             data = json.dumps(body)
             headers["Content-Type"] = "application/json"
+        elif form is not None:
+            data = urlencode(form)
+            headers["Content-Type"] = "application/x-www-form-urlencoded"
 
         attempts = self.attempts if method in self.REPEATABLE else 1
         reason = "no attempt was made"
@@ -104,6 +111,10 @@ def decoded(raw, method, url):
     try:
         return json.loads(raw)
     except ValueError:
+        # Whatever the status. A proxy's 403 page or a 404 from the wrong path
+        # is not the service saying no — read as a refusal, it lets a module
+        # that treats 403/404 as "not verified yet" act on a site that is.
+        # Found by review on 2026-09-26, after this was briefly relaxed.
         # A captive portal, a proxy's error page, a tunnel that answered for the
         # service: all of them 200 with HTML. Not an answer from the API.
         raise Unreachable("%s %s answered with something that is not JSON" % (method, url_without_secrets(url)))

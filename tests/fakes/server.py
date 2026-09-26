@@ -27,6 +27,14 @@ class Request:
         return "%s %s" % (self.method, self.path)
 
 
+def parsed(raw, kind):
+    if not raw:
+        return None
+    if kind.startswith("application/x-www-form-urlencoded"):
+        return dict(parse_qsl(raw.decode()))
+    return json.loads(raw)
+
+
 class FakeServer:
     """Serves `app.handle(request) -> (status, body)` on a free local port.
 
@@ -36,7 +44,7 @@ class FakeServer:
     handle the request — the write happens — and then answers 502, the way a
     proxy does when the service is slow to reply. None serves the request
     normally, to aim a failure at a later one; a (status, headers) pair answers
-    with those headers.
+    with those headers, and a third element is the raw body.
     """
 
     def __init__(self, app):
@@ -54,7 +62,7 @@ class FakeServer:
                 length = int(self.headers.get("Content-Length") or 0)
                 raw = self.rfile.read(length) if length else b""
                 request = Request(self.command, parts.path, dict(parse_qsl(parts.query)),
-                                  json.loads(raw) if raw else None, dict(self.headers))
+                                  parsed(raw, self.headers.get("Content-Type", "")), dict(self.headers))
                 server.requests.append(request)
                 outage = server.outages.pop(0) if server.outages else None
                 if outage is not None:
@@ -68,7 +76,8 @@ class FakeServer:
                         server.app.handle(request)
                         return self.answer(502, b"")
                     if isinstance(outage, tuple):
-                        return self.answer(outage[0], b"", outage[1])
+                        page = outage[2] if len(outage) > 2 else b""
+                        return self.answer(outage[0], page, outage[1])
                     return self.answer(outage, b"")
                 status, body = server.app.handle(request)
                 self.answer(status, json.dumps(body).encode() if body is not None else b"")
