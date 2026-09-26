@@ -36,10 +36,13 @@ class FakeCloudflare:
         self.zones = []
         self.settings = {}
         self.certificates = {}
+        self.records = []
         self.ids = itertools.count(1)
         # Knobs for the failures worth testing.
         self.forgets_settings = False
         self.hides_new_zones = False
+        # Takes a record write and keeps nothing.
+        self.forgets_records = False
         # Reads a certificate back as something other than what was issued.
         self.certificates_drift = False
 
@@ -49,6 +52,17 @@ class FakeCloudflare:
         self.zones.append(zone)
         self.settings[zone["id"]] = dict(DEFAULT_SETTINGS)
         return zone
+
+    def add_record(self, zone_id, kind, name, content, proxied=None):
+        record = {"id": "rec-%d" % next(self.ids), "zone_id": zone_id, "type": kind, "name": name,
+                  "content": content, "ttl": 1}
+        if proxied is not None:
+            record["proxied"] = proxied
+        self.records.append(record)
+        return record
+
+    def zone_records(self, zone_id):
+        return [r for r in self.records if r["zone_id"] == zone_id]
 
     def handle(self, request):
         if request.headers.get("Authorization") != "Bearer " + self.token:
@@ -84,6 +98,28 @@ class FakeCloudflare:
             if method == "PATCH" and not self.forgets_settings:
                 self.settings[zone][name] = request.body["value"]
             return ok({"id": name, "value": self.settings[zone].get(name), "editable": True})
+
+        listing = re.match(r"^/zones/([^/]+)/dns_records$", path)
+        if listing and method == "GET":
+            query = request.query
+            return ok([r for r in self.zone_records(listing.group(1))
+                       if r["type"] == query.get("type", r["type"]) and r["name"] == query.get("name", r["name"])])
+        if listing and method == "POST":
+            body = request.body
+            if body["type"] in ("A", "AAAA", "CNAME") and any(
+                    r["type"] == body["type"] and r["name"] == body["name"] for r in self.zone_records(listing.group(1))):
+                return refused(400, "An identical record already exists.", 81058)
+            if self.forgets_records:
+                return ok(dict(body, id="rec-lost"))
+            return ok(self.add_record(listing.group(1), body["type"], body["name"], body["content"], body.get("proxied")))
+        one = re.match(r"^/zones/([^/]+)/dns_records/([^/]+)$", path)
+        if one and method == "PUT":
+            record = next((r for r in self.records if r["id"] == one.group(2)), None)
+            if record is None:
+                return refused(404, "Record not found", 81044)
+            if not self.forgets_records:
+                record.update(dict((k, v) for k, v in request.body.items() if k in ("type", "name", "content", "proxied", "ttl")))
+            return ok(record)
 
         if path == "/certificates" and method == "POST":
             if "BEGIN CERTIFICATE REQUEST" not in request.body.get("csr", ""):
