@@ -74,3 +74,39 @@ def test_wait_stops_at_the_first_ready_answer():
 def test_wait_returns_the_last_answer_when_never_ready():
     answers = iter(["", "", ""])
     assert wait(lambda: next(answers), bool, 3, 0) == ""
+
+
+def test_post_is_not_repeated_after_a_failure(serve):
+    server = serve(Echo())
+    server.outages = [502, 502, 502]
+    with pytest.raises(Unreachable):
+        Http(server.url).call("POST", "/zones", body={"name": "einmal.de"})
+    assert len(server.requests) == 1
+
+
+def test_rate_limit_waits_as_long_as_the_server_asks(serve, pauses):
+    server = serve(Echo())
+    server.outages = [(429, {"Retry-After": "30"})]
+    Http(server.url, pause=2).call("GET", "/zones")
+    assert pauses == [30]
+
+
+def test_rate_limit_wait_is_capped(serve, pauses):
+    server = serve(Echo())
+    server.outages = [(429, {"Retry-After": "3600"})]
+    Http(server.url, pause=2).call("GET", "/zones")
+    assert pauses == [60]
+
+
+def test_rate_limit_without_a_usable_header_waits_the_usual_pause(serve, pauses):
+    server = serve(Echo())
+    server.outages = [(429, {"Retry-After": "Wed, 21 Oct 2026 07:28:00 GMT"})]
+    Http(server.url, pause=2).call("GET", "/zones")
+    assert pauses == [2]
+
+
+def test_server_asked_wait_applies_to_that_retry_only(serve, pauses):
+    server = serve(Echo())
+    server.outages = [(429, {"Retry-After": "30"}), 503]
+    Http(server.url, pause=2).call("GET", "/zones")
+    assert pauses == [30, 2]
