@@ -77,7 +77,7 @@ jobs:
             hashFiles('.github/workflows/lint.yml') }}
 
       - name: Install linters
-        run: pip install ansible-lint yamllint
+        run: pip install ansible-lint yamllint pytest
 
       # Keyed on the hash of requirements.yml, so changing a dependency
       # invalidates the cache, and there are no restore-keys — an exact match or
@@ -110,6 +110,13 @@ jobs:
       # neither shows up in linting, but both break every consumer's install.
       - name: Build the collection
         run: ansible-galaxy collection build --output-path /tmp/krot-build
+
+      # Here rather than in a job of its own: `lint` is already a required check,
+      # and a new job would have to be added to main's protection by hand — until
+      # someone did, red unit tests would not stop a merge. ansible-lint above
+      # brings ansible-core, which is all the modules need.
+      - name: Module unit tests
+        run: python3 -m pytest tests/unit -q -p no:cacheprovider
 
       - name: wiki-lint
         run: python3 scripts/wiki-lint.py

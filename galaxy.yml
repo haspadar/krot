@@ -35,6 +35,9 @@ build_ignore:
   # throwaway HTTP-server unit and a playbook that opens 80/443 — inert on a
   # consumer's machine, but with no business being there.
   - molecule
+  # Unit tests and the fake services they run against: they test the modules,
+  # a consumer's playbook never imports them.
+  - tests
   # These are in .gitignore, which ansible-galaxy does not read — measured, the
   # tarball carried 5282 entries from them. `collections/` is a vendored copy of
   # other people's collections, which a consumer resolves for themselves;
