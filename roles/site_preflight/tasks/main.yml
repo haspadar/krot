@@ -19,6 +19,18 @@
       none; engines are google, yandex, bing.
     quiet: true
 
+# A project may tune the zone, not weaken it: strict TLS and the HTTPS redirect
+# are what the base is for, and an override of either would reach the live
+# zone looking like any other setting in the report.
+- name: Check the project's zone settings leave TLS and HTTPS to the base
+  ansible.builtin.assert:
+    that: site_cloudflare_settings.keys() | intersect(['ssl', 'always_use_https']) | length == 0
+    fail_msg: >-
+      site_cloudflare_settings may not set ssl or always_use_https; the launch
+      keeps them at {{ site_cloudflare_settings_base.ssl }} and
+      {{ site_cloudflare_settings_base.always_use_https }}.
+    quiet: true
+
 # The consumer's inventory holds the lookups; this is where they are evaluated,
 # so an entry missing from the vault stops the launch before its first write.
 - name: Check every secret this launch needs is there
@@ -248,14 +260,19 @@
       when: "'bing' in site_search_engines"
 
 - name: Report what is done and what the launch will do
+  vars:
+    changed: "{{ site_preflight_settings.changed_settings | default([]) }}"
+    wanted: "{{ site_cloudflare_settings_base | combine(site_cloudflare_settings) }}"
   ansible.builtin.debug:
     msg:
       zone: "{{ 'done (' ~ site_preflight_zone.status ~ ')' if site_preflight_zone.exists else 'pending' }}"
       delegation: >-
         {{ 'done' if site_preflight_delegation.delegated | default(false)
            else 'pending' if site_preflight_zone.exists else 'after the zone' }}
+      # Name and the value the launch would write, so a changed TTL reads
+      # differently from anything else.
       zone settings to change: >-
-        {{ (site_preflight_settings.changed_settings | default({})) | list | join(', ') or 'none' }}
+        {{ dict(changed | zip(changed | map('extract', wanted))) if changed else 'none' }}
       certificate: >-
         {{ 'done' if site_preflight_pair.results | selectattr('stat.exists') | selectattr('stat.size', 'gt', 0)
            | list | length == 2 else 'pending' }}
