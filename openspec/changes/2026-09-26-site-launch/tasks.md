@@ -5,12 +5,12 @@
 ## PR 1 — change и модули, нужные обоим проектам
 
 - [x] Подтверждение владельцем: переоткрытие двух решений (см. `proposal.md`)
-- [ ] `plugins/module_utils/`: HTTP-клиент с ретраями, различение «нет» и «не смог спросить»
-- [ ] Инфраструктура юнитов: pytest, поддельный HTTP-сервер, запуск в job'е `lint`
-- [ ] `cloudflare_zone` + юниты
-- [ ] `cloudflare_zone_settings` + юниты
-- [ ] `cloudflare_origin_cert` + юниты
-- [ ] `bing_site` + юниты
+- [x] `plugins/module_utils/`: HTTP-клиент с ретраями, различение «нет» и «не смог спросить»
+- [x] Инфраструктура юнитов: pytest, поддельный HTTP-сервер, запуск в job'е `lint`
+- [x] `cloudflare_zone` + юниты
+- [x] `cloudflare_zone_settings` + юниты
+- [x] `cloudflare_origin_cert` + юниты
+- [x] `bing_site` + юниты
 - [ ] Двойное ревью до push
 
 ## PR 2 — остальные модули
