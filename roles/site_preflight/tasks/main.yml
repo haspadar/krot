@@ -24,11 +24,13 @@
 # zone looking like any other setting in the report.
 - name: Check the project's zone settings leave TLS and HTTPS to the base
   ansible.builtin.assert:
-    that: site_cloudflare_settings.keys() | intersect(['ssl', 'always_use_https']) | length == 0
+    that:
+      - site_cloudflare_settings is mapping
+      - site_cloudflare_settings.keys() | intersect(['ssl', 'always_use_https']) | length == 0
     fail_msg: >-
-      site_cloudflare_settings may not set ssl or always_use_https; the launch
-      keeps them at {{ site_cloudflare_settings_base.ssl }} and
-      {{ site_cloudflare_settings_base.always_use_https }}.
+      site_cloudflare_settings is a mapping of setting to value, and may not set
+      ssl or always_use_https; the launch keeps them at
+      {{ site_cloudflare_settings_base.ssl }} and {{ site_cloudflare_settings_base.always_use_https }}.
     quiet: true
 
 # The consumer's inventory holds the lookups; this is where they are evaluated,
