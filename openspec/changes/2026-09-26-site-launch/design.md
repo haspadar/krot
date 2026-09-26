@@ -87,9 +87,30 @@ Authenticated Origin Pulls — не зонная настройка (`origin_tls
 
 ## Секреты
 
-По соглашению krot (`wiki/operations/secrets.md`): lookup `community.general.bitwarden` в
-рантайме, поле notes, `no_log`. Роль получает **имя записи** (`site_cloudflare_account` и т. п.),
-а не значение; preflight проверяет, что все записи находятся, до первой записи.
+**Отступление от плана, принято 2026-09-26 (PR 3).** План предлагал передавать ролям имя записи
+в хранилище (`site_cloudflare_account`). В krot действует обратное правило
+(`wiki/operations/secrets.md`): ни одна роль в хранилище не ходит, она получает **значение**
+(`site_cloudflare_token`, `site_dynadot_key`, `site_bing_key` …), а lookup стоит в инвентаре
+проекта. Так роли гоняются в molecule без хранилища и не привязаны к одному менеджеру паролей.
+
+Цель плана — «нет секрета → стоп до первой записи» — сохраняется: `site_preflight` проверяет
+непустоту каждого нужного секрета, и ленивые lookup'ы инвентаря вычисляются именно там.
+
+## Записи DNS — свой модуль
+
+**Отступление от плана, PR 3.** `community.general.cloudflare_dns` не принимает адрес API, и его
+нельзя направить в подделку — публикация адреса, самый опасный шаг запуска, осталась бы вне
+тестов. Записи ставит `haspadar.krot.cloudflare_record`: адрес ищется по типу И имени (иначе
+AAAA перезапишет живую A), TXT сравнивается без кавычек и ставится рядом с чужими.
+
+## Роль `site` и плейбук
+
+Общие умолчания всех ролей сайта — в роли `site` без задач, от которой зависят остальные. Имя
+выбрано ради правила ansible-lint: переменные роли начинаются с её имени, и `site_` — префикс,
+который у них и так есть. Порядок шагов живёт в `playbooks/site_launch.yml`, который входит в
+коллекцию: проект запускает `haspadar.krot.site_launch`, а свои шаги передаёт абсолютными
+путями к task-файлам. Полученные ID роль отдаёт фактом `site_analytics_results` (не
+`site_launch_results`, как в плане, — то же правило префиксов).
 
 ## Тесты
 
@@ -108,7 +129,7 @@ Authenticated Origin Pulls — не зонная настройка (`origin_tls
 ```yaml
 site_domain: tbl-telefon.de
 site_registrar: dynadot
-site_cloudflare_account: gudok-b        # имя записи с токеном
+site_cloudflare_token: "{{ lookup(...) }}"  # значение; lookup — в инвентаре проекта
 site_origin_ip: 1.2.3.4
 site_database_name: null                 # не создавать
 site_analytics: {umami: true, ga4: false, country: de}

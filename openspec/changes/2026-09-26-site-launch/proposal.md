@@ -74,7 +74,7 @@
 5. `site_tls` — Origin CA на машину до первого деплоя.
 6. `site_database` (опц.) — база сайта от роли сайта.
 7. *проект: наполнение* (`site_project_fill`).
-8. `site_analytics` — Umami, опционально GA4; ID уходят фактом `site_launch_results` →
+8. `site_analytics` — Umami, опционально GA4; ID уходят фактом `site_analytics_results` →
    `site_results_writer` проекта.
 9. `site_serve_precheck` — **до деплоя**: каталог сайта есть в `main` на машине; нет — стоп
    «сначала смержите». После деплоя эта проверка уже ничего не спасает.

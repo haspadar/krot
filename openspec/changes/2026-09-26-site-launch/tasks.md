@@ -62,16 +62,16 @@
 
 ## PR 3 — роли и molecule
 
-- [ ] `site_preflight`, `site_dns_zone`, `site_domain`, `site_dns_records` (+ `site_cloudflare_rules`)
-- [ ] `site_tls`, `site_database`
-- [ ] `site_analytics`, `site_serve_precheck`, `site_serve_check`, `site_monitor`, `site_search`, `site_check`
-- [ ] Хуки проекта: fill, deploy, verify, open, results_writer; факт `site_launch_results`
-- [ ] Molecule `site_launch`: контейнер-подделка API, `verify.yml` спрашивает подделку, `idempotence`
+- [x] `site_preflight`, `site_dns_zone`, `site_domain`, `site_dns_records` (+ `site_cloudflare_rules`)
+- [x] `site_tls`, `site_database`
+- [x] `site_analytics`, `site_serve_precheck`, `site_serve_check`, `site_monitor`, `site_search`, `site_check`
+- [x] Хуки проекта: fill, deploy, verify, open, results_writer; факт `site_analytics_results`
+- [x] Molecule `site_launch`: контейнер-подделка API, `verify.yml` спрашивает подделку, `idempotence`
 - [ ] Двойное ревью до push
 
 ## PR 4 — плейбук, вики, релиз
 
-- [ ] `playbooks/site_launch.yml` — пример порядка
+- [x] `playbooks/site_launch.yml` — порядок шагов, входит в коллекцию (сделан в PR 3: без него сценарий не собрать)
 - [ ] Вики: страница про запуск сайта (порядок, переменные, что подключает проект)
 - [ ] Вики: `collection-layout.md` — два набора ролей (машина / сайт), раздел про Terraform
 - [ ] `openspec/ARCHITECTURE.md`, `README.md` — тот же пересмотр
