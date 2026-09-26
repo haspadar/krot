@@ -48,12 +48,12 @@
           - zone[0].status == 'active'
         quiet: true
 
-    - name: Zone settings are what a site behind an origin certificate needs
+    - name: Zone settings are the base with the project's own laid over it
       ansible.builtin.assert:
         that:
           - state.settings[zone[0].id].ssl == 'strict'
           - state.settings[zone[0].id].always_use_https == 'on'
-          - state.settings[zone[0].id].browser_cache_ttl | int == 0
+          - state.settings[zone[0].id].browser_cache_ttl | int == 14400
         quiet: true
 
     - name: The domain and www point at the machine through Cloudflare, once each
