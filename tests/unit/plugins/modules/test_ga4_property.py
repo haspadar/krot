@@ -115,6 +115,19 @@ def test_check_mode_corrects_nothing(run, serve, tokens):
     assert server.writes() == []
 
 
+def test_check_mode_names_the_zone_it_would_move(run, serve, tokens):
+    google = FakeGoogle()
+    google.add_property("minskzeit.de", time_zone="Europe/Minsk")
+    result = run("ga4_property", args(serve(google), tokens, "minskzeit.de"), check=True)
+    assert result["drift"] == {"timeZone": {"from": "Europe/Minsk", "to": "Europe/Berlin"}}
+
+
+def test_property_in_order_names_no_drift(run, serve, tokens):
+    google = FakeGoogle()
+    google.add_property("ordnung.de")
+    assert run("ga4_property", args(serve(google), tokens, "ordnung.de"), check=True)["drift"] == {}
+
+
 def test_property_creation_whose_answer_was_lost_is_not_repeated(run, serve, tokens):
     google = FakeGoogle()
     server = serve(google)
