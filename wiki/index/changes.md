@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **1**, заархивировано — **17**.
+В работе — **0**, заархивировано — **18**.
 
 Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **9** из 18: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
@@ -19,7 +19,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
-| [`2026-09-26-site-launch`](../../openspec/changes/2026-09-26-site-launch/proposal.md) | **в работе** | — | Запуск сайта ролями krot: от регистратора до sitemap, принятого поисковиками |
+| [`site-launch`](../../openspec/changes/archive/2026-09-26-site-launch/proposal.md) | 2026-09-26 | — | Запуск сайта ролями krot: от регистратора до sitemap, принятого поисковиками |
 | [`nginx-machine-defaults`](../../openspec/changes/archive/2026-09-23-nginx-machine-defaults/proposal.md) | 2026-09-23 | — | Настройки nginx, которых на машине может быть только одна копия, ставит роль |
 | [`a-copy-nobody-can-restore-is-a-hope`](../../openspec/changes/archive/2026-08-29-a-copy-nobody-can-restore-is-a-hope/proposal.md) | 2026-08-29 | [#50](https://github.com/haspadar/krot/pull/50) | Копия, которую некому развернуть, — это надежда, а не резервная копия |
 | [`the-boundary-with-busel`](../../openspec/changes/archive/2026-08-24-the-boundary-with-busel/proposal.md) | 2026-08-24 | — | Граница с busel описана неверно |
