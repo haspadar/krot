@@ -3,6 +3,20 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 5.7.0
+
+### Changed
+
+- **`cloudflare_ruleset` takes a rule another tool made word for word as its own.** busel made
+  its cache rule without a ref of ours, so Cloudflare assigned one per zone; matched by ref
+  alone, the module would have added a second, identical rule on every live zone. A rule that
+  differs in any field stays someone else's.
+
+### Added
+
+- **`site_monitor.path`** — the page the keyword monitor watches, `/` by default; busel's is a
+  profile page. The word is looked for on that page before the monitor is made.
+
 ## 5.6.0
 
 ### Added
