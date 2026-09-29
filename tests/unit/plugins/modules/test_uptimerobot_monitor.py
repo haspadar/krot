@@ -170,8 +170,8 @@ def test_moved_keyword_monitor_looks_for_the_word_on_the_new_page(run, serve):
 
 def test_monitor_telling_nobody_gets_the_contacts(run, serve):
     robot = FakeUptimeRobot()
-    silent = robot.add_monitor("berlindame.de", contacts=False)
-    run("uptimerobot_monitor", args(serve(robot), "berlindame.de"))
+    silent = robot.add_monitor("stummseite.de", contacts=False)
+    run("uptimerobot_monitor", args(serve(robot), "stummseite.de"))
     assert [c["alertContactId"] for c in silent["assignedAlertContacts"]] == ["101"]
 
 

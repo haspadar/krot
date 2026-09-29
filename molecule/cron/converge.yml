@@ -28,7 +28,7 @@
             working_directory: /tmp
 
           # A command carrying a %, which the role has to double. Measured on
-          # busel: `date +%Y-%m-%d` left undoubled printed the unit's credentials
+          # a production machine: `date +%Y-%m-%d` left undoubled printed the unit's credentials
           # path and exited 0 — the failure this role exists to stop, hiding
           # inside the mechanism meant to prevent it. No other job here contains
           # a %, so without this one that escaping is never exercised.
@@ -48,7 +48,7 @@
 
           # The file-output branch, which pulls in the logrotate entry. Two jobs
           # sharing one log_file is what the role rejects at run time — the same
-          # duplicate that stopped rotation for every log on busel for three
+          # duplicate that stopped rotation for every log on a production machine for three
           # days.
           - name: file-job
             description: Writes to a file, so logrotate gets involved

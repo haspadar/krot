@@ -5,7 +5,7 @@
 One rule runs through every module that uses this: "could not ask" is not "no".
 A timeout, a dropped connection, a 5xx or an answer that is not JSON raises
 Unreachable, and a module that catches it must stop — never read it as "the zone
-does not exist" and go on to create a second one. busel/tsbelgie is what that
+does not exist" and go on to create a second one. one real launch is what that
 reading costs: a launch that looked at a failed answer, decided nothing was
 there, and wrote.
 

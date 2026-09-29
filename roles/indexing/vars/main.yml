@@ -10,8 +10,8 @@ indexing_program_dir: /usr/local/lib/krot-index
 indexing_config_dir: /etc/krot-index
 
 # Written into every service this role installs and read back when deciding
-# whether a krot-index-*.timer is ours to remove. busel's own krot-index-<engine>
-# units, installed by the cron role, carry cron's marker and are left alone.
+# whether a krot-index-*.timer is ours to remove. a project's own krot-index-<engine>
+# units, installed through the cron role, carry cron's marker and are left alone.
 indexing_unit_marker: "# krot-indexing-unit"
 
 # The version schema.sql creates. krot-index refuses a database at any other;

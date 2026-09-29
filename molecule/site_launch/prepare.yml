@@ -71,5 +71,5 @@
         dest: /var/www/krot-launch/shared/.env.local
         content: |
           APP_SECRET=
-          MATILDA_TOKEN=
+          DATA_TOKEN=
         mode: "0600"

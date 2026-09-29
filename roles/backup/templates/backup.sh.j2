@@ -72,7 +72,7 @@ fi
 # can connect to — every site answering "role does not exist" — and the copies
 # would have looked complete the whole time.
 #
-# Measured on the live cluster 2026-08-20: three login roles (busel, umami,
+# Measured on the live cluster 2026-08-20: three login roles (the application's, umami,
 # postgres) and per-table grants that exist precisely to keep the sites from
 # reading each other's statistics. None of that is in a pg_dump.
 #
@@ -83,8 +83,8 @@ globals="$work_dir/globals.sql"
 nice -n {{ backup_nice }} pg_dumpall --globals-only -f "$globals"
 
 # ⚠️ And which role owns which database, which `--globals-only` does NOT carry:
-# it emits the roles and their hashes, and nothing that says `busel` owns
-# `stadtdame`. The map lives only in `pg_database` on the machine — the one that
+# it emits the roles and their hashes, and nothing that says `appuser` owns
+# `sitedb`. The map lives only in `pg_database` on the machine — the one that
 # just died in the case these copies exist for. Restoring onto a fresh machine
 # then means guessing owners, and a database guessed onto `postgres` is one the
 # site meets `permission denied` on: the exact failure the restore's ownership

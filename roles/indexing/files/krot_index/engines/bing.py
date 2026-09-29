@@ -1,9 +1,9 @@
 """Bing: never asked, offered through SubmitUrlBatch.
 
-A port of busel's BingIndex (src/Colony/Index/BingIndex.php). Asking costs Bing
+A port of an earlier PHP implementation. Asking costs Bing
 more than it saves: GetUrlInfo has no batch form and is throttled within four
 sites (ThrottleHost on the 11th request, ThrottleUser after a hundred), while
-SubmitUrlBatch took 62 addresses in one call in the same minute (busel,
+SubmitUrlBatch took 62 addresses in one call in the same minute (measured
 2026-09-02). So pages are chosen from what was sent, and Bing is only offered.
 
 ⚠️ The key travels in the query string — the API wants it there. No message
@@ -72,7 +72,7 @@ class Bing:
         self.call = call
         self.endpoint = endpoint
         # ⚠️ By domain: the allowance belongs to the site, and one answer kept for
-        # all would print nine plausible identical numbers (busel measured 91 / 7 /
+        # all would print nine plausible identical numbers (measured: 91 / 7 /
         # 300 come back as 91 three times).
         self.answered = {}
         self.unanswered = set()

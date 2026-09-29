@@ -1,6 +1,6 @@
 ---
 # The machine as a project leaves it: a cluster, the project's database and its
-# application role. And two units already there — one of busel's, from the cron
+# application role. And two units already there — one a project's own, from the cron
 # role, and one this role installed for a project since dropped — because
 # retirement by marker is only proven by a unit it must keep beside one it must
 # remove.
@@ -60,7 +60,7 @@
       become: true
       become_user: postgres
 
-    # busel's krot-index-google (cron's marker) and a dropped project's unit
+    # a project's own krot-index-google (cron's marker) and a dropped project's unit
     # (this role's marker): same prefix, opposite fates.
     - name: Two services already on the machine
       ansible.builtin.copy:

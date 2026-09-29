@@ -36,8 +36,8 @@ class Schemaless:
 
 @pytest.fixture
 def config(tmp_path):
-    path = tmp_path / "gudok.json"
-    path.write_text(json.dumps({"project": "gudok", "database": "gudok", "engines": ["google"],
+    path = tmp_path / "first.json"
+    path.write_text(json.dumps({"project": "first", "database": "first", "engines": ["google"],
                                 "sites": [{"domain": "rufnummer.de",
                                            "sitemap_url": "https://rufnummer.de/sitemap.xml"}]}))
     return str(path)
@@ -63,7 +63,7 @@ def test_misspelt_engine_is_named_as_misspelt(config):
 
 def test_engine_the_project_did_not_declare_is_red(config, tmp_path):
     path = tmp_path / "other.json"
-    path.write_text(json.dumps({"project": "busel", "database": "stats", "engines": [], "sites": []}))
+    path.write_text(json.dumps({"project": "second", "database": "stats", "engines": [], "sites": []}))
     assert run(["--config", str(path), "--engine", "google"])[0] == cli.FAILED
 
 
@@ -94,8 +94,8 @@ class Answering(Schemaless):
 
 
 def test_broken_pattern_is_red_before_any_site(tmp_path, key):
-    path = tmp_path / "gudok.json"
-    path.write_text(json.dumps({"project": "gudok", "database": "gudok", "engines": ["google"],
+    path = tmp_path / "first.json"
+    path.write_text(json.dumps({"project": "first", "database": "first", "engines": ["google"],
                                 "sites": [{"domain": "rufnummer.de", "sitemap_url": "https://rufnummer.de/s.xml",
                                            "cards_path": "^/nummer/(("}]}))
     code, said = run(["--config", str(path), "--engine", "google"], connect=Answering(),

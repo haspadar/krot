@@ -5,8 +5,8 @@
 -- sent and spend the next fortnight's allowance on repeats, green. The program
 -- only checks that this is here and at the version it was written for.
 --
--- The shape repeats busel's site_page_index and site_index_run column for
--- column, so moving busel's history over is one INSERT ... SELECT in the same
+-- The shape repeats an earlier PHP implementation's site_page_index and site_index_run column for
+-- column, so moving its history over is one INSERT ... SELECT in the same
 -- database.
 --
 -- Idempotent: the role runs it on every pass.

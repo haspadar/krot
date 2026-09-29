@@ -1,8 +1,8 @@
 """Yandex: asked to walk named pages again — 150 a day for every site.
 
-A port of busel's YandexIndex (src/Colony/Index/YandexIndex.php), with one fix.
-busel's pause sits between the addresses of ONE call, and it offers one address
-a call, so the pause never happens; here it sits between calls.
+A port of an earlier PHP implementation, with one fix. There the pause sat
+between the addresses of ONE call, and it offers one address a call, so the
+pause never happened; here it sits between calls.
 
 Not the same channel as IndexNow, which also reaches Yandex: the protocol says a
 page exists and answers nothing, this asks for a walk and says whether it was

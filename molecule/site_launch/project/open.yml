@@ -1,5 +1,5 @@
 ---
-# Stands in for the project's opening step (busel: colony:open lifts the basic
+# Stands in for the project's opening step (a project's own command that lifts the basic
 # auth). Until it runs the fake site answers 401, so the sitemap check and the
 # search engines after it fail exactly as they would on a site still closed.
 # Idempotent the way the real one must be: opening an open site is a no-op.

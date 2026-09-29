@@ -151,9 +151,9 @@ Jobs are declared by the inventory, and the role expands each into a `krot-<name
 cron_jobs:
   - name: traffic
     description: Visitor figures for every site, copied out of Analytics
-    command: bin/console colony:traffic
+    command: bin/console app:traffic
     schedule: hourly
-    working_directory: /var/www/busel/current
+    working_directory: /var/www/app/current
     environment:
       APP_ENV: prod
 ```
@@ -161,7 +161,7 @@ cron_jobs:
 Krot knows no job name at all: the list is a project variable, and the next server will declare
 its own.
 
-**Why systemd timers rather than a crontab line.** On busel an hourly job did not run once in five
+**Why systemd timers rather than a crontab line.** On a production machine an hourly job did not run once in five
 days, and this was visible from nowhere. Its output was redirected into `/var/log/`, where `km`
 has no write permission — the redirection failed **before** PHP started, so the error message had
 nowhere to land either. Meanwhile `journalctl -u cron` cheerfully printed `(km) CMD (...)` every
@@ -220,7 +220,7 @@ original defect.
 run fails with `status=200/CHDIR` and lands in `systemctl --failed`, rather than running from `/`
 where the command would find neither `bin/console` nor `vendor`. It is the `WorkingDirectory=` line
 itself that fails the unit; `AssertPathIsDirectory=` will not do, for two reasons, both measured on
-busel (systemd 255): a failed assert **does not fail the unit** but skips the run, leaving
+a production machine (systemd 255): a failed assert **does not fail the unit** but skips the run, leaving
 `Result=success` and an empty `--failed`; and it checks the path **as root**, whereas the work in
 that directory will be done by `User=`. On a directory `km` cannot enter, the assert passed and the
 command ran from someone else's directory. systemd performs `chdir` after switching users, so
@@ -292,13 +292,13 @@ nginx and php are rotated through logrotate; PostgreSQL rotates itself.
 
 **The systemd journal is capped at 500 MB** (`common_journal_max_use`, the drop-in
 `/etc/systemd/journald.conf.d/krot-journal.conf`). Uncapped, journald takes 10% of the partition
-but no more than 4 GB — on busel's 77 GB disk it is that ceiling which applies, since 10% would
+but no more than 4 GB — on a 77 GB disk it is that ceiling which applies, since 10% would
 be 7.6 GB — and it keeps everything: the journal had grown to 1 GB, holding every message since
 the machine was installed a month and a half earlier.
 
 It is the size that is capped, not the retention window: a ceiling holds the price of the journal
 however talkative the machine gets, whereas a window bounds age and lets a single bad day fill the
-disk. At busel's rate, 500 MB is about three weeks.
+disk. At that rate, 500 MB is about three weeks.
 
 **The role shrinks future records only, not a journal that has already grown.** A change of limit
 is applied by restarting journald, and the restart does not touch what is accumulated — the old
@@ -320,7 +320,7 @@ operator's call, not a side effect of a run.
 owns nginx rotation, and the role edits only the number on the `rotate` line in its config. Two
 configs for one log is not "last one wins": logrotate declares `duplicate log entry`, exits with
 code 1 and **processes nothing on the machine at all**, including the unrelated php and postgresql.
-On busel this lasted three days, was discovered through `systemctl --failed` and cost the rotation
+On a production machine this lasted three days, was discovered through `systemctl --failed` and cost the rotation
 of every log at once. The duplicate is detected by the resolved path rather than by the template
 text, so rewriting the glob differently does not help.
 
@@ -425,7 +425,7 @@ does not touch the database at all.
 
 No secrets live in this repository, and **no role reaches for a secret store itself**: a role that
 needs a password takes it as an ordinary variable and fails its `assert` when it is empty. Fetching
-it is the consumer's job, done in its own inventory — busel resolves `nginx_auth_password`, the
+it is the consumer's job, done in its own inventory — a consuming project resolves `nginx_auth_password`, the
 umami secrets and the S3 credentials with `community.general.bitwarden` lookups in
 `group_vars/`. That keeps the roles testable and free of any dependency on one particular vault.
 
@@ -463,7 +463,7 @@ are in [`wiki/CONVENTIONS.md`](wiki/CONVENTIONS.md).
 ## Development
 
 Architecture and settled decisions are in `openspec/ARCHITECTURE.md`. Changes are tracked as in
-busel and matilda: `openspec/changes/<date>-<slug>/` with `proposal.md` (why and what changes) and
+the consuming projects: `openspec/changes/<date>-<slug>/` with `proposal.md` (why and what changes) and
 `tasks.md`; finished ones move to `changes/archive/`. Both are written in Russian.
 
 ```bash

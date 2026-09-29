@@ -1,10 +1,10 @@
 ---
 # The site's own database. Included only by a project whose sites each have
-# one; gudok, with one database for all its sites, does not include it.
+# one; a project with one database for all its sites does not include it.
 
 # Included but not named is the dangerous case, not a harmless skip: the site
 # would then be pointed at whatever database the project's config falls back
-# to — on busel, the machine's first site — and share it silently.
+# to — on one project, the machine's first site — and share it silently.
 - name: Refuse to run without a database name and owner
   ansible.builtin.assert:
     that:

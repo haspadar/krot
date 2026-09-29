@@ -1,9 +1,9 @@
 """Google: asked through URL Inspection, offered through the Indexing API.
 
-A port of busel's GoogleIndex (src/Colony/Index/GoogleIndex.php).
+A port of an earlier PHP implementation.
 
-⚠️ The Indexing API is documented for job postings and livestreams. busel
-submits ordinary catalogue pages and Google answers 200 (tested 2026-08-22);
+⚠️ The Indexing API is documented for job postings and livestreams. The
+earlier implementation submitted ordinary catalogue pages and Google answers 200 (tested 2026-08-22);
 what it does refuse is a domain the account does not own. That is Google's
 promise to keep, not ours — if it starts refusing ordinary pages, look here
 first.
@@ -22,7 +22,7 @@ SUBMIT_URL = "https://indexing.googleapis.com/v3/urlNotifications:publish"
 
 # Per Cloud PROJECT, not per property: DefaultPublishRequestsPerDayPerProject.
 # With a day's 200 spent on one site, a page of another is refused at once
-# (busel, 2026-08-22). The caller divides it between the project's sites.
+# (measured 2026-08-22). The caller divides it between the project's sites.
 DAILY_QUOTA = 200
 
 # A token lives an hour. Minted again before that, so a walk over a large
@@ -127,7 +127,7 @@ class Google:
         """Asks about several pages at once, keyed by URL.
 
         Together rather than in turn: one inspection takes about 6.8 seconds and
-        twenty together 8.1 (busel, 2026-08-22). Every failure is UNASKED for that
+        twenty together 8.1 (measured 2026-08-22). Every failure is UNASKED for that
         page alone — the one answer that spends no allowance.
         """
         try:

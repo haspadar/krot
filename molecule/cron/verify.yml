@@ -108,7 +108,7 @@
       changed_when: false
       failed_when: "'krot-failing-job.service' not in failed_list.stdout"
 
-    # The % branch. Measured on busel: an undoubled % in ExecStart made
+    # The % branch. Measured on a production machine: an undoubled % in ExecStart made
     # `date +%Y-%m-%d` print the unit's credentials path and exit 0. The role
     # doubles it; this proves the doubling survives templating, by reading what
     # the command actually printed.
@@ -140,7 +140,7 @@
 
     # logrotate refuses to process anything at all when two entries claim one
     # log — not just the duplicate, every log on the machine. That is what cost
-    # busel three days of unrotated logs, so the scenario asks logrotate itself.
+    # a production machine three days of unrotated logs, so the scenario asks logrotate itself.
     - name: Logrotate accepts the machine's full configuration
       ansible.builtin.command: logrotate --debug /etc/logrotate.conf
       register: logrotate_check

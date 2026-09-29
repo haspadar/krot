@@ -10,6 +10,6 @@ deploy_keys_user: km
 # Clone with git@<name>.github.com:owner/repo.git to pick that key.
 #
 #   deploy_keys_repos:
-#     - name: busel
-#       comment: busel-deploy
+#     - name: webapp
+#       comment: webapp-deploy
 deploy_keys_repos: []

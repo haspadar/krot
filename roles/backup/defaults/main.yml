@@ -17,7 +17,7 @@ backup_s3_region: auto
 #
 # The machine's own name, asked of the machine — not of a variable a particular
 # consumer happens to define. This default used to read `krot_hostname |
-# default(ansible_hostname)`, which is a name from busel's inventory and exists
+# default(ansible_hostname)`, which is a name from one consumer's inventory and exists
 # in no role here: the collection's own default silently depended on one
 # consumer's naming convention, and any other consumer got the fallback without
 # ever learning there had been a first choice.

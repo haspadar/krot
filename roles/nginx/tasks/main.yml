@@ -82,7 +82,7 @@
 # The nginx package already rotates /var/log/nginx/*.log, and logrotate refuses
 # to run at all when two files claim the same log: it reports "duplicate log
 # entry", exits 1 and rotates NOTHING on the machine — including postgresql and
-# krot-php, which are blameless. Measured on busel 2026-08-13: three days of a
+# krot-php, which are blameless. Measured on a production machine 2026-08-13: three days of a
 # failed logrotate.service and no rotation anywhere.
 #
 # The duplicate is detected on the resolved path, not on the glob text, so no
