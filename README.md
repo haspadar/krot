@@ -69,6 +69,7 @@ ansible-playbook bootstrap.yml -u root -k
 | `cron` | Periodic application jobs as systemd timers: output to the journal, exit code visible to `systemctl` |
 | `backup` | Nightly `pg_dump` of every database in the cluster to S3-compatible storage, a monthly restore rehearsal that judges by the data rather than by `pg_restore`'s exit code, and `krot-restore` — the way back, written down rather than retyped from memory |
 | `umami` | The visit counter as a system service: built on the machine, bound to the loopback, its schema migrated on deploy |
+| `indexing` | Each project's pages offered to Google, Bing, Yandex and IndexNow every night: a timer per project and engine, state in a `krot` schema of the project's own database; a run retires only its own projects' units |
 | `site_*` | Launching one site, run in order by the `site_launch` playbook — see below |
 
 Every role is atomic and applicable on its own. All parameters live in

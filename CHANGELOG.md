@@ -3,6 +3,43 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 5.9.0
+
+### Added
+
+- **`indexing` role: each project's pages offered to Google, Bing, Yandex and IndexNow every
+  night.** It installs the `krot-index` program and one timer per project and engine
+  (`krot-index-<project>-<engine>`); the project declares `indexing_projects` — its database,
+  its application's reader role, its engines by explicit list, a key per engine and its sites
+  with their sitemaps. State lives in a `krot` schema the role creates in the project's own
+  database, owned by `krot_index` over peer; the reader gets `CONNECT`, `USAGE` and `SELECT`,
+  including on tables a later schema adds. The role refuses before changing anything when the
+  database or the reader is missing, the database already has a `krot` schema of another
+  owner, the cluster would not let `krot_index` in by peer, a declared engine has no key, or two
+  projects on the machine share a Google, Bing or Yandex key.
+
+  **A red unit means something to repair**: a key, ownership, the schema, an unreadable
+  sitemap, a night where nothing was taken for no stated reason. A spent allowance and a
+  throttle stay green. The sitemap is read over HTTP as a search engine reads it, redirects not
+  followed: a site answering 401 is unreadable and red.
+
+  **Each project applies the role from its own inventory, and a run touches only its own
+  projects**: an engine dropped from a project of this run is retired; a whole project only by
+  name in `indexing_retired_projects`. Units and key files of projects the run does not know stay.
+
+  **A new IndexNow key is refused once before the protocol checks it**: a 403 right after the
+  site served its key file is repeated once a minute later, at most ten times a run; the
+  IndexNow unit's timeout is 1h.
+
+- **`names-lint` in CI**: code, tests, scenarios, docs and the wiki do not name the projects
+  that consume the collection or their sites. Words are compared by hash, inside identifiers
+  and file paths too.
+
+### Changed
+
+- **Google's JWT signing moved to `module_utils/google_jwt.py`**, importable without Ansible so
+  the program on the machine uses it too. The Google modules behave as before.
+
 ## 5.8.0
 
 ### Changed
