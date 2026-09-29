@@ -1,6 +1,7 @@
 import pytest
 
 from fakes.indexing import FakeEngine, FakeStore
+from krot_index.night import Refused
 from krot_index.submission import Submission, what_to_ask_about
 
 SITE = "rufnummer.de"
@@ -161,3 +162,18 @@ def test_unwritten_offer_stops_the_night():
 def test_count_says_how_much_of_the_site_is_answered():
     offer = Submission(FakeEngine(quota=2), FakeStore()).of(SITE, listings(10))
     assert offer.covered() == (3, 10)
+
+
+class RunsOutAfterOne(FakeEngine):
+    """Takes the first page of a batch, then says the day is spent."""
+
+    def submit_all(self, domain, urls):
+        refusal = Refused("Quota exceeded", exhausted=True)
+        refusal.accepted = urls[:1]
+        raise refusal
+
+
+def test_pages_taken_before_a_refusal_are_held():
+    store = FakeStore()
+    Submission(RunsOutAfterOne(quota=10), store).of(SITE, listings(2))
+    assert store.offered_recently(SITE, "google") == [page("/vorwahl/000")]

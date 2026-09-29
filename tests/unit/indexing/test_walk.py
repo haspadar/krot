@@ -12,7 +12,7 @@ class Sitemaps:
         self.served = served
         self.read = []
 
-    def pages(self, url, cards_path=None, cards_sitemap=None):
+    def pages(self, url, domain=None, cards_path=None, cards_sitemap=None):
         self.read.append(url)
         return self.served.get(url)
 

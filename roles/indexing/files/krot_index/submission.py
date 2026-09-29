@@ -121,16 +121,17 @@ class Submission:
         refused = None
         for batch in _chunks(today, self.engine.offer_at_once()):
             try:
-                accepted = self.engine.submit_all(domain, batch)
+                accepted = [url for url, taken in self.engine.submit_all(domain, batch).items() if taken]
             except night.Refused as refusal:
                 refused = refusal
+                accepted = list(refusal.accepted)
+            for url in accepted:
+                # ⚠️ Not caught here. This row is what holds the page out of
+                # tomorrow's offer; a write lost quietly spends the allowance on
+                # repeats every night after, green.
+                self.store.offered(domain, self.engine.slug, url)
+                submitted.append(url)
+            if refused is not None:
                 break
-            for url, taken in accepted.items():
-                if taken:
-                    # ⚠️ Not caught here. This row is what holds the page out of
-                    # tomorrow's offer; a write lost quietly spends the allowance
-                    # on repeats every night after, green.
-                    self.store.offered(domain, self.engine.slug, url)
-                    submitted.append(url)
         return night.Offer(states, submitted, len(unknown), refused, len(unknown) - len(fresh),
                            len(today), answered, serving, asked)

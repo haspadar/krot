@@ -34,6 +34,12 @@ class Refused(Exception):
         self.exhausted = exhausted
         self.too_fast = too_fast
         self.repair = repair
+        # ⚠️ What the engine took in this batch before it refused. An engine
+        # without a batch form sends page by page, and a refusal on the thirtieth
+        # does not undo the twenty-nine: dropped with the exception, they would be
+        # offered again tomorrow — the allowance spent on repeats, the report
+        # saying 0 offered. busel loses them exactly this way.
+        self.accepted = []
 
 
 def share_of(allowance, between):

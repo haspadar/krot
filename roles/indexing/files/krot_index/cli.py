@@ -14,6 +14,7 @@ produces one.
 import argparse
 import json
 import os
+import re
 import sys
 import time
 
@@ -89,6 +90,15 @@ def main(argv=None, connect=None, engines=None, out=None, err=None):
     if not sites:
         print("krot-index: %s declares no sites" % config.get("project"), file=err)
         return FAILED
+    # Before any site is walked: a typo found on the third site would leave the
+    # first two offered and the rest not, and the night half-done.
+    for site in sites:
+        for field in ("cards_path", "cards_sitemap"):
+            try:
+                re.compile(site.get(field) or "")
+            except re.error as failure:
+                print("krot-index: %s of %s is not a pattern: %s" % (field, site.get("domain"), failure), file=err)
+                return FAILED
 
     try:
         failed = Walk(engine, store, Sitemap(), out=out, err=err, sleep=time.sleep).over(sites)

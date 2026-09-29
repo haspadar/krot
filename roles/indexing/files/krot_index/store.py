@@ -17,6 +17,16 @@ SCHEMA_VERSION = 1
 OFFER_HOLDS_DAYS = 14
 
 
+def first_line(failure):
+    """The first line of what went wrong, or its type where it said nothing.
+
+    Inside an except that must not raise: an empty message would otherwise turn
+    "say it and carry on" into an IndexError that ends the walk.
+    """
+    lines = str(failure).strip().splitlines()
+    return lines[0] if lines else type(failure).__name__
+
+
 class Missing(Exception):
     """The schema is absent or at another version — something only the role repairs."""
 
@@ -52,7 +62,7 @@ class PostgresStore:
             rows = self._rows("SELECT version FROM krot.schema_version")
         except Exception as failure:
             raise Missing("no krot schema in database %s (%s) — run the indexing role"
-                          % (self.database, str(failure).strip().splitlines()[0]))
+                          % (self.database, first_line(failure)))
         versions = [row[0] for row in rows]
         if versions != [SCHEMA_VERSION]:
             raise Missing("krot schema in database %s is at version %s, this program expects %d — run the indexing role"
@@ -119,4 +129,4 @@ class PostgresStore:
             # Said once per site, to the journal: busel said nothing, and a
             # summary missing for a month was then found only from the screen.
             print("warning: %s %s: the night was not recorded: %s"
-                  % (spending.engine, spending.site, str(failure).strip().splitlines()[0]), file=sys.stderr)
+                  % (spending.engine, spending.site, first_line(failure)), file=sys.stderr)

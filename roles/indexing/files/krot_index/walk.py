@@ -36,7 +36,7 @@ class Walk:
         failed = 0
         for position, site in enumerate(sites):
             domain = site["domain"]
-            pages = self.sitemap.pages(site["sitemap_url"], site.get("cards_path"), site.get("cards_sitemap"))
+            pages = self.sitemap.pages(site["sitemap_url"], domain, site.get("cards_path"), site.get("cards_sitemap"))
             offer = submission.of(domain, pages)
             self.report(domain, offer)
             # Before the walk can stop below: the site it stops at is the one

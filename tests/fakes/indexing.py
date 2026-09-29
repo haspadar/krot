@@ -132,9 +132,9 @@ class FakeIndexing:
         return self.server.url + "/v3/urlNotifications:publish"
 
     def handle(self, request):
-        token = request.headers.get("Authorization", "")
+        bearer = request.headers.get("Authorization", "")
         if request.path.endswith("index:inspect"):
-            if "webmasters" not in token:
+            if "webmasters" not in bearer:
                 return 403, {"error": {"code": 403, "message": "wrong scope", "status": "PERMISSION_DENIED"}}
             if self.inspect_status != 200:
                 return self.inspect_status, {"error": {"code": self.inspect_status, "message": "down"}}
@@ -142,7 +142,7 @@ class FakeIndexing:
             words = self.coverage.get(url, "URL is unknown to Google")
             return 200, {"inspectionResult": {"indexStatusResult": {"coverageState": words}}}
         if request.path.endswith("urlNotifications:publish"):
-            if "indexing" not in token:
+            if "indexing" not in bearer:
                 return 403, {"error": {"code": 403, "message": "wrong scope", "status": "PERMISSION_DENIED"}}
             if self.publish_answer is not None:
                 return self.publish_answer

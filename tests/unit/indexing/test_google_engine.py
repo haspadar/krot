@@ -2,7 +2,7 @@ import pytest
 
 from fakes.google import FakeTokens, service_account
 from fakes.indexing import FakeIndexing
-from krot_index import night
+from krot_index import night, web
 from krot_index.engines.google import Google, coverage_state
 
 SITE = "rufnummer.de"
@@ -91,3 +91,35 @@ def test_token_is_asked_for_once_per_scope(tokens, api):
     engine = google(tokens, api)
     engine.submit_all(SITE, ["https://rufnummer.de/", "https://rufnummer.de/vorwahl"])
     assert tokens.issued == ["https://www.googleapis.com/auth/indexing"]
+
+
+def test_pages_taken_before_a_refusal_travel_with_it(tokens, api):
+    engine = google(tokens, api)
+    sent = []
+
+    def publish_one_then_run_out(method, url, **kwargs):
+        if url == api.submit_url:
+            sent.append(url)
+            if len(sent) > 1:
+                return 429, b'{"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": "Quota exceeded"}}'
+        return web.call(method, url, **kwargs)
+
+    engine.call = publish_one_then_run_out
+    with pytest.raises(night.Refused) as refused:
+        engine.submit_all(SITE, ["https://rufnummer.de/a", "https://rufnummer.de/b"])
+    assert refused.value.accepted == ["https://rufnummer.de/a"]
+
+
+def test_inspection_pace_limit_reads_as_throttled(tokens, api):
+    api.inspect_status = 429
+    assert google(tokens, api).states(SITE, ["https://rufnummer.de/"]) == {"https://rufnummer.de/": night.THROTTLED}
+
+
+def test_token_older_than_fifty_minutes_is_minted_again(tokens, api):
+    now = [0.0]
+    engine = Google(service_account(tokens.uri), token_uri=tokens.uri, inspect_url=api.inspect_url,
+                    submit_url=api.submit_url, clock=lambda: now[0])
+    engine.submit_all(SITE, ["https://rufnummer.de/"])
+    now[0] += 51 * 60
+    engine.submit_all(SITE, ["https://rufnummer.de/vorwahl"])
+    assert len(tokens.issued) == 2

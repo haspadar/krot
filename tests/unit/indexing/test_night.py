@@ -1,5 +1,6 @@
 from krot_index import night
 from krot_index.night import Offer, Refused, Spending, share_of
+from krot_index.store import first_line
 
 
 def test_share_drops_the_remainder():
@@ -63,3 +64,7 @@ def test_guessed_allowance_is_stored_as_floor():
 
 def test_unrecognised_refusal_is_filed_for_a_person():
     assert night.refusal_of(Offer({"unknown": 1}, refused=Refused("something new"))) == "ownership"
+
+
+def test_silent_failure_is_named_by_its_type():
+    assert first_line(ConnectionError("")) == "ConnectionError"

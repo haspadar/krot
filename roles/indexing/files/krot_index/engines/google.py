@@ -9,6 +9,7 @@ promise to keep, not ours — if it starts refusing ordinary pages, look here
 first.
 """
 
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 from krot_index import night, web
@@ -23,6 +24,11 @@ SUBMIT_URL = "https://indexing.googleapis.com/v3/urlNotifications:publish"
 # With a day's 200 spent on one site, a page of another is refused at once
 # (busel, 2026-08-22). The caller divides it between the project's sites.
 DAILY_QUOTA = 200
+
+# A token lives an hour. Minted again before that, so a walk over a large
+# project that outlives the hour does not meet 401 on every later page — read
+# as an outage on inspection and as a red refusal on submission.
+TOKEN_LIFE = 50 * 60
 
 
 def coverage_state(coverage):
@@ -54,12 +60,15 @@ def _coverage_of(answer):
 class Google:
     slug = "google"
 
-    def __init__(self, key_json, call=web.call, token_uri=TOKEN_URI, inspect_url=INSPECT_URL, submit_url=SUBMIT_URL):
+    def __init__(self, key_json, call=web.call, token_uri=TOKEN_URI, inspect_url=INSPECT_URL, submit_url=SUBMIT_URL,
+                 clock=time.monotonic):
         self.key = ServiceAccountKey(key_json)
         self.call = call
         self.token_uri = token_uri
         self.inspect_url = inspect_url
         self.submit_url = submit_url
+        self.clock = clock
+        # scope -> (token, when it was minted)
         self.tokens = {}
 
     def daily_quota(self, domain=""):
@@ -86,24 +95,33 @@ class Google:
         return 50
 
     def token(self, scope):
-        if scope not in self.tokens:
+        held = self.tokens.get(scope)
+        if held is None or self.clock() - held[1] > TOKEN_LIFE:
             status, raw = self.call("POST", self.token_uri, form=self.key.grant(scope, self.token_uri))
             answer = web.decoded(raw)
             access = answer.get("access_token") if isinstance(answer, dict) else None
             if status >= 400 or not access:
                 raise night.Refused("Google gave no token for %s (HTTP %d): %s" % (scope, status, reason(answer)))
-            self.tokens[scope] = access
-        return self.tokens[scope]
+            self.tokens[scope] = held = (access, self.clock())
+        return held[0]
 
     def _inspect(self, token, domain, url):
+        # Anything at all, not only the network: one page failing in a way
+        # nobody foresaw must not end the walk over every site — it is that
+        # page's answer, and UNASKED spends no allowance.
         try:
             status, raw = self.call("POST", self.inspect_url, headers={"Authorization": "Bearer " + token},
                                     body={"inspectionUrl": url, "siteUrl": "sc-domain:" + domain})
-        except web.Unreachable:
+            if status == 429:
+                # Inspection has its own limits (2000 a day per property, and a
+                # pace). A refusal of pace repairs itself and must not paint the
+                # unit red the way silence from a dead key does.
+                return night.THROTTLED
+            if status != 200:
+                return night.UNASKED
+            return coverage_state(_coverage_of(web.decoded(raw)))
+        except Exception:
             return night.UNASKED
-        if status != 200:
-            return night.UNASKED
-        return coverage_state(_coverage_of(web.decoded(raw)))
 
     def states(self, domain, urls):
         """Asks about several pages at once, keyed by URL.
@@ -121,8 +139,18 @@ class Google:
             return dict(zip(urls, answers))
 
     def submit_all(self, domain, urls):
-        """One request a page; a refusal about the site stops the rest by raising."""
-        return {url: self.submit(url) for url in urls}
+        """One request a page; a refusal about the site stops the rest by raising.
+
+        The refusal carries what was taken before it — see Refused.accepted.
+        """
+        accepted = {}
+        for url in urls:
+            try:
+                accepted[url] = self.submit(url)
+            except night.Refused as refusal:
+                refusal.accepted = [taken for taken, ok in accepted.items() if ok]
+                raise
+        return accepted
 
     def submit(self, url):
         try:

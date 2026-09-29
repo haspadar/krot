@@ -1,3 +1,5 @@
+import gzip
+
 import pytest
 
 from fakes.indexing import FakeSite, sitemapindex, urlset
@@ -72,3 +74,28 @@ def test_dead_site_is_unreadable(site):
     address = site.url("/sitemap.xml")
     site.close()
     assert Sitemap().pages(address) is None
+
+
+def test_gzipped_file_is_opened(site):
+    site.files["/sitemap-1.xml.gz"] = gzip.compress(urlset("https://rufnummer.de/").encode())
+    assert list(Sitemap().pages(site.url("/sitemap-1.xml.gz"))) == ["https://rufnummer.de/"]
+
+
+def test_nested_file_on_another_host_is_not_fetched(site):
+    site.files["/sitemap.xml"] = sitemapindex("http://169.254.169.254/latest/meta-data")
+    assert Sitemap().pages(site.url("/sitemap.xml")) is None
+
+
+def test_page_of_another_domain_makes_the_site_unreadable(site):
+    site.files["/sitemap.xml"] = urlset("https://rufnummer.de/", "https://fremd.example/")
+    assert Sitemap().pages(site.url("/sitemap.xml"), domain="rufnummer.de") is None
+
+
+def test_pages_of_the_declared_domain_are_read(site):
+    site.files["/sitemap.xml"] = urlset("https://Rufnummer.de/")
+    assert list(Sitemap().pages(site.url("/sitemap.xml"), domain="rufnummer.de")) == ["https://Rufnummer.de/"]
+
+
+def test_index_naming_a_local_file_is_unreadable(site):
+    site.files["/sitemap.xml"] = sitemapindex("file:///etc/passwd")
+    assert Sitemap().pages(site.url("/sitemap.xml")) is None

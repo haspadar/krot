@@ -51,6 +51,10 @@ CREATE TABLE IF NOT EXISTS krot.schema_version (
     version integer NOT NULL
 );
 
--- One row, whatever it held before: this file IS version 1.
+-- One row, whatever it held before: this file IS version 1. In one transaction,
+-- because the role reapplies this on every pass and a timer starting between the
+-- two statements would find no version and go red over a healthy database.
+BEGIN;
 DELETE FROM krot.schema_version;
 INSERT INTO krot.schema_version (version) VALUES (1);
+COMMIT;
