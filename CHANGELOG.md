@@ -3,6 +3,17 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 5.9.1
+
+### Fixed
+
+- **`indexing` role: `--check` passes on a machine the role has not been on.** It failed on
+  the first grant to the `krot_index` role or the `krot` schema, neither of which a check run
+  creates. Under `--check` the grants and enabling a timer are skipped when what they act on
+  does not exist yet, and the schema apply and timer restarts are skipped always: a check
+  run never executed them anyway. The preflight checks still run for real. The
+  molecule scenario now runs `check` on a fresh container before `converge`.
+
 ## 5.9.0
 
 ### Added

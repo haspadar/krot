@@ -147,6 +147,7 @@
         role_attr_flags: LOGIN,NOSUPERUSER,NOCREATEDB,NOCREATEROLE,NOREPLICATION,NOBYPASSRLS
       become: true
       become_user: postgres
+      register: indexing_pg_role
 
     - name: Create the program directory
       ansible.builtin.file:
@@ -241,6 +242,16 @@
         state: started
         enabled: true
       loop: "{{ indexing_units }}"
+      # --check writes no unit, and systemd cannot find one it would install: a
+      # timer whose file changes is left out here. The file task shows it.
+      when: not (ansible_check_mode and item in indexing_timers_to_write)
+      vars:
+        indexing_timers_to_write: >-
+          {%- set names = [] -%}
+          {%- for result in indexing_timers.results if result.changed -%}
+          {%- set _ = names.append('krot-index-' ~ result.item.0.name ~ '-' ~ result.item.1) -%}
+          {%- endfor -%}
+          {{ names }}
 
     # A reload alone leaves a running timer on the hour it was started with:
     # a schedule moved in the inventory would keep firing at the old one.
@@ -249,6 +260,8 @@
         name: "krot-index-{{ item.item.0.name }}-{{ item.item.1 }}.timer"
         state: restarted
       loop: "{{ indexing_timers.results | selectattr('changed') | list }}"
+      # Every one of them is a file --check did not write; see above.
+      when: not ansible_check_mode
       loop_control:
         label: "{{ item.item.0.name }} {{ item.item.1 }}"
 
