@@ -8,31 +8,24 @@ Every call carries a bearer token, and a service account earns one by signing a
 claim with its private key and trading the signature for the token. The same
 account serves both products, each under its own scope, so tokens are asked for
 per scope and kept for the rest of the module's run.
+
+The signing itself lives in google_jwt.py, which krot-index shares on the
+machine; what stays here is the part that goes over Ansible's HTTP client.
 """
 
 from __future__ import absolute_import, division, print_function
 
 __metaclass__ = type
 
-import base64
-import json
-import time
-import traceback
-
-
 from ansible_collections.haspadar.krot.plugins.module_utils.api import Http, Unreachable
-
-try:
-    from cryptography.hazmat.primitives import hashes, serialization
-    from cryptography.hazmat.primitives.asymmetric import padding
-
-    HAS_CRYPTOGRAPHY = True
-    CRYPTOGRAPHY_ERROR = None
-except ImportError:
-    HAS_CRYPTOGRAPHY = False
-    CRYPTOGRAPHY_ERROR = traceback.format_exc()
-
-TOKEN_URI = "https://oauth2.googleapis.com/token"
+from ansible_collections.haspadar.krot.plugins.module_utils.google_jwt import (  # noqa: F401
+    CRYPTOGRAPHY_ERROR,
+    HAS_CRYPTOGRAPHY,
+    TOKEN_URI,
+    ServiceAccountKey,
+    encoded,
+    reason,
+)
 
 # Shared by every Google module, so the key and the token address are spelled
 # the same way in all of them.
@@ -50,20 +43,6 @@ class Refused(Exception):
         super(Refused, self).__init__("Google refused %s %s (HTTP %d): %s" % (method, path, status, reason(answer)))
 
 
-def reason(answer):
-    # Two shapes: the APIs say {"error": {"message": ...}}, the token endpoint
-    # says {"error": "invalid_grant", "error_description": ...}. Both are kept,
-    # since a missing role and a revoked key otherwise look alike from outside.
-    if not isinstance(answer, dict):
-        return "no reason given"
-    error = answer.get("error")
-    if isinstance(error, dict):
-        return error.get("message") or error.get("status") or "no reason given"
-    if isinstance(error, str):
-        return "%s: %s" % (error, answer.get("error_description") or "no description")
-    return "no reason given"
-
-
 def call(http, method, path, query=None, body=None):
     """Returns the decoded answer of a call Google accepted, or raises Refused."""
     status, answer = http.call(method, path, query, body)
@@ -74,16 +53,8 @@ def call(http, method, path, query=None, body=None):
 
 class ServiceAccount:
     def __init__(self, key_json, token_uri=TOKEN_URI):
-        try:
-            key = json.loads(key_json)
-        except ValueError:
-            key = None
-        # The message never quotes the key: a malformed one is still mostly a
-        # private key, and error messages end up in the play's output.
-        if not isinstance(key, dict) or not key.get("client_email") or not key.get("private_key"):
-            raise ValueError("the Google key is not a service account key file")
-        self.email = key["client_email"]
-        self.private_key = key["private_key"]
+        self.key = ServiceAccountKey(key_json)
+        self.email = self.key.email
         self.token_uri = token_uri
         self.tokens = {}
 
@@ -96,26 +67,10 @@ class ServiceAccount:
         return self.tokens[scope]
 
     def exchange(self, scope):
-        now = int(time.time())
-        assertion = self.sign(dict(iss=self.email, scope=scope, aud=self.token_uri, iat=now, exp=now + 3600))
-        form = dict(grant_type="urn:ietf:params:oauth:grant-type:jwt-bearer", assertion=assertion)
-        status, answer = Http(self.token_uri).call("POST", "", form=form)
+        status, answer = Http(self.token_uri).call("POST", "", form=self.key.grant(scope, self.token_uri))
         if status >= 400:
             raise Refused("POST", self.token_uri, status, answer)
         access = answer.get("access_token") if isinstance(answer, dict) else None
         if not access:
             raise Unreachable("Google's token endpoint answered without an access token")
         return access
-
-    def sign(self, claim):
-        header = encoded(json.dumps(dict(alg="RS256", typ="JWT")).encode())
-        body = encoded(json.dumps(claim).encode())
-        signing = header + b"." + body
-        key = serialization.load_pem_private_key(self.private_key.encode(), password=None)
-        signature = key.sign(signing, padding.PKCS1v15(), hashes.SHA256())
-        return (signing + b"." + encoded(signature)).decode()
-
-
-def encoded(raw):
-    """URL-safe base64 without padding, as JWT wants it."""
-    return base64.urlsafe_b64encode(raw).rstrip(b"=")

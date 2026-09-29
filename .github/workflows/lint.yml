@@ -35,6 +35,27 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    # A real Postgres for krot-index's store: an upsert, a unique key and "forget
+    # what the site dropped" are questions about the database itself, and a fake
+    # would only repeat the answers it was written from. The major version the
+    # machines run; the tests skip without KROT_TEST_POSTGRES, so this is what
+    # makes them run here rather than pass by being skipped.
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: krot-units  # secret-lint: allow — throwaway, dies with the runner
+          POSTGRES_DB: krot_units
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 2s
+          --health-timeout 5s
+          --health-retries 15
+    env:
+      # secret-lint: allow — the throwaway server above, reachable only from this runner
+      KROT_TEST_POSTGRES: "host=localhost port=5432 user=postgres password=krot-units dbname=krot_units"
     steps:
       # Full history, not the default shallow clone: wiki-index.py restores PR numbers
       # from merge commits, and at depth=1 every one of them silently becomes a dash.
@@ -77,7 +98,7 @@ jobs:
             hashFiles('.github/workflows/lint.yml') }}
 
       - name: Install linters
-        run: pip install ansible-lint yamllint pytest
+        run: pip install ansible-lint yamllint pytest psycopg2-binary
 
       # Keyed on the hash of requirements.yml, so changing a dependency
       # invalidates the cache, and there are no restore-keys — an exact match or
