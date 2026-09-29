@@ -15,7 +15,9 @@ changing a default that affects production) bump major.
   `cron_jobs` is not empty and is written into every unit.
 - **A declared job whose unit is another project's or another role's is refused** before
   anything is written, and so is a log already rotated by another project's file.
-- **Rotation moved to `/etc/logrotate.d/krot-cron-<project>`**; the shared `krot-cron` is removed.
+- **Rotation moved to `/etc/logrotate.d/krot-cron-<project>`.** A run takes its own logs'
+  entries out of the shared `krot-cron` and leaves the rest, the only rotation of a project not
+  yet upgraded; the file goes once it is empty.
 
 ### Added
 
@@ -25,7 +27,14 @@ changing a default that affects production) bump major.
 
 ### Upgrading
 
-- Set `cron_project` in every inventory that declares `cron_jobs`.
+- Set `cron_project` in every inventory that declares `cron_jobs` or `cron_retired_jobs`.
+- On a machine shared by projects, upgrade all of them before the next run of any: a project
+  still on 5.x takes every `krot-*` job for its own and retires the others' as before.
+- A project's first run claims its own earlier units by their declared names, in place and
+  without a restart. Its earlier units it no longer declares are named, not retired: list them
+  in `cron_retired_jobs`.
+- Changing `cron_project` later makes the project's own units look like another project's, and
+  every job is refused: set it back, or remove the units by hand.
 
 ## 5.9.1
 

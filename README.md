@@ -168,7 +168,8 @@ names its project, and a run retires, overwrites and rotates only its own projec
 job whose unit is already another project's, or another role's, is refused before anything is
 written. Units from before 6.0.0 carry no project: a run leaves them running and names them; the
 project that owns one claims it by declaring it, and one nobody owns is retired by listing it in
-`cron_retired_jobs`.
+`cron_retired_jobs`. Upgrade every project on a shared machine before the next run of any: one
+still on 5.x takes every `krot-*` job for its own.
 
 **Why systemd timers rather than a crontab line.** On a production machine an hourly job did not run once in five
 days, and this was visible from nowhere. Its output was redirected into `/var/log/`, where `km`

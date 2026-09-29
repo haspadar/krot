@@ -27,7 +27,7 @@
 
 - name: Remember an unowned job nobody retired
   ansible.builtin.set_fact:
-    cron_unowned_jobs: "{{ cron_unowned_jobs | default([]) + [cron_retire_name] }}"
+    cron_unowned_jobs: "{{ cron_unowned_jobs + [cron_retire_name] }}"
   when:
     - cron_job_marker in cron_retire_unit
     - cron_retire_owner == ''

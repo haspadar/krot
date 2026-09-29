@@ -188,7 +188,6 @@
         - /etc/systemd/system/krot-legacy-retired.service
         - /etc/systemd/system/krot-legacy-retired.timer
         - /var/log/krot/legacy-retired.log
-        - /etc/logrotate.d/krot-cron
 
     - name: Another project's rotation file stays
       ansible.builtin.stat:
@@ -196,8 +195,27 @@
       register: other_rotation
       failed_when: not other_rotation.stat.exists
 
-    - name: Every installed unit names its project
-      ansible.builtin.command: grep -qx '# krot-cron-project=molecule' /etc/systemd/system/krot-journal-job.service
+    # The file earlier versions shared lost our entry, which the per-project
+    # file now holds, and kept the one of the project that has not upgraded.
+    - name: Read the rotation file earlier versions shared
+      ansible.builtin.slurp:
+        src: /etc/logrotate.d/krot-cron
+      register: legacy_rotation
+
+    - name: It rotates the project not yet upgraded, and no longer our log
+      ansible.builtin.assert:
+        that:
+          - "'/var/log/krot/not-upgraded.log {' in legacy_text"
+          - "'/var/log/krot/file-job.log' not in legacy_text"
+      vars:
+        legacy_text: "{{ legacy_rotation.content | b64decode }}"
+
+    # percent-job among them: prepare.yml left it from an earlier version, and
+    # this run claimed it rather than refusing it.
+    - name: Every declared unit names its project
+      ansible.builtin.command: >-
+        grep -qx '# krot-cron-project=molecule' /etc/systemd/system/krot-{{ item }}.service
+      loop: [journal-job, workdir-job, percent-job, failing-job, file-job]
       changed_when: false
 
     # Refused before anything is written: a job named like another project's
@@ -206,12 +224,15 @@
     - name: A job that would take another's unit or log is refused
       ansible.builtin.include_tasks: tasks/refused.yml
       loop:
-        - {name: other-job, command: /bin/true, schedule: daily}
-        - {name: foreign, command: /bin/true, schedule: daily}
-        - {name: other-log, command: /bin/true, schedule: daily, log_file: /var/log/krot/other.log}
+        - job: {name: other-job, command: /bin/true, schedule: daily}
+          refused_by: Assert no declared job takes another's unit
+        - job: {name: foreign, command: /bin/true, schedule: daily}
+          refused_by: Assert no declared job takes another's unit
+        - job: {name: other-log, command: /bin/true, schedule: daily, log_file: /var/log/krot/other.log}
+          refused_by: Assert no log of ours is rotated by another project
       loop_control:
-        loop_var: colliding_job
-        label: "{{ colliding_job.name }}"
+        loop_var: colliding
+        label: "{{ colliding.job.name }}"
 
     - name: The units it would have taken are unchanged
       ansible.builtin.command: grep -c krot-cron-project=other /etc/systemd/system/krot-other-job.service
