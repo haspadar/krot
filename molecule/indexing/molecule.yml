@@ -29,6 +29,9 @@ provisioner:
   inventory:
     host_vars:
       krot-indexing:
+        # `other` is on the machine too and is not named here or there: it is
+        # another project's, from its own inventory, and must be left alone.
+        indexing_retired_projects: [gone]
         indexing_projects:
           molecule:
             database: molecule_site
