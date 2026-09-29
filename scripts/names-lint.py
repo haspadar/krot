@@ -7,48 +7,25 @@ it, and a real site in a fixture tells anyone reading the repository which sites
 its author runs. The rule held by attention alone until 2026-09-29, when a
 review found a hundred such lines across roles, modules, tests and scenarios.
 
-The words are compared by hash, so this file does not name what it forbids —
-it would otherwise be the one place in the tree that still did. A word is any
-run of [a-z0-9] after splitting camel case and lowercasing, which catches
-`acc-<name>`, `<name>'s`, `<name>.de` and `<Name>Deploy` alike. File paths are
-read the same way as lines. A name glued to another lowercase word
-(`<name>shared`) is not caught: splitting there would need a dictionary.
+The words, and how a line is split into them, are in forbidden_names.py. File
+paths are read the same way as lines.
 
 Left out: openspec/changes/, the record of decisions as they were taken, and
-wiki/index/, which is generated from it. To forbid another word, add the sha256
-of its lowercase spelling below — `printf '%s' word | shasum -a 256`.
+wiki/index/, which is generated from it and masks the words as it goes.
 """
 
 from __future__ import annotations
 
-import hashlib
-import re
 import subprocess
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent.parent
+from forbidden_names import forbidden
 
-FORBIDDEN = {
-    "47fa91115b212214dbd018f357ab5883424f82b3e6d3de1bc20f04b2b319aac2",
-    "61e8809900baf42d0287463b31aef80a422b3a8959fd49496cd1f230e3739799",
-    "1372c63b35ea72a55bc5afac621482ea61a41dea630ba19583412545d4197641",
-    "5862369d4456977e94676b7376cd3de71cb3c3c891aae27f445e56e08e3c41ad",
-    "fa10c03906f12c3ff779c33079afb15e52b14ade96804f35fb6025619b826774",
-    "5448199fe71a15959b536279d873c729da5088b31098eee83173bbac06738297",
-    "13ac368599ba03b93a72142138bdfd4610ec7896d2ab2f66e62541d24b7183e5",
-    "eb5219a9a50bdb51760481c6c642523a78c3555812b600b9769bcdce17403a47",
-    "6e5e1ccf88c88d70a81707c0d74c7bbed5cfa0dc47d3dbf31f5c6979d6127720",
-    "9e898946dec8daa8916e363d99bd1bd22d188d3f59c53df00d8e1effa500e0cc",
-    "8566db9ce3b9c7aaf81f1d2e7ad7df8e0588efd1431c29a927d9d6401700cec0",
-}
+ROOT = Path(__file__).resolve().parent.parent
 
 SKIP_PREFIXES = ("openspec/changes/", "wiki/index/")
 BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".gz", ".tar", ".zip", ".ico"}
-WORD = re.compile(r"[a-z0-9]+")
-# ShopDeploy -> Shop Deploy, HTTPServer -> HTTP Server: a name inside an
-# identifier is still a name.
-CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
 
 def tracked_files() -> list[Path]:
@@ -60,11 +37,6 @@ def tracked_files() -> list[Path]:
         check=True,
     )
     return [ROOT / name for name in out.stdout.split("\0") if name]
-
-
-def forbidden(line: str) -> bool:
-    words = WORD.findall(CAMEL.sub(" ", line).lower())
-    return any(hashlib.sha256(word.encode()).hexdigest() in FORBIDDEN for word in words)
 
 
 def main() -> int:

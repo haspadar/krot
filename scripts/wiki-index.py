@@ -20,6 +20,10 @@
 поведение приложения, а машину, и его единица знания — роль. Поэтому индекс строится по
 `roles/`, а не по capability.
 
+Имена проектов-потребителей в имени change и в заголовке заменяются на «‹проект›»: архив их
+хранит как запись решений, а оглавление — страница вики. Список — forbidden_names.py, общий с
+names-lint. Путь ссылки остаётся путём к файлу архива.
+
 Запуск: python3 scripts/wiki-index.py
 """
 
@@ -30,6 +34,8 @@ import re
 import subprocess
 from datetime import date
 from pathlib import Path
+
+from forbidden_names import masked
 
 ROOT = Path(__file__).resolve().parent.parent
 WIKI = ROOT / "wiki"
@@ -349,6 +355,8 @@ def main() -> None:
             "`openspec archive` не выполнен, значит вики не узнала, что устарело."
         ),
         "",
+        "Имена проектов, подключающих коллекцию, заменены на «‹проект›»; в архиве они как были.",
+        "",
         "| Change | Состояние | PR | О чём |",
         "|---|---|---|---|",
     ]
@@ -362,8 +370,8 @@ def main() -> None:
             state = "**в работе**"
 
         lines.append(
-            f"| [`{change['name']}`](../../{change['path']}/proposal.md) | {state} "
-            f"| {pr_link(change['pr'])} | {change['title'] or '—'} |"  # type: ignore[arg-type]
+            f"| [`{masked(str(change['name']))}`](../../{change['path']}/proposal.md) | {state} "
+            f"| {pr_link(change['pr'])} | {masked(str(change['title'] or '—'))} |"  # type: ignore[arg-type]
         )
 
     write_index(WIKI / "index" / "changes.md", lines)
