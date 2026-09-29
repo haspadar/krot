@@ -11,24 +11,27 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **24**.
+В работе — **0**, заархивировано — **25**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **10** из 24: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **10** из 25: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
+
+Имена проектов, подключающих коллекцию, заменены на «‹проект›»; в архиве они как были.
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
 | [`check-indexing-on-a-fresh-machine`](../../openspec/changes/archive/2026-09-29-check-indexing-on-a-fresh-machine/proposal.md) | 2026-09-29 | [#70](https://github.com/haspadar/krot/pull/70) | `--check` роли indexing проходит на машине, где её ещё не было |
+| [`hide-consumer-names-in-wiki-index`](../../openspec/changes/archive/2026-09-29-hide-consumer-names-in-wiki-index/proposal.md) | 2026-09-29 | — | Оглавление вики не называет проекты-потребители |
 | [`keep-projects-out-of-code`](../../openspec/changes/archive/2026-09-29-keep-projects-out-of-code/proposal.md) | 2026-09-29 | [#67](https://github.com/haspadar/krot/pull/67) | Код коллекции не называет проекты, которые её потребляют |
 | [`offer-pages-to-search-engines`](../../openspec/changes/archive/2026-09-29-offer-pages-to-search-engines/proposal.md) | 2026-09-29 | [#62](https://github.com/haspadar/krot/pull/62) | Ночная отправка страниц поисковикам — роль krot, а не код проекта |
-| [`retire-only-own-cron-units`](../../openspec/changes/archive/2026-09-29-retire-only-own-cron-units/proposal.md) | 2026-09-29 | — | Роль cron снимает и перезаписывает только задачи своего проекта |
+| [`retire-only-own-cron-units`](../../openspec/changes/archive/2026-09-29-retire-only-own-cron-units/proposal.md) | 2026-09-29 | [#71](https://github.com/haspadar/krot/pull/71) | Роль cron снимает и перезаписывает только задачи своего проекта |
 | [`retire-only-own-projects`](../../openspec/changes/archive/2026-09-29-retire-only-own-projects/proposal.md) | 2026-09-29 | [#66](https://github.com/haspadar/krot/pull/66) | Уборка `indexing` трогает только проекты своего прогона |
 | [`retry-first-indexnow-key`](../../openspec/changes/archive/2026-09-29-retry-first-indexnow-key/proposal.md) | 2026-09-29 | [#68](https://github.com/haspadar/krot/pull/68) | Первый 403 IndexNow при верном файле-ключе — повтор, а не отказ |
 | [`site-launch`](../../openspec/changes/archive/2026-09-26-site-launch/proposal.md) | 2026-09-26 | — | Запуск сайта ролями krot: от регистратора до sitemap, принятого поисковиками |
 | [`nginx-machine-defaults`](../../openspec/changes/archive/2026-09-23-nginx-machine-defaults/proposal.md) | 2026-09-23 | — | Настройки nginx, которых на машине может быть только одна копия, ставит роль |
 | [`a-copy-nobody-can-restore-is-a-hope`](../../openspec/changes/archive/2026-08-29-a-copy-nobody-can-restore-is-a-hope/proposal.md) | 2026-08-29 | [#50](https://github.com/haspadar/krot/pull/50) | Копия, которую некому развернуть, — это надежда, а не резервная копия |
-| [`the-boundary-with-busel`](../../openspec/changes/archive/2026-08-24-the-boundary-with-busel/proposal.md) | 2026-08-24 | — | Граница с busel описана неверно |
+| [`the-boundary-with-‹проект›`](../../openspec/changes/archive/2026-08-24-the-boundary-with-busel/proposal.md) | 2026-08-24 | — | Граница с ‹проект› описана неверно |
 | [`operator-reads-the-logs`](../../openspec/changes/archive/2026-08-23-operator-reads-the-logs/proposal.md) | 2026-08-23 | [#47](https://github.com/haspadar/krot/pull/47) | Оператор читает логи машины, а не только правит её |
 | [`umami-role`](../../openspec/changes/archive/2026-08-20-umami-role/proposal.md) | 2026-08-20 | [#42](https://github.com/haspadar/krot/pull/42) | Proposal: the analytics counter is a service of the machine |
 | [`ci-faster-feedback`](../../openspec/changes/archive/2026-08-15-ci-faster-feedback/proposal.md) | 2026-08-15 | — | Proposal: CI waits longer than it works |
