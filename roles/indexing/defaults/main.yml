@@ -55,7 +55,9 @@ indexing_timeouts:
   google: 2h
   bing: 2h
   yandex: 3h
-  indexnow: 30m
+  # One post a site, but a run with new keys spends up to ten one-minute
+  # pauses repeating first posts (engines/indexnow.py, FIRST_KEY_WAITS).
+  indexnow: 1h
 
 # At most 15 minutes: Google's night starts an hour after its reset, and the
 # spread is taken out of that margin, not added to it.

@@ -36,6 +36,13 @@ KEY_LENGTH = 32
 # meets for the first time is answered before it is checked.
 FIRST_KEY_WAIT = 60
 
+# Pauses a run may spend on it. Sites are walked one by one, and a project whose
+# every key is new would otherwise sleep a minute per site until systemd killed
+# the unit mid-walk, leaving the rest unrecorded. Past this, a 403 after a key
+# file read right is "not taken" — the night is red, the key is posted again
+# tomorrow, when it is no longer new.
+FIRST_KEY_WAITS = 10
+
 
 def site_key(secret, domain):
     """The site's key: half of sha256 over the project's secret and the domain.
@@ -55,6 +62,7 @@ class IndexNow:
         self.call = call
         self.endpoint = endpoint
         self.sleep = sleep or time.sleep
+        self.waits = 0
         # Where the site answers; a parameter only so a test can put the site on a
         # local port.
         self.origin = origin or (lambda domain: "https://" + domain)
@@ -134,6 +142,9 @@ class IndexNow:
             # prove() has just read the right key from the site, so this is the
             # protocol not having checked a key it meets for the first time —
             # not a wrong key. Once more after a pause; a second 403 is a refusal.
+            if self.waits >= FIRST_KEY_WAITS:
+                return {url: False for url in urls}
+            self.waits += 1
             self.sleep(FIRST_KEY_WAIT)
             status = self.post(domain, urls)
         if status is None:

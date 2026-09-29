@@ -104,6 +104,16 @@ def test_key_refused_twice_is_an_ownership_refusal(endpoint, site):
     assert (refused.value.ownership, len(endpoint.posts)) == (True, 2)
 
 
+def test_pauses_stop_at_the_run_budget(endpoint, site):
+    # Past the budget a new key's 403 is "not taken": the unit must not be
+    # killed mid-walk sleeping a minute a site.
+    pauses = []
+    engine = IndexNow(SECRET, endpoint=endpoint.endpoint, origin=lambda domain: site.url(""), sleep=pauses.append)
+    engine.waits = 10
+    endpoint.answers = [403]
+    assert (engine.submit_all(SITE, ["https://abendseite.de/"]), pauses) == ({"https://abendseite.de/": False}, [])
+
+
 def test_taken_post_is_not_repeated(endpoint, site):
     indexnow(endpoint, site).submit_all(SITE, ["https://abendseite.de/"])
     assert len(endpoint.posts) == 1
