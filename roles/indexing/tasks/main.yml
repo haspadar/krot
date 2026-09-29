@@ -1,0 +1,274 @@
+---
+# Everything the inventory can get wrong is refused here, before the machine is
+# touched: a unit installed over a malformed entry is a night that fails at
+# 01:00, or worse, one that runs green over nothing.
+#
+# ⚠️ Loops walk indexing_plans, the projects without their keys: a failed item
+# is printed whole whatever its label says.
+#
+# \Z, not $: Python's $ also matches before a final newline, and a value from a
+# YAML `|` block would pass carrying one.
+- name: Assert each project is usable
+  ansible.builtin.assert:
+    that:
+      - item.name is match('^[a-z0-9]+\Z')
+      - item.database | length > 0
+      - item.reader | length > 0
+      - item.engines | length > 0
+      - item.engines | difference(indexing_engines) | length == 0
+      - item.engines | unique | length == item.engines | length
+      - item.sites | length > 0
+    fail_msg: >-
+      Project {{ item.name }} needs a name of [a-z0-9]+ (it is read back out of
+      krot-index-<project>-<engine>, so no dash), a database, a reader, a list of
+      engines out of {{ indexing_engines | join(', ') }} and at least one site.
+    quiet: true
+  loop: "{{ indexing_plans }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Assert each site names a domain and a sitemap
+  ansible.builtin.assert:
+    that:
+      - item.1.domain | default('') | length > 0
+      - item.1.sitemap_url | default('') is match('^https?://')
+    fail_msg: "A site of {{ item.0.name }} needs a domain and an http(s) sitemap_url."
+    quiet: true
+  loop: "{{ indexing_plans | subelements('sites') }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1.domain | default('<unnamed>') }}"
+
+# ⚠️ A key per declared engine, never an engine per present key: an empty lookup
+# would otherwise read as a decision not to offer, and the night would be green.
+# The short keys also go into an EnvironmentFile=, whose own quoting rules would
+# quietly mangle anything outside this alphabet. The only task that reads keys
+# in a loop, hence no_log; the project and engine are in fail_msg.
+- name: Assert every declared engine has its key
+  ansible.builtin.assert:
+    that:
+      - item.1 == 'google' or indexing_short_key is match('^[A-Za-z0-9._~+/=-]+\Z')
+      - item.1 != 'google' or indexing_projects[item.0.name].google_service_account | default('') | length > 0
+    fail_msg: >-
+      {{ item.0.name }} declares {{ item.1 }} but {{ indexing_key_fields[item.1] }}
+      is empty or holds characters an environment file cannot carry.
+    quiet: true
+  vars:
+    indexing_short_key: "{{ indexing_projects[item.0.name][indexing_key_fields[item.1]] | default('') | string }}"
+  loop: "{{ indexing_plans | subelements('engines') }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1 }}"
+  no_log: true
+
+# ⚠️ One key, one project. Google's 200 a day belong to the service account's
+# Cloud project and Bing's allowance and throttle to its key: two projects on
+# one would spend one allowance twice and throttle each other, while each unit
+# looked like its own.
+- name: Assert no two projects share a key
+  ansible.builtin.assert:
+    that:
+      - indexing_shared | length == indexing_shared | unique | length
+    fail_msg: >-
+      Two projects on this machine share a Google service account, a Bing key or a
+      Yandex token. Each project needs its own: the allowance belongs to the key.
+    quiet: true
+  vars:
+    indexing_shared: >-
+      {%- set seen = [] -%}
+      {%- for project, spec in indexing_projects.items() -%}
+      {%- for engine in spec.engines | default([]) if engine in ['google', 'bing', 'yandex'] -%}
+      {%- set key = spec[indexing_key_fields[engine]] -%}
+      {%- if engine == 'google' -%}
+      {%- set key = ((key | from_json) if key is string else key).client_email | default('') -%}
+      {%- endif -%}
+      {%- set _ = seen.append(engine ~ ':' ~ (key | string | trim)) -%}
+      {%- endfor -%}
+      {%- endfor -%}
+      {{ seen }}
+  no_log: true
+
+- name: Offer each project's pages
+  when: indexing_plans | length > 0
+  block:
+    # First, and before any check: the checks below ask the cluster through
+    # psycopg2. Packages are the one change a refused run may leave.
+    - name: Install what the program needs
+      ansible.builtin.apt:
+        name:
+          - python3
+          # The JWT Google's token is exchanged for is signed with this.
+          - python3-cryptography
+          # The program's way into the project's database.
+          - python3-psycopg2
+          # The schema is applied as the program's account, and Ansible hands a
+          # module to an unprivileged account by ACL (see the umami role).
+          - acl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    # Every project is checked before any is changed: a typo in the second
+    # project's reader must not leave the first half-provisioned.
+    - name: Check each project against the cluster
+      ansible.builtin.include_tasks: preflight.yml
+      loop: "{{ indexing_plans }}"
+      loop_control:
+        loop_var: indexing_plan
+        label: "{{ indexing_plan.name }}"
+
+    - name: Create the program's account
+      ansible.builtin.user:
+        name: "{{ indexing_user }}"
+        system: true
+        shell: /usr/sbin/nologin
+        create_home: false
+        home: /nonexistent
+
+    # Every attribute named, not LOGIN alone: the module leaves unnamed ones as
+    # they are, and a role of this name that already existed with more would
+    # hand it to every night on the machine.
+    - name: Create the program's Postgres role
+      community.postgresql.postgresql_user:
+        login_db: postgres
+        name: "{{ indexing_user }}"
+        role_attr_flags: LOGIN,NOSUPERUSER,NOCREATEDB,NOCREATEROLE,NOREPLICATION,NOBYPASSRLS
+      become: true
+      become_user: postgres
+
+    - name: Create the program directory
+      ansible.builtin.file:
+        path: "{{ indexing_program_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    # ⚠️ local_follow: krot_index/google_jwt.py is a link into plugins/module_utils,
+    # shared with the modules. Copied as a link it would point at nothing here.
+    - name: Install the program
+      ansible.builtin.copy:
+        src: krot_index
+        dest: "{{ indexing_program_dir }}/"
+        local_follow: true
+        owner: root
+        group: root
+        mode: "0644"
+        directory_mode: "0755"
+
+    # The only way to know the copy is whole: a module that did not arrive, or a
+    # package that is missing, would otherwise show at 01:00 as a traceback.
+    - name: Check the program imports whole on this machine
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+            import psycopg2;
+            from krot_index import cli, google_jwt;
+            from krot_index.engines import google, bing, yandex, indexnow;
+            assert google_jwt.HAS_CRYPTOGRAPHY, google_jwt.CRYPTOGRAPHY_ERROR
+      environment:
+        PYTHONPATH: "{{ indexing_program_dir }}"
+      changed_when: false
+
+    - name: Install the schema file
+      ansible.builtin.copy:
+        src: schema.sql
+        dest: "{{ indexing_program_dir }}/schema.sql"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Create the config directory
+      ansible.builtin.file:
+        path: "{{ indexing_config_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Prepare each project's database and files
+      ansible.builtin.include_tasks: project.yml
+      loop: "{{ indexing_plans }}"
+      loop_control:
+        loop_var: indexing_plan
+        label: "{{ indexing_plan.name }}"
+
+    - name: Install the services
+      ansible.builtin.template:
+        src: index.service.j2
+        dest: "/etc/systemd/system/krot-index-{{ item.0.name }}-{{ item.1 }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ indexing_plans | subelements('engines') }}"
+      loop_control:
+        label: "{{ item.0.name }} {{ item.1 }}"
+      notify: Reload systemd
+
+    - name: Install the timers
+      ansible.builtin.template:
+        src: index.timer.j2
+        dest: "/etc/systemd/system/krot-index-{{ item.0.name }}-{{ item.1 }}.timer"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ indexing_plans | subelements('engines') }}"
+      loop_control:
+        label: "{{ item.0.name }} {{ item.1 }}"
+      notify: Reload systemd
+      register: indexing_timers
+
+    - name: Apply pending unit changes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Enable the timers
+      ansible.builtin.systemd_service:
+        name: "{{ item }}.timer"
+        state: started
+        enabled: true
+      loop: "{{ indexing_units }}"
+
+    # A reload alone leaves a running timer on the hour it was started with:
+    # a schedule moved in the inventory would keep firing at the old one.
+    - name: Restart the timers whose schedule changed
+      ansible.builtin.systemd_service:
+        name: "krot-index-{{ item.item.0.name }}-{{ item.item.1 }}.timer"
+        state: restarted
+      loop: "{{ indexing_timers.results | selectattr('changed') | list }}"
+      loop_control:
+        label: "{{ item.item.0.name }} {{ item.item.1 }}"
+
+- name: Find previously installed timers
+  ansible.builtin.find:
+    paths: /etc/systemd/system
+    patterns: "krot-index-*.timer"
+  register: indexing_installed_timers
+
+# A project or engine dropped from the inventory has to stop offering. Only
+# units carrying this role's marker go: busel's krot-index-<engine> from the
+# cron role share the prefix and stay until busel retires them itself.
+- name: Retire timers no longer declared
+  ansible.builtin.include_tasks: retire.yml
+  loop: "{{ indexing_installed_timers.files | map(attribute='path') | map('basename') | list }}"
+  loop_control:
+    loop_var: indexing_timer_file
+    label: "{{ indexing_timer_file }}"
+  when: indexing_timer_file | regex_replace('\\.timer$', '') not in indexing_units
+
+# Keys of a project no longer declared must not stay on the machine. Only the
+# three names this role writes are touched — anything else somebody put in the
+# directory is theirs. The schema and its rows stay in the project's database:
+# they are its history, not ours.
+- name: Find the files this role writes
+  ansible.builtin.find:
+    paths: "{{ indexing_config_dir }}"
+    patterns: '^[a-z0-9]+\.(json|env|google\.json)$'
+    use_regex: true
+  register: indexing_config_files
+
+- name: Remove the files of projects no longer declared
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop: "{{ indexing_config_files.files | map(attribute='path') | list }}"
+  when: (item | basename).split('.')[0] not in indexing_projects

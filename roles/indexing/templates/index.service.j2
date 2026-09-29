@@ -1,0 +1,19 @@
+{{ ansible_managed | comment }}
+{{ indexing_unit_marker }}
+{% set project = item.0.name %}
+{% set engine = item.1 %}
+[Unit]
+Description=Offer {{ project }}'s pages to {{ engine }}
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User={{ indexing_user }}
+EnvironmentFile={{ indexing_config_dir }}/{{ project }}.env
+Environment=PYTHONPATH={{ indexing_program_dir }}
+# A site that hangs must not hold the unit: the timer would keep firing into a
+# unit still active and the engine would stop being offered, green.
+TimeoutStartSec={{ indexing_timeouts[engine] }}
+# Exit 1 means a person is needed; a spent allowance or a throttle exits 0.
+ExecStart=/usr/bin/python3 -m krot_index --config {{ indexing_config_dir }}/{{ project }}.json --engine {{ engine }}

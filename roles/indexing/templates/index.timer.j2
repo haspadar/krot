@@ -1,0 +1,20 @@
+{{ ansible_managed | comment }}
+{% set project = item.0.name %}
+{% set engine = item.1 %}
+[Unit]
+Description=Offer {{ project }}'s pages to {{ engine }} (timer)
+
+[Timer]
+OnCalendar={{ item.0.schedules[engine] | default(indexing_schedules[engine]) }}
+RandomizedDelaySec={{ indexing_randomized_delay }}
+# The same minute every night rather than a new one: a night that wanders by
+# fifteen minutes each way reads, on Google's day, as runs an hour apart.
+FixedRandomDelay=true
+# A machine that was off at the hour catches up on boot. Safe for Google too: the
+# catch-up always follows some reset, and a planned run after it the same day
+# finds the day spent and exits green.
+Persistent=true
+Unit=krot-index-{{ project }}-{{ engine }}.service
+
+[Install]
+WantedBy=timers.target

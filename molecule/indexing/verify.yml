@@ -1,0 +1,214 @@
+---
+# The machine and the database, not Ansible's report. A role that writes units
+# and a schema perfectly while the program cannot log in, cannot write its rows
+# or hands the application nothing to read passes any check built on `changed`.
+#
+# systemctl rather than systemd_service for the same reason as the cron
+# scenario: the module's status is read before it acts
+# (wiki/research/systemd-service-status-is-stale.md), and the run below is
+# meant to fail, which the module treats as its own error.
+- name: Verify
+  hosts: krot-indexing
+  tasks:
+    - name: A timer per declared engine is enabled
+      ansible.builtin.command: systemctl is-enabled krot-index-molecule-{{ item }}.timer
+      loop: [indexnow, bing, google]
+      register: indexing_enabled
+      changed_when: false
+      failed_when: indexing_enabled.stdout != "enabled"
+
+    - name: The project's schedule wins over the default
+      ansible.builtin.command: systemctl show krot-index-molecule-indexnow.timer -p TimersCalendar
+      register: indexing_calendar
+      changed_when: false
+      failed_when: "'05:05:00' not in indexing_calendar.stdout"
+
+    # The zone rides in the expression: Google's day resets at midnight
+    # Pacific, whatever the machine's clock says.
+    - name: Google's night keeps its own time zone
+      ansible.builtin.command: systemctl show krot-index-molecule-google.timer -p TimersCalendar
+      register: indexing_google_calendar
+      changed_when: false
+      failed_when: "'America/Los_Angeles' not in indexing_google_calendar.stdout"
+
+    - name: The Google key is a file of its own, the program's alone
+      ansible.builtin.stat:
+        path: /etc/krot-index/molecule.google.json
+      register: indexing_google_key
+      failed_when: >-
+        not indexing_google_key.stat.exists
+        or indexing_google_key.stat.mode != '0600'
+        or indexing_google_key.stat.pw_name != 'krot_index'
+
+    - name: Read the Google key
+      ansible.builtin.slurp:
+        src: /etc/krot-index/molecule.google.json
+      register: indexing_google_content
+
+    # Written from a dict, it must still be JSON the program can load — not
+    # Python's repr of one.
+    - name: It holds the service account as JSON
+      ansible.builtin.assert:
+        that:
+          - (indexing_google_content.content | b64decode | from_json).client_email
+            == 'molecule@molecule.iam.gserviceaccount.com'
+        quiet: true
+
+    - name: The keys are readable by the program's account alone
+      ansible.builtin.stat:
+        path: /etc/krot-index/molecule.env
+      register: indexing_env
+      failed_when: >-
+        not indexing_env.stat.exists
+        or indexing_env.stat.mode != '0600'
+        or indexing_env.stat.pw_name != 'krot_index'
+
+    - name: Read the keys file
+      ansible.builtin.slurp:
+        src: /etc/krot-index/molecule.env
+      register: indexing_env_content
+
+    # Only the engines declared: a Yandex line here would be a key for an engine
+    # the project never asked for. Google's is a path, never the key itself.
+    - name: It names the declared engines' keys and no other
+      ansible.builtin.assert:
+        that:
+          - "'KROT_INDEX_BING_KEY=molecule-bing' in indexing_env_text"
+          - "'KROT_INDEX_INDEXNOW_SECRET=' ~ indexing_made_up in indexing_env_text"
+          - "'KROT_INDEX_GOOGLE_KEY_FILE=/etc/krot-index/molecule.google.json' in indexing_env_text"
+          - "'client_email' not in indexing_env_text"
+          - "'YANDEX' not in indexing_env_text"
+      vars:
+        indexing_env_text: "{{ indexing_env_content.content | b64decode }}"
+        indexing_made_up: "{{ indexing_projects.molecule.indexnow_secret }}"
+
+    - name: Look for the planted units
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ item }}"
+      loop:
+        - krot-index-google.service
+        - krot-index-gone-bing.service
+        - krot-index-gone-bing.timer
+      register: indexing_planted
+
+    # busel's krot-index-google shares the prefix and carries cron's marker: kept.
+    # The dropped project's unit carries this role's: removed, timer and service.
+    - name: Only this role's dropped unit was retired
+      ansible.builtin.assert:
+        that:
+          - indexing_planted.results[0].stat.exists
+          - not indexing_planted.results[1].stat.exists
+          - not indexing_planted.results[2].stat.exists
+        quiet: true
+
+    - name: Look for the dropped project's files
+      ansible.builtin.stat:
+        path: "/etc/krot-index/{{ item }}"
+      loop: [gone.env, gone.json, gone.google.json]
+      register: indexing_gone
+
+    - name: The dropped project's files are gone
+      ansible.builtin.assert:
+        that:
+          - indexing_gone.results | length == 3
+          - indexing_gone.results | selectattr('stat.exists') | list | length == 0
+        quiet: true
+
+    - name: Look for the file somebody else keeps there
+      ansible.builtin.stat:
+        path: /etc/krot-index/README
+      register: indexing_foreign_file
+      failed_when: not indexing_foreign_file.stat.exists
+
+    - name: The tables belong to the program's role
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: >-
+          SELECT count(*) AS tables, count(*) FILTER (WHERE tableowner <> 'krot_index') AS foreign
+          FROM pg_tables WHERE schemaname = 'krot'
+      become: true
+      become_user: postgres
+      register: indexing_owners
+      # The count too: on an empty schema "none foreign" would hold vacuously.
+      failed_when: >-
+        indexing_owners.query_result[0].tables != 3
+        or indexing_owners.query_result[0].foreign != 0
+
+    # The run itself. It is red on purpose — the sitemap is on a port nobody
+    # listens on — but it reaches that only after the key, the peer login and
+    # the schema's version have all passed, and it writes its row on the way.
+    - name: Run IndexNow's night
+      ansible.builtin.command: systemctl start --wait krot-index-molecule-indexnow.service
+      register: indexing_run
+      changed_when: true
+      failed_when: false
+
+    - name: The night failed the way a person is meant to see
+      ansible.builtin.command: systemctl show krot-index-molecule-indexnow.service -p Result -p ExecMainStatus
+      register: indexing_result
+      changed_when: false
+      failed_when: >-
+        'Result=exit-code' not in indexing_result.stdout
+        or 'ExecMainStatus=1' not in indexing_result.stdout
+
+    - name: And said why
+      ansible.builtin.command: journalctl -u krot-index-molecule-indexnow.service --no-pager -n 20
+      register: indexing_journal
+      changed_when: false
+      failed_when: "'indexnow molecule.test: could not read the sitemap' not in indexing_journal.stdout"
+
+    - name: The night's row was written as the program's account
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: SELECT refusal FROM krot.index_run WHERE site = 'molecule.test' AND engine = 'indexnow'
+      become: true
+      become_user: postgres
+      register: indexing_row
+      failed_when: indexing_row.query_result | map(attribute='refusal') | list != ['unreadable']
+
+    - name: The application reads it
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        session_role: molecule_app
+        query: SELECT count(*) AS rows FROM krot.index_run
+      become: true
+      become_user: postgres
+      register: indexing_read
+      failed_when: indexing_read.query_result[0].rows != 1
+
+    - name: And cannot write
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        session_role: molecule_app
+        query: DELETE FROM krot.index_run
+      become: true
+      become_user: postgres
+      register: indexing_write
+      failed_when: "'permission denied' not in (indexing_write.msg | default(''))"
+
+    # A table a later schema version adds, made the way the role applies the
+    # schema: by the program's account. Readable by the application with no
+    # grant of its own, through the default privileges.
+    - name: A table added by a later schema
+      ansible.builtin.command:
+        argv:
+          - psql
+          - -X
+          - -q
+          - -v
+          - ON_ERROR_STOP=1
+          - -d
+          - molecule_site
+          - -c
+          - CREATE TABLE IF NOT EXISTS krot.later (id int)
+      become: true
+      become_user: krot_index
+      changed_when: true
+
+    - name: Is readable by the application too
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        session_role: molecule_app
+        query: SELECT count(*) AS rows FROM krot.later
+      become: true
+      become_user: postgres

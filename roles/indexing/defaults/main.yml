@@ -1,0 +1,54 @@
+---
+# The projects whose sites are offered to search engines every night, declared
+# by the inventory: the machine owns the program, the project owns the list.
+# Empty by default, so applying the role to a machine with nothing to offer is a
+# no-op.
+#
+# Each key is a project name, [a-z0-9]+ — it goes into unit names as
+# krot-index-<project>-<engine>, and a dash in it would make that name
+# ambiguous to read back. Each value:
+#
+#   database:  required. The project's database on this machine's cluster; the
+#              role creates the `krot` schema in it.
+#   reader:    required. The project's application role: gets USAGE and SELECT
+#              on the schema, so the project's screens can read what was sent.
+#   engines:   required, a list out of google, bing, yandex, indexnow. Explicit,
+#              never inferred from which keys are set: an empty lookup would
+#              otherwise switch an engine off without a word.
+#   google_service_account: the service account's JSON, string or dict.
+#   bing_key:          Bing Webmaster API key.
+#   yandex_token:      Yandex Webmaster OAuth token.  secret-lint: allow — a field's description
+#   indexnow_secret:   the project's secret; each site's key is derived from it.
+#              Each key is required exactly when its engine is declared.
+#   schedules: optional dict engine -> OnCalendar, over indexing_schedules.
+#   sites:     required list of
+#                domain:        the site as the engines know it.
+#                sitemap_url:   read over HTTP, as a search engine reads it.
+#                cards_path:    optional regex on a page's path marking a card.
+#                cards_sitemap: optional regex on the sitemap file's address.
+indexing_projects: {}
+
+# When each engine's night starts, as OnCalendar expressions.
+#
+# ⚠️ Google's hour carries its own time zone: the 200 a day reset at midnight
+# Pacific — named by Google's own refusal — and a zone in the expression keeps
+# the hour right whatever the machine's clock is set to. The others repeat the
+# hours busel measured and runs at: an empty hour each, Bing's reset unmeasured.
+indexing_schedules:
+  google: "*-*-* 01:00:00 America/Los_Angeles"
+  indexnow: "*-*-* 18:00:00"
+  bing: "*-*-* 20:00:00"
+  yandex: "*-*-* 02:00:00"
+
+# A hung site must not hold its unit forever: the timer would keep firing into a
+# unit still active, and the engine would stop being offered while everything
+# looked scheduled. Yandex is longest — one page a second, 150 a site.
+indexing_timeouts:
+  google: 2h
+  bing: 2h
+  yandex: 3h
+  indexnow: 30m
+
+# At most 15 minutes: Google's night starts an hour after its reset, and the
+# spread is taken out of that margin, not added to it.
+indexing_randomized_delay: 15m

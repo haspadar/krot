@@ -2,8 +2,8 @@
 kind: runbook
 title: Поднять машину с нуля
 owner: haspadar
-verified: 2026-09-26
-roles: [backup, bootstrap, common, cron, deploy_keys, docker, fail2ban, firewall, nginx, php, postgresql, umami]
+verified: 2026-09-29
+roles: [backup, bootstrap, common, cron, deploy_keys, docker, fail2ban, firewall, indexing, nginx, php, postgresql, umami]
 ---
 
 # Поднять машину с нуля
@@ -71,6 +71,10 @@ busel:
 - **`umami` до `firewall`** — по той же причине, что и всё остальное: замок закрывает машину, и
   сервис, не поднятый к этому моменту, выглядит сломанным, а не незапущенным.
 - **`backup` после `postgresql`** — копировать нечего, пока кластера нет.
+- **`indexing` — у проекта, объявившего `indexing_projects`, и после того, как база проекта
+  заведена**: роль добавляет в неё схему и отказывает до изменений, если базы или роли
+  приложения нет. busel её пока не подключает — отправляет своими таймерами от `cron`
+  ([отправка страниц поисковикам](../operations/search-engine-indexing.md)).
 - **`firewall` последним** — CF-замок закрывает 80/443 для всех, кроме Cloudflare, и включается,
   когда защищаемые им сервисы уже отвечают.
 

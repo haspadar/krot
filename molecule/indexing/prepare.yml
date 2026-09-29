@@ -1,0 +1,108 @@
+---
+# The machine as a project leaves it: a cluster, the project's database and its
+# application role. And two units already there — one of busel's, from the cron
+# role, and one this role installed for a project since dropped — because
+# retirement by marker is only proven by a unit it must keep beside one it must
+# remove.
+- name: Prepare
+  hosts: krot-indexing
+  vars:
+    indexing_planted:
+      - unit: krot-index-google
+        marker: "# krot-cron-job"
+      - unit: krot-index-gone-bing
+        marker: "# krot-indexing-unit"
+  tasks:
+    - name: Install Postgres
+      ansible.builtin.apt:
+        name:
+          - postgresql
+          - python3-psycopg2
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Start the cluster
+      ansible.builtin.systemd_service:
+        name: postgresql
+        state: started
+
+    - name: The project's application role
+      community.postgresql.postgresql_user:
+        name: molecule_app
+      become: true
+      become_user: postgres
+
+    - name: The project's database
+      community.postgresql.postgresql_db:
+        name: molecule_site
+        owner: molecule_app
+      become: true
+      become_user: postgres
+
+    # Ordinary hardening, and the case where a reader with every grant on the
+    # schema still cannot get in — unless the role grants CONNECT too.
+    - name: The project's database closed to PUBLIC
+      community.postgresql.postgresql_privs:
+        login_db: postgres
+        type: database
+        objs: molecule_site
+        privs: CONNECT
+        roles: PUBLIC
+        state: absent
+      become: true
+      become_user: postgres
+
+    # busel's krot-index-google (cron's marker) and a dropped project's unit
+    # (this role's marker): same prefix, opposite fates.
+    - name: Two services already on the machine
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item.unit }}.service"
+        content: |
+          {{ item.marker }}
+          [Unit]
+          Description=Planted by the scenario
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/true
+        mode: "0644"
+      loop: "{{ indexing_planted }}"
+      loop_control:
+        label: "{{ item.unit }}"
+
+    - name: And their timers
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item.unit }}.timer"
+        content: |
+          [Timer]
+          OnCalendar=daily
+          [Install]
+          WantedBy=timers.target
+        mode: "0644"
+      loop: "{{ indexing_planted }}"
+      loop_control:
+        label: "{{ item.unit }}"
+
+    - name: The config directory a dropped project left
+      ansible.builtin.file:
+        path: /etc/krot-index
+        state: directory
+        mode: "0755"
+
+    - name: The dropped project's files, left behind
+      ansible.builtin.copy:
+        dest: "/etc/krot-index/{{ item }}"
+        content: "left by a dropped project\n"
+        mode: "0600"
+      loop: [gone.env, gone.json, gone.google.json]
+
+    # Not a name the role writes: whoever put it there owns it.
+    - name: A file somebody else keeps in the directory
+      ansible.builtin.copy:
+        dest: /etc/krot-index/README
+        content: "an operator's note\n"
+        mode: "0644"
+
+    - name: Let systemd see the planted units
+      ansible.builtin.systemd_service:
+        daemon_reload: true
