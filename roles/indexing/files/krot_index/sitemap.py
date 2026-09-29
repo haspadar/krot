@@ -50,11 +50,7 @@ def _gunzip(raw):
     return unpacked
 
 
-def _host(url):
-    try:
-        return (urlsplit(url).hostname or "").lower()
-    except ValueError:
-        return ""
+_host = web.host_of
 
 
 class Sitemap:

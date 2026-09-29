@@ -8,7 +8,7 @@ import http.client
 import json
 import socket
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import quote, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 
@@ -72,6 +72,19 @@ def _bounded(answer, method, url):
     if len(raw) > MAX_BYTES:
         raise Unreachable("%s %s: answered more than %d bytes" % (method, url, MAX_BYTES))
     return raw
+
+
+def host_of(url):
+    """The host of an address, lowercased; empty where there is none or it will not parse."""
+    try:
+        return (urlsplit(url).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def quoted(value):
+    """A value made safe for one query parameter — every reserved character escaped."""
+    return quote(value, safe="")
 
 
 def decoded(raw):

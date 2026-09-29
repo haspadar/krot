@@ -176,6 +176,106 @@ class FakeSite:
         self.server.close()
 
 
+class FakeBingSubmission:
+    """Bing's Webmaster JSON API as far as submission goes: the allowance and SubmitUrlBatch.
+
+    Keeps each site's day and refuses the way Bing does — HTTP 200 with an
+    ErrorCode in the body.
+    """
+
+    def __init__(self, key="bing-units-key"):
+        self.key = key
+        # site url -> (daily, monthly) Bing names
+        self.quotas = {}
+        # site url -> what it accepted
+        self.accepted = {}
+        self.error_code = None
+        self.quota_down = False
+        self.server = FakeServer(self)
+
+    @property
+    def endpoint(self):
+        return self.server.url + "/webmaster/api.svc/json"
+
+    def handle(self, request):
+        if request.query.get("apikey") != self.key:
+            return 200, {"ErrorCode": 3, "Message": "ERROR!!! InvalidApiKey"}
+        if request.path.endswith("/GetUrlSubmissionQuota"):
+            if self.quota_down:
+                return 503, "<html>Service Unavailable</html>", {"Content-Type": "text/html"}
+            daily, monthly = self.quotas.get(request.query.get("siteUrl"), (100, 700))
+            return 200, {"d": {"__type": "UrlSubmissionQuota:#Microsoft.Bing.Webmaster.Api",
+                               "DailyQuota": daily, "MonthlyQuota": monthly}}
+        if request.path.endswith("/SubmitUrlBatch"):
+            if self.error_code is not None:
+                return 200, {"ErrorCode": self.error_code, "Message": "ERROR!!!"}
+            self.accepted.setdefault(request.body["siteUrl"], []).extend(request.body["urlList"])
+            return 200, {"d": None}
+        return 404, None
+
+    def close(self):
+        self.server.close()
+
+
+class FakeYandexRecrawl:
+    """Yandex Webmaster v4: the user, the hosts, and the recrawl queue."""
+
+    def __init__(self, accepts="yandex-units-token"):
+        self.accepts = accepts
+        self.user = 1130000061208761
+        # domain -> host_id, for sites the account holds
+        self.hosts = {}
+        self.queued = []
+        self.error = None
+        self.server = FakeServer(self)
+
+    @property
+    def api(self):
+        return self.server.url + "/v4"
+
+    def held(self, domain):
+        self.hosts[domain] = "https:%s:443" % domain
+
+    def handle(self, request):
+        if request.headers.get("Authorization") != "OAuth " + self.accepts:
+            return 401, {"error_code": "INVALID_OAUTH_TOKEN", "error_message": "Invalid oauth token"}
+        if request.path == "/v4/user":
+            return 200, {"user_id": self.user}
+        if request.path == "/v4/user/%d/hosts" % self.user:
+            return 200, {"hosts": [{"host_id": host, "ascii_host_url": "https://%s/" % domain,
+                                    "unicode_host_url": "https://%s/" % domain, "verified": True}
+                                   for domain, host in self.hosts.items()]}
+        if request.path.endswith("/recrawl/queue"):
+            if self.error is not None:
+                return self.error
+            self.queued.append(request.body["url"])
+            return 202, {"task_id": "ff7f4c3c-%04d" % len(self.queued), "quota_remainder": 150 - len(self.queued)}
+        return 404, None
+
+    def close(self):
+        self.server.close()
+
+
+class FakeIndexNowEndpoint:
+    """api.indexnow.org: takes a list and answers a status, nothing more."""
+
+    def __init__(self):
+        self.posts = []
+        self.status = 200
+        self.server = FakeServer(self)
+
+    @property
+    def endpoint(self):
+        return self.server.url + "/indexnow"
+
+    def handle(self, request):
+        self.posts.append(request.body)
+        return self.status, None
+
+    def close(self):
+        self.server.close()
+
+
 def urlset(*locs):
     entries = "".join("<url><loc>%s</loc></url>" % loc for loc in locs)
     return '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">%s</urlset>' % entries
