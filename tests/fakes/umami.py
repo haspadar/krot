@@ -1,6 +1,6 @@
 """Umami's API as far as umami_website uses it, served under a base path.
 
-The base path is the point: busel serves Umami under /counter, and a request
+The base path is the point: a project serves Umami under /counter, and a request
 that leaves it out gets a 404 rather than a login.
 """
 

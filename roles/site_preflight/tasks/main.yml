@@ -1,6 +1,6 @@
 ---
 # Reads everything the launch will need and writes nothing. It exists because of
-# busel/tsbelgie: with no Cloudflare token for search, that launch created the
+# one project's launch: with no Cloudflare token for search, that launch created the
 # zone, the certificate and the database before failing on the very last step.
 # Every missing name, secret or credential stops the launch here instead.
 #

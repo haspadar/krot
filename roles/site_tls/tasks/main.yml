@@ -36,7 +36,7 @@
 
     # Created with its final mode BEFORE anything is written into it. Writing
     # first and fixing the mode after leaves the key world-readable for the
-    # window in between — umask 022 made it 644 on busel's machine, a host that
+    # window in between — umask 022 made it 644 on a production machine, a host that
     # runs php-fpm for several sites.
     - name: Create the key file closed to everyone but root
       ansible.builtin.command:

@@ -1,7 +1,7 @@
 ---
-# krot-index-<engine> of busel, installed by the cron role, matches the same glob,
+# krot-index-<engine> of a project, installed by the cron role, matches the same glob,
 # so ownership is decided by this role's marker in the paired service, never by
-# the name. Removing busel's would stop an engine it still runs on its own.
+# the name. Removing that project's would stop an engine it still runs on its own.
 - name: Look for this role's marker in the paired service
   ansible.builtin.slurp:
     src: "/etc/systemd/system/{{ indexing_timer_file | regex_replace('\\.timer$', '.service') }}"

@@ -28,8 +28,8 @@
 # the site is opened; monitoring and search after it is.
 
 # Before the launch: a name that matches no host would otherwise skip the whole
-# play and exit 0 — a launch that did nothing reads as one that passed (busel
-# found it moving to these roles). site_preflight catches several hosts, but
+# play and exit 0 — a launch that did nothing reads as one that passed (found
+# while moving a project to these roles). site_preflight catches several hosts, but
 # with none it never runs at all.
 #
 # On every host the run may touch rather than on localhost: --limit narrows

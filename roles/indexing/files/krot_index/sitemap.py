@@ -1,8 +1,8 @@
 """What a site serves, read the way a search engine reads it — over HTTP, unauthenticated.
 
-busel reads its own sitemap inside its kernel, past nginx and Cloudflare. This
+A project can read its own sitemap inside its application, past nginx and Cloudflare. This
 program cannot: it knows no project's code, only the address the project
-declared. The difference shows on a closed site, which busel still read and this
+declared. The difference shows on a closed site, which such a project still reads and this
 reads as unreadable — which is right, since offering an engine a site that
 answers 401 spends the allowance on pages nobody may open.
 """
@@ -67,7 +67,7 @@ class Sitemap:
 
         ⚠️ The sitemap is the site's word, not the project's, and is trusted
         only as far as the project's own declaration reaches: nested files from
-        the host of the declared address, pages from `domain`. busel never had
+        the host of the declared address, pages from `domain`. Such a project never has
         this question — it builds its URLs from its own paths. Here a sitemap
         listing another host would send this program to fetch it, hand its pages
         to the engine under this site's property, and forget every real page of

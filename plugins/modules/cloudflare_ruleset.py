@@ -22,7 +22,7 @@ description:
     its own rules, in one write.
   - A rule another tool already made word for word — same fields, only a ref
     Cloudflare assigned itself — counts as this module's and is left as it is.
-    busel created its cache rule that way on every zone; without this the
+    A consuming project created its cache rule that way on every zone; without this the
     module would add a second, identical rule beside it. Only an identical
     rule is taken; one that differs stays someone else's, and this module's
     own is added.

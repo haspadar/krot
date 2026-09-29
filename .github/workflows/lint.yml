@@ -26,7 +26,7 @@ concurrency:
 permissions:
   contents: read
 
-# Actions are pinned by commit SHA with the version in a comment, matching busel.
+# Actions are pinned by commit SHA with the version in a comment.
 # A tag like v5 is movable: whoever owns the action can repoint it, and CI would
 # then run someone else's code holding this repository's token. The comment is
 # what makes the pin readable; the SHA is what makes it a pin.
@@ -154,6 +154,12 @@ jobs:
       # no linter was looking at that directory.
       - name: secret-lint
         run: python3 scripts/secret-lint.py
+
+      # The collection does not know who consumes it: no project and no real
+      # site of one in code, tests or scenarios. Compared by hash, so the
+      # script does not name what it forbids.
+      - name: names-lint
+        run: python3 scripts/names-lint.py
 
       # wiki/index/ is generated from roles/, openspec/ and git. A stale index is
       # worse than none: it states a role is explained when nothing explains it.

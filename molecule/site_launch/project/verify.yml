@@ -1,5 +1,5 @@
 ---
-# Stands in for the project's own readiness check (busel: colony:check). It
+# Stands in for the project's own readiness check (a project's own check command). It
 # reads and asserts; a blocker here stops the launch before the site opens.
 - name: Check the counters' ids reached the application
   ansible.builtin.slurp:

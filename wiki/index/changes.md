@@ -11,16 +11,17 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **20**.
+В работе — **0**, заархивировано — **21**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **10** из 20: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **10** из 21: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
+| [`keep-projects-out-of-code`](../../openspec/changes/archive/2026-09-29-keep-projects-out-of-code/proposal.md) | 2026-09-29 | — | Код коллекции не называет проекты, которые её потребляют |
 | [`offer-pages-to-search-engines`](../../openspec/changes/archive/2026-09-29-offer-pages-to-search-engines/proposal.md) | 2026-09-29 | [#62](https://github.com/haspadar/krot/pull/62) | Ночная отправка страниц поисковикам — роль krot, а не код проекта |
-| [`retire-only-own-projects`](../../openspec/changes/archive/2026-09-29-retire-only-own-projects/proposal.md) | 2026-09-29 | — | Уборка `indexing` трогает только проекты своего прогона |
+| [`retire-only-own-projects`](../../openspec/changes/archive/2026-09-29-retire-only-own-projects/proposal.md) | 2026-09-29 | [#66](https://github.com/haspadar/krot/pull/66) | Уборка `indexing` трогает только проекты своего прогона |
 | [`site-launch`](../../openspec/changes/archive/2026-09-26-site-launch/proposal.md) | 2026-09-26 | — | Запуск сайта ролями krot: от регистратора до sitemap, принятого поисковиками |
 | [`nginx-machine-defaults`](../../openspec/changes/archive/2026-09-23-nginx-machine-defaults/proposal.md) | 2026-09-23 | — | Настройки nginx, которых на машине может быть только одна копия, ставит роль |
 | [`a-copy-nobody-can-restore-is-a-hope`](../../openspec/changes/archive/2026-08-29-a-copy-nobody-can-restore-is-a-hope/proposal.md) | 2026-08-29 | [#50](https://github.com/haspadar/krot/pull/50) | Копия, которую некому развернуть, — это надежда, а не резервная копия |

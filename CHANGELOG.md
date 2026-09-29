@@ -21,7 +21,7 @@ changing a default that affects production) bump major.
 
 ### Changed
 
-- **`cloudflare_ruleset` takes a rule another tool made word for word as its own.** busel made
+- **`cloudflare_ruleset` takes a rule another tool made word for word as its own.** A consuming project made
   its cache rule without a ref of ours, so Cloudflare assigned one per zone; matched by ref
   alone, the module would have added a second, identical rule on every live zone. Only an exact
   match is taken — no field missing or extra beyond what Cloudflare adds itself, and enabled; one
@@ -29,7 +29,7 @@ changing a default that affects production) bump major.
 
 ### Added
 
-- **`site_monitor.path`** — the page the keyword monitor watches, `/` by default; busel's is a
+- **`site_monitor.path`** — the page the keyword monitor watches, `/` by default; for one project it is a
   profile page. The word is looked for on that page before the monitor is made.
 - **`uptimerobot_monitor` moves a monitor that watches another address** (action `url`),
   checking the keyword on the new page first. Before, a changed URL never reached UptimeRobot.
@@ -42,8 +42,8 @@ changing a default that affects production) bump major.
   `site_cloudflare_settings_base` (strict TLS, HTTPS only, browser cache TTL 0) one by one, so
   naming one setting never drops the others. `ssl` and `always_use_https` cannot be
   overridden: preflight stops the launch, since a downgrade would read like any other setting.
-  The preflight report now names each setting with the value it would get. gudok keeps the browser cache TTL at 14400: its
-  pages go out `no-cache`, and the dry run on tbl-telefon.de showed that TTL as the only
+  The preflight report now names each setting with the value it would get. One project keeps the browser cache TTL at 14400: its
+  pages go out `no-cache`, and the dry run on a real site showed that TTL as the only
   difference from the roles' base.
 
 ## 5.5.0
@@ -90,14 +90,14 @@ changing a default that affects production) bump major.
 - **Role `common` caps the systemd journal** — `common_journal_max_use`, `500M` by default,
   through the drop-in `/etc/systemd/journald.conf.d/krot-journal.conf` rather than an edit to
   `journald.conf`, which the package rewrites on upgrade. Uncapped, journald takes 10% of the
-  partition but no more than 4 GB — on busel's 77 GB disk it is that 4 GB ceiling that applies,
+  partition but no more than 4 GB — on a 77 GB disk it is that 4 GB ceiling that applies,
   since 10% would be 7.6 GB — and it keeps everything: the journal had grown to 1 GB, holding
   every message since the machine was installed a month and a half earlier. That was 1.1 GB of
   the 1.2 GB in all of `/var/log`, while nginx (4.8 MB) and php (2 MB) rotated as they should.
 
   A size cap, not a retention window: a ceiling holds the price of the journal however talkative
   the machine gets, whereas a retention window bounds age and lets a single bad day fill the
-  disk. At busel's rate, 500 MB is about three weeks.
+  disk. At that rate, 500 MB is about three weeks.
 
   The limit is read at start-up, so the handler restarts journald — a reload would leave the old
   ceiling in place.
@@ -170,7 +170,7 @@ changing a default that affects production) bump major.
 - **Role `cron`: a job with a broken `working_directory` was skipped silently.** The `.service`
   carried `AssertPathIsDirectory=`, and the comment beside it promised a loud failure. `Assert*=`
   does not deliver one: a failed assert **does not fail the unit** — the run is skipped, the state
-  stays successful, `systemctl --failed` is empty. Measured on busel (systemd 255), including a
+  stays successful, `systemctl --failed` is empty. Measured on a production machine (systemd 255), including a
   timer-driven run:
 
   | | with `AssertPathIsDirectory` | `WorkingDirectory` only |
@@ -204,14 +204,14 @@ changing a default that affects production) bump major.
   ```yaml
   cron_jobs:
     - name: traffic
-      command: bin/console colony:traffic
+      command: bin/console app:traffic
       schedule: hourly
-      working_directory: /var/www/busel/current
+      working_directory: /var/www/app/current
       environment:
         APP_ENV: prod
   ```
 
-  Why it appeared: on busel an hourly job **did not run once in five days**, and there was nowhere
+  Why it appeared: on a production machine an hourly job **did not run once in five days**, and there was nowhere
   to learn this from. Its output was redirected into `/var/log/`, where `km` has no write
   permission — that failed before PHP started, so the error had nowhere to land either. Meanwhile
   `journalctl -u cron` dutifully printed `(km) CMD (...)`: cron reports that a line was started and
@@ -219,7 +219,7 @@ changing a default that affects production) bump major.
 
   What a timer gives: output in the journal under the unit's name (no file permissions needed), the
   exit code in `systemctl status`, failure in `systemctl --failed`. All of it readable by the
-  operator **without sudo** — verified on busel, even though `km` belongs to neither `adm` nor
+  operator **without sudo** — verified on a production machine, even though `km` belongs to neither `adm` nor
   `systemd-journal`.
 
   No need to pick a minute; `RandomizedDelaySec` spreads jobs apart — plus `FixedRandomDelay`
@@ -248,7 +248,7 @@ this before running.
 - **Role `nginx` no longer installs `/etc/logrotate.d/krot-nginx`.** Its glob collided with the
   packaged `/etc/logrotate.d/nginx`, and logrotate picks no winner on a duplicate: it prints
   `duplicate log entry`, exits with code 1 and **rotates nothing on the machine** — php and
-  postgresql included. On busel this lasted three days.
+  postgresql included. On a production machine this lasted three days.
 
   `nginx_log_retention_days` is now applied by editing the `rotate` line in the packaged config —
   it is a `conffile`, dpkg does not silently discard a local edit on package upgrade, and if the
@@ -306,7 +306,7 @@ this before running.
 
   **Cleanup on an already-provisioned machine is manual**; the roles remove nothing after themselves
   because they no longer exist and there is nobody left to delete what they left. What to look at (on
-  busel only the last item turned out to be present — the roles never ran to completion there):
+  one machine only the last item turned out to be present — the roles never ran to completion there):
 
   ```bash
   sudo systemctl disable --now krot-goaccess.timer krot-geoipupdate.timer
@@ -334,7 +334,7 @@ this before running.
   untouched.
 
   The reason is not a breakage but that the number could not be trusted. Three passes over
-  berlindame.de: `--ignore-crawlers` gave 41 "visitors", a list of names gave 36, an added behavioural
+  stummseite.de: `--ignore-crawlers` gave 41 "visitors", a list of names gave 36, an added behavioural
   check gave 6 addresses out of 103. Of those six, three fetched `/media/` with referers like a real
   browser and are indistinguishable from humans in the log at all; the honest answer is two. A number
   that walks from 41 down to 6 under filters each of which looks reasonable is not a measurement, yet
@@ -383,8 +383,8 @@ this before running.
   `--ignore-crawlers` only catches those with `bot`, `crawler` or `spider` in the User-Agent;
   `GoogleOther`, `Dataprovider`, `InternetMeasurement`, `UptimeRobot`, `HeadlessChrome` and HTTP
   libraries passed as visitors. The list is in `goaccess_extra_crawlers`, attached with the `-b` flag
-  to the human report only — the full one still counts everyone. Measured: berlindame.de 41 → 36,
-  stadtdame.de 26 → 20.
+  to the human report only — the full one still counts everyone. Measured: stummseite.de 41 → 36,
+  abendseite.de 26 → 20.
 - The type in the file is written `Crawlers` (capitalised, plural). Spelled otherwise, GoAccess
   creates a new browser category and the visitor counter **grows** instead of falling — measured, 41
   turned into 78.
@@ -403,7 +403,7 @@ this before running.
 ## 2.1.0
 
 - **A second `goaccess` report per site — `humans/<domain>.html`, without crawlers.** Both reports
-  are needed: on berlindame.de there were 94 unique visitors in the full report against 37 in the
+  are needed: on stummseite.de there were 94 unique visitors in the full report against 37 in the
   human one, 57 of them bots. The full one does not say how many people came; the bot-free one does
   not show whether Googlebot visits, which matters more on a young site. Turned off with
   `goaccess_humans_report`, and the role then deletes the directory so frozen pages are not left
@@ -420,7 +420,7 @@ this before running.
   and `goaccess_auth_enabled` are gone along with the vhost on `127.0.0.1:8443` and basic auth; the
   role **deletes** `/etc/nginx/conf.d/krot-goaccess.conf`, otherwise nginx would keep serving it on
   already-provisioned machines. The reason is not technical: a report cannot be opened from a phone
-  through an SSH tunnel, and that is the main scenario. The project serves them — busel on a
+  through an SSH tunnel, and that is the main scenario. The project serves them — one on a
   `/traffic` route behind its own admin login, with no second password and no subdomain in public
   DNS. The same split as with `postgresql`: the role installs the server, the project does the
   per-site things.

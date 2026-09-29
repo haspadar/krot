@@ -1,7 +1,7 @@
 """The krot schema of a project's database: what each engine said and what was sent.
 
-A port of busel's PageIndexStore and SpendingStore. The one departure is what a
-failed write does: busel swallows only the night's summary, and so does this —
+A port of an earlier PHP implementation's stores. The one departure is what a
+failed write does: the earlier one swallowed only the night's summary, and so does this one —
 a lost page row is raised, because that row is what holds the page out of
 tomorrow's offer.
 """
@@ -126,7 +126,7 @@ class PostgresStore:
                 (spending.site, spending.engine, spending.allowance, spending.floor, spending.attempted,
                  spending.accepted, spending.held, spending.waiting, spending.refusal))
         except Exception as failure:
-            # Said once per site, to the journal: busel said nothing, and a
+            # Said once per site, to the journal: the earlier one said nothing, and a
             # summary missing for a month was then found only from the screen.
             print("warning: %s %s: the night was not recorded: %s"
                   % (spending.engine, spending.site, first_line(failure)), file=sys.stderr)

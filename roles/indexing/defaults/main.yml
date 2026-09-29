@@ -31,8 +31,8 @@ indexing_projects: {}
 # Projects to take off this machine: their units and key files go. ⚠️ Only by
 # this list, never by absence from indexing_projects: each project applies this
 # role from its own inventory, so a project missing from this run's list is as
-# likely another project's as a dropped one — busel's run would otherwise take
-# gudok's nights down, and nothing would turn red, since there would be no unit
+# likely another project's as a dropped one — one project's run would otherwise take
+# another's nights down, and nothing would turn red, since there would be no unit
 # left to fail.
 indexing_retired_projects: []
 
@@ -41,7 +41,7 @@ indexing_retired_projects: []
 # ⚠️ Google's hour carries its own time zone: the 200 a day reset at midnight
 # Pacific — named by Google's own refusal — and a zone in the expression keeps
 # the hour right whatever the machine's clock is set to. The others repeat the
-# hours busel measured and runs at: an empty hour each, Bing's reset unmeasured.
+# hours measured on a production machine and run there: an empty hour each, Bing's reset unmeasured.
 indexing_schedules:
   google: "*-*-* 01:00:00 America/Los_Angeles"
   indexnow: "*-*-* 18:00:00"

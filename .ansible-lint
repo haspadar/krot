@@ -15,7 +15,7 @@ exclude_paths:
   # fail the build or push the probe to stop demonstrating what it demonstrates.
   - wiki/assets/
 
-# Roles here are consumed by busel/matilda via ansible-galaxy + git, so they are
+# Roles here are consumed by other projects via ansible-galaxy + git, so they are
 # never published to a Galaxy hub and need no namespace-prefixed name.
 skip_list:
   - galaxy[version-incorrect]

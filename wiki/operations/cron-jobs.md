@@ -2,7 +2,7 @@
 kind: guide
 title: Периодические задачи
 owner: haspadar
-verified: 2026-08-17
+verified: 2026-09-29
 roles: [cron]
 ---
 
@@ -15,19 +15,19 @@ roles: [cron]
 cron_jobs:
   - name: traffic
     description: Visitor figures for every site, copied out of Analytics
-    command: bin/console colony:traffic
+    command: bin/console app:traffic
     schedule: hourly
-    working_directory: /var/www/busel/current
+    working_directory: /var/www/app/current
     environment:
       APP_ENV: prod
 ```
 
 Krot не знает ни одного имени задачи: список — переменная проекта, следующий сервер объявит свой.
-Роль, знающая имя `colony:traffic`, перестала бы быть общей.
+Роль, знающая имя `app:traffic`, перестала бы быть общей.
 
 ## Почему systemd-таймеры, а не строка в crontab
 
-Не из вкуса. На busel почасовая задача пять суток не отрабатывала ни разу, и это было не видно
+Не из вкуса. На рабочей машине почасовая задача пять суток не отрабатывала ни разу, и это было не видно
 ниоткуда — разбор в [отказах, которые не видно](silent-failures.md).
 
 | | crontab | systemd-таймер |

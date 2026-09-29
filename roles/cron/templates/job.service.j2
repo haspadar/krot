@@ -14,7 +14,7 @@ User={{ item.user | default(cron_user) }}
 #
 # This line is also what makes a broken directory audible, and it has to be this
 # one rather than an AssertPathIsDirectory= above. Two reasons, both measured on
-# busel (systemd 255), by hand and through a timer:
+# a production machine (systemd 255), by hand and through a timer:
 #
 #  * A failed assert does not fail the unit. With the assert the job is skipped
 #    while Result=success, ExecMainStatus=0 and systemctl --failed stays empty;

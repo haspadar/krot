@@ -81,7 +81,7 @@ class Umami:
         try:
             status, answer = self.http.call("POST", "/api/auth/login", body={"username": username, "password": password})
         except Unreachable as error:
-            # Served under a base path (busel's /counter), Umami answers the
+            # Served under a base path (a project's /counter), Umami answers the
             # path without it with the web app's own 404 page — not JSON, and
             # easy to mistake for Umami being down.
             raise Unreachable("%s; check that %s includes Umami's base path" % (error, self.url))

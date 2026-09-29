@@ -262,8 +262,8 @@
 # indexing_retired_projects, has to stop offering. Nothing else: every project
 # applies this role from its own inventory, so a unit of a project this run
 # does not know belongs to another project's run. Only units carrying this
-# role's marker go even then: busel's krot-index-<engine> from the cron role
-# share the prefix and stay until busel retires them itself.
+# role's marker go even then: a project's own krot-index-<engine> from the cron role
+# share the prefix and stay until that project retires them itself.
 - name: Retire timers no longer declared
   ansible.builtin.include_tasks: retire.yml
   loop: "{{ indexing_installed_timers.files | map(attribute='path') | map('basename') | list }}"
@@ -271,7 +271,7 @@
     loop_var: indexing_timer_file
     label: "{{ indexing_timer_file }}"
   vars:
-    # '' for a name that is not krot-index-<project>-<engine>, such as busel's.
+    # '' for a name that is not krot-index-<project>-<engine>, such as a project's own.
     indexing_timer_project: >-
       {{ indexing_timer_file | regex_replace('^krot-index-([a-z0-9]+)-[a-z]+\.timer$', '\1')
          if indexing_timer_file is match('^krot-index-[a-z0-9]+-[a-z]+\.timer$') else '' }}

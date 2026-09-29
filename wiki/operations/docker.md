@@ -1,19 +1,19 @@
 ---
 kind: guide
-title: Docker на хосте matilda
+title: Docker на хосте проекта
 owner: haspadar
 verified: 2026-08-15
 roles: [docker]
 ---
 
-# Docker на хосте matilda
+# Docker на хосте проекта
 
 Роль ставит Docker с compose-плагином из репозитория Docker и **на этом останавливается**.
-Приложение matilda разворачивается своим `compose.yaml`, а не Ansible: тяжёлое специфичное
+Приложение проекта разворачивается своим `compose.yaml`, а не Ansible: тяжёлое специфичное
 окружение (playwright, flaresolverr, minio, postgres, php, api) уже воспроизводимо compose'ом, и
 второй системе выкатки поверх него взяться неоткуда.
 
-Отсюда и весь набор ролей matilda: `common + docker + firewall + fail2ban`. Голый хост под
+Отсюда и весь набор ролей такого проекта: `common + docker + firewall + fail2ban`. Голый хост под
 Compose — [почему так](../domains/collection-layout.md).
 
 ## Членство в группе `docker` — это root
@@ -46,4 +46,4 @@ docker_log_max_file: 3
 ## Что роль не делает
 
 Не ставит compose-файлы, не заводит сети и тома проекта, не запускает стек. Всё это —
-`compose.yaml` matilda. Роль знает про хост, но не про приложения на нём.
+`compose.yaml` проекта. Роль знает про хост, но не про приложения на нём.

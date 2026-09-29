@@ -1,6 +1,6 @@
 ---
 # The sitemap is asked for as a search engine would — no auth, from outside —
-# BEFORE any engine is told about it. roksasex.pl handed Google a sitemap that
+# BEFORE any engine is told about it. one site handed Google a sitemap that
 # answered 401 from behind basic auth, and within the hour the submission was
 # marked failed; an engine remembers that longer than it takes to fix.
 

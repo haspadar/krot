@@ -1,8 +1,8 @@
 """IndexNow: one post, several engines — Yandex, Seznam, Naver, Yep, and Bing again.
 
-A port of busel's IndexNowIndex (src/Colony/Index/IndexNowIndex.php) and
-SiteKey. The protocol answers nothing about a page, keeps no account and names
-no daily allowance — only a ceiling of 10 000 addresses a post.
+A port of an earlier PHP implementation, including its site key. The protocol
+answers nothing about a page, keeps no account and names no daily allowance —
+only a ceiling of 10 000 addresses a post.
 
 The site proves itself by serving its key at /{key}.txt, and that file belongs to
 the site's code, not to krot: the vhost is the project's. What krot owns is the
@@ -19,7 +19,7 @@ ENDPOINT = "https://api.indexnow.org/indexnow"
 # The protocol's own ceiling for one post, and the only limit it names.
 #
 # ⚠️ Also the night's limit for a site, deliberately: one post a site a night, as
-# in busel. A queue larger than this drains over the following nights, and with
+# before. A queue larger than this drains over the following nights, and with
 # offered pages held 14 days a site of up to 140 000 pages is still offered
 # whole every fortnight. What must not happen is a SMALL nightly figure — fifty
 # a night would strand a large site's queue for years while every night reported
@@ -32,8 +32,8 @@ KEY_LENGTH = 32
 def site_key(secret, domain):
     """The site's key: half of sha256 over the project's secret and the domain.
 
-    ⚠️ A contract with files already published. busel's sites serve keys made by
-    this formula (Colony\\Index\\IndexNow\\SiteKey); changed, the network would
+    ⚠️ A contract with files already published. Existing sites serve keys made by
+    this formula; changed, the network would
     post today's key while its sites serve yesterday's. Pinned by a test with a
     value.
     """
@@ -57,8 +57,8 @@ class IndexNow:
         return AT_ONCE
 
     def quota_was_asked(self, domain=""):
-        # True: the ceiling is published and certain, not a fallback. busel's
-        # wiki says false; its code says true, and the code is right — false
+        # True: the ceiling is published and certain, not a fallback. The earlier
+        # documentation said false; the earlier code said true, and the code is right — false
         # printed "could not ask" every night about an endpoint never asked.
         return True
 

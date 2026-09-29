@@ -53,12 +53,12 @@ site_cloudflare_settings_base:
   always_use_https: "on"
   browser_cache_ttl: 0
 # The project's own values, laid over the base one by one, so naming one
-# setting never drops the others. gudok keeps browser_cache_ttl at 14400: its
+# setting never drops the others. one project keeps browser_cache_ttl at 14400: its
 # pages go out no-cache and nothing it serves reads the TTL.
 site_cloudflare_settings: {}
 
 # Extra rules for the zone, as cloudflare_ruleset takes them (each with a ref).
-# busel's is the cache rule for photos served by routes.
+# one project's is the cache rule for photos served by routes.
 site_cloudflare_rules: []
 site_cloudflare_rules_phase: http_request_cache_settings
 
@@ -76,7 +76,7 @@ site_doh_resolvers:
 
 # --- Machine ------------------------------------------------------------------
 
-# Where the vhost generators of busel and gudok read the pair and write vhosts.
+# Where the vhost generators of consuming projects read the pair and write vhosts.
 site_certificate_dir: /etc/nginx/ssl
 site_vhost_dir: /etc/nginx/sites-enabled
 
@@ -100,7 +100,7 @@ site_analytics_time_zone: ""
 site_analytics_currency: EUR
 
 # A site's day, for GA4, is its country's day. A property left on whatever zone
-# its creator happened to be in cuts every German day an hour off — stadtdame
+# its creator happened to be in cuts every German day an hour off — one site
 # counted its days by Europe/Minsk. Countries with more than one zone are not
 # here on purpose: those name site_analytics_time_zone themselves.
 site_analytics_time_zones:
@@ -144,7 +144,7 @@ site_monitor:
   enabled: false
   # A word that must be on the watched page, case as written. Empty: HTTP only.
   keyword: ""
-  # The page the keyword monitor watches: busel's is a profile page (profil/,
+  # The page the keyword monitor watches: for one project it is a profile page (profil/,
   # profiel/, begleitung/ …), where losing the feed shows first.
   path: /
 site_uptimerobot_api_url: https://api.uptimerobot.com/v3

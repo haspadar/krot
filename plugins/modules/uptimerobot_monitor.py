@@ -134,8 +134,8 @@ class Robot:
 
         The answer carries no total, so a full page and a cut one look the
         same; only nextLink tells them apart. Reading the first page alone is
-        how a site whose monitors sit past the cut reads as having none — busel
-        measured it at the twenty-sixth site.
+        how a site whose monitors sit past the cut reads as having none — that was
+        measured at the twenty-sixth site.
         """
         entries = []
         for _ in range(MOST_PAGES):

@@ -15,7 +15,7 @@
 # is that the sequence is written down rather than remembered. Restoring is the
 # rarest operation here and the one performed under the most pressure — the data
 # is already gone — so it is the last place a sequence should be assembled from
-# memory. Measured 2026-08-29 in busel: a destructive sequence retyped by hand
+# memory. Measured 2026-08-29 on a production machine: a destructive sequence retyped by hand
 # reached the wrong database twice in one day.
 #
 # Judges the copy the way `verify.sh` does — by what arrived, not by pg_restore's

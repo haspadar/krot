@@ -26,14 +26,14 @@ def test_creates_absent_zone(run, serve):
 
 
 def test_new_zone_returns_the_accounts_nameserver_pair(run, serve):
-    result = run("cloudflare_zone", args(serve(FakeCloudflare()), "neubau-radio.de", account_id="acc-gudok"))
-    assert result["name_servers"] == PAIRS["acc-gudok"]
+    result = run("cloudflare_zone", args(serve(FakeCloudflare()), "neubau-radio.de", account_id="acc-second"))
+    assert result["name_servers"] == PAIRS["acc-second"]
 
 
 def test_new_zone_is_created_in_the_given_account(run, serve):
     cloudflare = FakeCloudflare()
-    run("cloudflare_zone", args(serve(cloudflare), "neubau-radio.de", account_id="acc-gudok"))
-    assert cloudflare.zones[0]["account"]["id"] == "acc-gudok"
+    run("cloudflare_zone", args(serve(cloudflare), "neubau-radio.de", account_id="acc-second"))
+    assert cloudflare.zones[0]["account"]["id"] == "acc-second"
 
 
 def test_second_run_after_creation_is_unchanged(run, serve):
@@ -94,17 +94,17 @@ def test_wrong_token_fails_with_cloudflares_reason(run, serve):
 
 def test_same_name_in_two_accounts_refuses_to_pick(run, serve):
     cloudflare = FakeCloudflare()
-    cloudflare.add_zone("doppelt.de", account="acc-busel")
-    cloudflare.add_zone("doppelt.de", account="acc-gudok")
+    cloudflare.add_zone("doppelt.de", account="acc-first")
+    cloudflare.add_zone("doppelt.de", account="acc-second")
     assert "set account_id" in run("cloudflare_zone", args(serve(cloudflare), "doppelt.de"))["msg"]
 
 
 def test_account_narrows_the_lookup(run, serve):
     cloudflare = FakeCloudflare()
-    cloudflare.add_zone("doppelt.de", account="acc-busel")
-    gudok = cloudflare.add_zone("doppelt.de", account="acc-gudok")
-    result = run("cloudflare_zone", args(serve(cloudflare), "doppelt.de", account_id="acc-gudok"))
-    assert result["zone_id"] == gudok["id"]
+    cloudflare.add_zone("doppelt.de", account="acc-first")
+    second = cloudflare.add_zone("doppelt.de", account="acc-second")
+    result = run("cloudflare_zone", args(serve(cloudflare), "doppelt.de", account_id="acc-second"))
+    assert result["zone_id"] == second["id"]
 
 
 def test_zone_accepted_but_not_listed_fails(run, serve):

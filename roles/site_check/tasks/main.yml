@@ -41,7 +41,7 @@
     ansible_python_interpreter: "{{ ansible_playbook_python }}"
 
 # Worth knowing, not worth failing over: a site may hide its sitemap under a
-# token on purpose, as gudok does.
+# token on purpose, as some projects do.
 - name: Look for the conventional /sitemap.xml
   ansible.builtin.uri:
     url: "{{ site_public_url }}/sitemap.xml"

@@ -1,6 +1,6 @@
 """One engine over every site of one project, and what the night says about each.
 
-A port of busel's IndexCommand::walk and ::report. Every line names the engine:
+A port of an earlier PHP command's walk and report. Every line names the engine:
 with several jobs on a machine, a line without it merges two channels into one
 figure, and a stopped channel then looks like a spent allowance.
 """

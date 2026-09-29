@@ -31,7 +31,7 @@ provisioner:
   name: ansible
   config_options:
     defaults:
-      # The role is consumed as haspadar.krot.cron by busel and matilda, and the
+      # The role is consumed as haspadar.krot.cron by other projects, and the
       # collection root is three levels up from this scenario.
       roles_path: ../../roles
   inventory:

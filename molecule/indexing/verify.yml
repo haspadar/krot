@@ -95,7 +95,7 @@
         - krot-index-molecule-yandex.timer
       register: indexing_planted
 
-    # Kept: busel's krot-index-google (cron's marker), and another project's
+    # Kept: a project's own krot-index-google (cron's marker), and another project's
     # unit with this role's marker — that project runs this role from its own
     # inventory, and this run does not know it. Removed: the project retired by
     # name, and the engine this run's own project no longer declares.

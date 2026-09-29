@@ -11,7 +11,7 @@ import re
 # before the registrar: the fake hands different accounts different pairs.
 PAIRS = {
     None: ["ada.ns.cloudflare.com", "bob.ns.cloudflare.com"],
-    "acc-gudok": ["cruz.ns.cloudflare.com", "dina.ns.cloudflare.com"],
+    "acc-second": ["cruz.ns.cloudflare.com", "dina.ns.cloudflare.com"],
 }
 
 # Made-up tokens: they exist only between a test and this fake, on 127.0.0.1.

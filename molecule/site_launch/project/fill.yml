@@ -1,6 +1,6 @@
 ---
 # Stands in for the project's fill step, and runs on the control machine the
-# way busel's does (its data comes from a developer's Matilda). Leaves a mark
+# way a real project's does (its data comes from a developer's machine). Leaves a mark
 # verify.yml looks for, and makes it only once.
 - name: Mark the site as filled
   ansible.builtin.copy:

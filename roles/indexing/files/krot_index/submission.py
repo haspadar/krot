@@ -1,6 +1,6 @@
 """Which of a site's pages to ask about and to offer tonight, and the offering itself.
 
-A port of busel's Submission (src/Colony/Index/Submission.php). The order is the
+A port of an earlier PHP implementation. The order is the
 design: an engine whose allowance belongs to the project is asked first, so the
 scarce submissions go to pages it does not know.
 """
@@ -17,7 +17,7 @@ ASK_DENOMINATOR = 2
 AT_ONCE = 10
 
 # ⚠️ A reservation for cards, not a priority. Listings come first, but every
-# site of busel serves more listings than a window holds, so without a fixed
+# site of the first project served more listings than a window holds, so without a fixed
 # share no card of any site would ever be asked about.
 CARD_SHARE = 4
 

@@ -66,7 +66,7 @@ class Site:
 
     Reachable only through a proxied record of an active zone — without one a
     real visitor gets no answer at all, here 530. Behind basic auth until the
-    project opens it: roksasex.pl handed Google a sitemap answering 401, and
+    project opens it: one site handed Google a sitemap answering 401, and
     Google marked the submission failed within the hour.
     """
 

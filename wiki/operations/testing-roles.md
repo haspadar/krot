@@ -2,7 +2,7 @@
 kind: guide
 title: Тесты ролей
 owner: haspadar
-verified: 2026-09-26
+verified: 2026-09-29
 roles: [backup, bootstrap, common, cron, fail2ban, firewall, nginx, php, postgresql, umami]
 ---
 

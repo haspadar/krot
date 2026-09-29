@@ -1,6 +1,6 @@
 """What one night over one site found and did, and what it is allowed.
 
-A port of busel's Offer, Share, Spending and Refusal (src/Colony/Index/). The
+A port of an earlier PHP implementation's offer, share, spending and refusal. The
 reasons behind each rule are written there and in design.md of the change; the
 comments here keep only what a reader of this file needs to not undo them.
 """
@@ -38,7 +38,7 @@ class Refused(Exception):
         # without a batch form sends page by page, and a refusal on the thirtieth
         # does not undo the twenty-nine: dropped with the exception, they would be
         # offered again tomorrow — the allowance spent on repeats, the report
-        # saying 0 offered. busel loses them exactly this way.
+        # saying 0 offered. The earlier implementation lost them exactly this way.
         self.accepted = []
 
 
@@ -115,7 +115,7 @@ class Offer:
     def fails(self):
         """Whether this site should turn the unit red: something a person must repair."""
         if self.states is None:
-            # ⚠️ Red here, where busel stays green. busel walks only sites it has
+            # ⚠️ Red here, where the earlier implementation stayed green. It walked only sites it has
             # opened and reads them in-process; here the project DECLARED the site,
             # so a sitemap that answers 401, 404 or a Cloudflare challenge is a
             # site the engines cannot be told about until somebody looks.

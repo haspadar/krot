@@ -3,14 +3,13 @@
 The `haspadar.krot` Ansible collection — portable roles for provisioning the network's servers.
 A mole (*krot*) digs under the services and fixes the plumbing unseen.
 
-Neighbours on the network: **Matilda** (the donor — parses, normalises and serves profiles over an
-API) and **Busel** (the recipients — sites that take profiles from Matilda's API). Krot holds up
-the machines of both.
+Krot holds up the machines of the projects that consume it: one with several PHP sites on a machine
+and one that runs under Docker Compose.
 
 ## What this is
 
 A collection of roles, not a machine playbook. The repository has **no inventory and no site.yml**
-for particular machines: those live in busel and matilda, each with its own hosts and variables.
+for particular machines: those live in the consuming projects, each with its own hosts and variables.
 Krot is the source of roles, and projects wire it in as a dependency. Its one playbook,
 `site_launch`, is the order in which a site is launched: a project plugs its own steps in but does
 not reorder them.
@@ -43,8 +42,8 @@ one machine.
   recording the counters' ids are the project's own task files.
 
 Until 2026-09-26 the principle read "a role knows about the host, not about the applications on
-it", and launching a site was left to the projects. It then lived in two places, busel's commands
-and gudok's steps, and a trap found in one was rediscovered in the other. The owner's decision:
+it", and launching a site was left to the projects. It then lived in two places, one project's commands
+and another's steps, and a trap found in one was rediscovered in the other. The owner's decision:
 one tool, the roles in krot (change `2026-09-26-site-launch`). The cloud side — Cloudflare zones
 and records, the Dynadot registrar — moved into the site roles with it, rather than to a future
 Terraform: a launch needs an order of steps (zone, nameservers, waiting for the delegation,
@@ -62,7 +61,7 @@ Ansible and Deployer overlap in exactly one place: Ansible creates the `km` user
 
 ### What the roles deliberately do NOT do
 
-- **Vhosts for particular sites.** A busel console command generates them. The `nginx` role owns
+- **Vhosts for particular sites.** A console command of the consuming project generates them. The `nginx` role owns
   only the `sites-available`/`sites-enabled` directories and their permissions.
 - **`log_format` and real-IP.** The owner is that same vhost generator: it knows which format name
   its configs refer to, and refreshes the CF ranges on every generation rather than once per Ansible
@@ -81,17 +80,17 @@ Ansible and Deployer overlap in exactly one place: Ansible creates the `km` user
 | `common` | hostname, timezone, base packages, unattended security upgrades, a cap on the systemd journal | all |
 | `firewall` | ufw; the Cloudflare lock and a weekly range refresh | all |
 | `fail2ban` | fail2ban with the `sshd` jail | all |
-| `php` | PHP-FPM from the ondrej PPA; slowlog, access log with timings | busel |
-| `postgresql` | PostgreSQL from pgdg, csvlog, `pg_stat_statements`. The server only | busel |
-| `nginx` | nginx.conf, permissions, log retention, basic auth | busel |
-| `docker` | Docker + the compose plugin, a cap on container log growth | matilda |
+| `php` | PHP-FPM from the ondrej PPA; slowlog, access log with timings | PHP projects |
+| `postgresql` | PostgreSQL from pgdg, csvlog, `pg_stat_statements`. The server only | PHP projects |
+| `nginx` | nginx.conf, permissions, log retention, basic auth | PHP projects |
+| `docker` | Docker + the compose plugin, a cap on container log growth | Docker projects |
 | `deploy_keys` | A separate SSH key per private repository + host aliases | all |
 | `deploy` | Runs the project's Deployer from the control machine | all |
 | `cron` | Periodic application jobs as systemd timers; the job list is an inventory variable | all |
-| `site_*` | Launching one site: zone, registrar, TLS, records, database, counters, monitor, search | busel and gudok, as they move to it |
+| `site_*` | Launching one site: zone, registrar, TLS, records, database, counters, monitor, search | projects with sites, as they move to it |
 
-Two sets: busel — `common + php + postgresql + nginx + firewall + fail2ban` (several sites on one
-machine behind Cloudflare); matilda — `common + docker + firewall + fail2ban` (a bare host for
+Two sets: a project with PHP sites — `common + php + postgresql + nginx + firewall + fail2ban` (several sites on one
+machine behind Cloudflare); a project under Docker Compose — `common + docker + firewall + fail2ban` (a bare host for
 Docker Compose, where compose itself solves the application's reproducibility).
 
 Every role is atomic and applicable on its own. All parameters live in
@@ -103,7 +102,7 @@ Each one below is not theory but something that broke, or nearly broke, on a liv
 
 ### The origin is hidden behind Cloudflare, and that concerns two roles
 
-busel has several sites on one machine behind Cloudflare, with the origin IP hidden from day one.
+A project with several sites on one machine sits behind Cloudflare, with the origin IP hidden from day one.
 `firewall_cloudflare_only` admits 80/443 only from CF's published ranges; the list lives in
 `/etc/krot/cloudflare-ranges.txt` and is refreshed by the `krot-cf-ranges.timer` timer.
 
@@ -154,7 +153,7 @@ and GitHub answers for the wrong repository.
 
 ### A run you cannot learn has failed
 
-On busel an hourly job did not run once in five days. Its output went to `/var/log/`, where `km` has
+On a production machine an hourly job did not run once in five days. Its output went to `/var/log/`, where `km` has
 no write permission: the redirection failed **before** PHP started, and the error message had
 nowhere to land.
 
@@ -165,17 +164,17 @@ to read, and a missing file is indistinguishable from "nothing written yet".
 
 Hence the `cron` role and its transport: a systemd timer records the exit code, puts the output in
 the journal under the unit's name, and surfaces failure in `systemctl --failed` — the command people
-type when looking at a machine for the first time. Verified on busel: the same permission failure,
+type when looking at a machine for the first time. Verified on a production machine: the same permission failure,
 reproduced on the new mechanism, became visible three ways without sudo.
 
-The jobs themselves are declared by the inventory. A role that knew the name `colony:traffic` would
+The jobs themselves are declared by the inventory. A role that knew the name `app:traffic` would
 stop being general by exactly the rule above.
 
 What this does not fix: a job that returns 0 having done nothing stays green under any transport.
 That is the job's responsibility, not the machine's.
 
 **The unit file itself can fail just as silently**, which is why the role escapes the command on the
-author's behalf. Measured on busel: `date +%Y-%m-%d` in `ExecStart` printed
+author's behalf. Measured on a production machine: `date +%Y-%m-%d` in `ExecStart` printed
 `/etc/systemd/system-<machine-id>-/run/credentials/<unit>` and exited with code 0 — a `%` in a unit
 file is a specifier and must be doubled. A single quote inside the command tears argv apart exactly
 the way argument joining does in `ssh`: `-c` receives the first word, the rest goes to `$0` and
@@ -189,7 +188,7 @@ nginx file. logrotate picks no winner: it prints `duplicate log entry`, exits wi
 **processes not a single file on the machine** — php and postgresql, entirely uninvolved, stop
 rotating too.
 
-On busel this lasted three days and was only discovered through `systemctl --failed`. The duplicate
+On a production machine this lasted three days and was only discovered through `systemctl --failed`. The duplicate
 is determined by the resolved path rather than by the template text (verified by experiment: an
 explicit `access.log` against `*.log` gives the same error), so a differently worded glob does not
 help. The role now edits `rotate` in the packaged config and installs no file of its own.

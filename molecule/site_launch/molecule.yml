@@ -106,14 +106,14 @@ provisioner:
         site_database_owner: krot_launch
         site_serve_precheck_path: /var/www/krot-launch/current/sites/krot-launch.de
         site_env_file: /var/www/krot-launch/shared/.env.local
-        site_env_required: [APP_SECRET, MATILDA_TOKEN]
+        site_env_required: [APP_SECRET, DATA_TOKEN]
 
 scenario:
   test_sequence:
     - destroy
     - create
     - prepare
-    # The dry run first, on a site with nothing made yet — busel's dry-run
+    # The dry run first, on a site with nothing made yet — a project's dry run
     # nearly created a zone. verify.yml checks the fakes got no write from it.
     - check
     - converge
