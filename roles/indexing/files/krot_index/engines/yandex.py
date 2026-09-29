@@ -38,6 +38,7 @@ class Yandex:
         self.sleep = sleep
         self.user = None
         self.hosts = {}
+        self.host_list = None
         self.posted = False
 
     def daily_quota(self, domain=""):
@@ -76,6 +77,24 @@ class Yandex:
         """Yandex's id for the site — `https:rufnummer.de:443` — looked up, never built."""
         if domain in self.hosts:
             return self.hosts[domain]
+        found = {}
+        for host in self.listed():
+            if not isinstance(host, dict) or not host.get("host_id"):
+                continue
+            # Both spellings: a site named in Cyrillic carries only the unicode one.
+            url = host.get("ascii_host_url") or host.get("unicode_host_url") or ""
+            if web.host_of(url) == domain.lower():
+                found.setdefault(url.split(":", 1)[0].lower(), host["host_id"])
+        # ⚠️ https first: an account often keeps a site's old http host beside
+        # the https one, and the pages queued against it are "outside the host"
+        # — refused one by one, as if each page were at fault.
+        self.hosts[domain] = found.get("https") or found.get("http")
+        return self.hosts[domain]
+
+    def listed(self):
+        """Every host of the account — asked once a run, not once a site."""
+        if self.host_list is not None:
+            return self.host_list
         try:
             if self.user is None:
                 user = self._get("/user").get("user_id")
@@ -85,17 +104,8 @@ class Yandex:
             hosts = self._get("/user/%s/hosts" % self.user).get("hosts")
         except web.Unreachable:
             raise night.Refused("Yandex could not be reached for the host list")
-        found = None
-        for host in hosts if isinstance(hosts, list) else []:
-            if not isinstance(host, dict):
-                continue
-            # Both spellings: a site named in Cyrillic carries only the unicode one.
-            url = host.get("ascii_host_url") or host.get("unicode_host_url") or ""
-            if web.host_of(url) == domain.lower() and host.get("host_id"):
-                found = host["host_id"]
-                break
-        self.hosts[domain] = found
-        return found
+        self.host_list = hosts if isinstance(hosts, list) else []
+        return self.host_list
 
     def submit_all(self, domain, urls):
         host = self.host(domain)
@@ -127,11 +137,16 @@ class Yandex:
             return isinstance(answer.get("task_id"), str)
         code = answer.get("error_code") if isinstance(answer.get("error_code"), str) else ""
         message = answer.get("error_message") if isinstance(answer.get("error_message"), str) else "HTTP %d" % status
-        if code in QUOTA:
-            raise night.Refused("Yandex: " + message, exhausted=True)
-        if code in OWNERSHIP:
+        if code in QUOTA or (not code and status == 429):
+            raise night.Refused("Yandex: " + message, exhausted=True, too_fast=not code)
+        if code in OWNERSHIP or (not code and status == 403):
             raise night.Refused("Yandex: " + message, ownership=True,
                                 repair="the site is not verified in this Yandex Webmaster account")
-        # About this page — outside the host, an address Yandex will not walk. One
-        # bad address must not end a night that has 149 more.
+        if status == 401:
+            # The token, not the site: 149 more tries would each get the same.
+            raise night.Refused("Yandex: " + message,
+                                repair="Yandex no longer accepts KROT_INDEX_YANDEX_TOKEN — a new OAuth token")
+        # About this page — outside the host, an address Yandex will not walk —
+        # or a 5xx about this one request. One bad address must not end a night
+        # that has 149 more.
         return False

@@ -96,6 +96,14 @@ def test_every_line_names_the_engine():
     assert lines and all(line.startswith("google ") for line in lines)
 
 
+def test_guessed_allowance_is_named_at_its_own_site():
+    engine = FakeEngine(slug="bing", per_site=True, asking=False)
+    engine.unnamed_for = {"rufnummer.de"}
+    runner, _, _, err = walk(engine)
+    runner.over(SITES)
+    assert "bing rufnummer.de: could not ask" in err.getvalue()
+
+
 def test_guessed_allowance_is_said_out_loud():
     engine = FakeEngine(slug="bing", per_site=True, asking=False)
     engine.quota_named = False

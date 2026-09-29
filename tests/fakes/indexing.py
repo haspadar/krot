@@ -79,13 +79,15 @@ class FakeEngine:
         self.submitted = []
         self.refuse_with = None
         self.quota_named = True
+        # Sites whose allowance went unanswered while the others' was named.
+        self.unnamed_for = set()
         self.silent = False
 
     def daily_quota(self, domain=""):
         return self.quota
 
     def quota_was_asked(self, domain=""):
-        return self.quota_named
+        return self.quota_named and domain not in self.unnamed_for
 
     def quota_is_per_site(self):
         return self.per_site
@@ -190,6 +192,8 @@ class FakeBingSubmission:
         # site url -> what it accepted
         self.accepted = {}
         self.error_code = None
+        # (status, body) SubmitUrlBatch answers instead of taking the batch.
+        self.submit_answer = None
         self.quota_down = False
         self.server = FakeServer(self)
 
@@ -209,6 +213,8 @@ class FakeBingSubmission:
         if request.path.endswith("/SubmitUrlBatch"):
             if self.error_code is not None:
                 return 200, {"ErrorCode": self.error_code, "Message": "ERROR!!!"}
+            if self.submit_answer is not None:
+                return self.submit_answer
             self.accepted.setdefault(request.body["siteUrl"], []).extend(request.body["urlList"])
             return 200, {"d": None}
         return 404, None
@@ -223,9 +229,11 @@ class FakeYandexRecrawl:
     def __init__(self, accepts="yandex-units-token"):
         self.accepts = accepts
         self.user = 1130000061208761
-        # domain -> host_id, for sites the account holds
+        # host_id -> the host's url, for sites the account holds, in its order
         self.hosts = {}
         self.queued = []
+        # host_id each page was queued against
+        self.queued_on = []
         self.error = None
         self.server = FakeServer(self)
 
@@ -233,8 +241,9 @@ class FakeYandexRecrawl:
     def api(self):
         return self.server.url + "/v4"
 
-    def held(self, domain):
-        self.hosts[domain] = "https:%s:443" % domain
+    def held(self, domain, scheme="https"):
+        port = 443 if scheme == "https" else 80
+        self.hosts["%s:%s:%d" % (scheme, domain, port)] = "%s://%s/" % (scheme, domain)
 
     def handle(self, request):
         if request.headers.get("Authorization") != "OAuth " + self.accepts:
@@ -242,13 +251,13 @@ class FakeYandexRecrawl:
         if request.path == "/v4/user":
             return 200, {"user_id": self.user}
         if request.path == "/v4/user/%d/hosts" % self.user:
-            return 200, {"hosts": [{"host_id": host, "ascii_host_url": "https://%s/" % domain,
-                                    "unicode_host_url": "https://%s/" % domain, "verified": True}
-                                   for domain, host in self.hosts.items()]}
+            return 200, {"hosts": [{"host_id": host, "ascii_host_url": url, "unicode_host_url": url, "verified": True}
+                                   for host, url in self.hosts.items()]}
         if request.path.endswith("/recrawl/queue"):
             if self.error is not None:
                 return self.error
             self.queued.append(request.body["url"])
+            self.queued_on.append(request.path.split("/hosts/")[1].split("/recrawl")[0])
             return 202, {"task_id": "ff7f4c3c-%04d" % len(self.queued), "quota_remainder": 150 - len(self.queued)}
         return 404, None
 

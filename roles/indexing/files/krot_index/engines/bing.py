@@ -27,9 +27,10 @@ QUOTA_WHEN_UNASKED = 10
 # month that has 31 days overspends on the last one at 30.
 DAYS_IN_MONTH = 31
 
-# Asking the allowance fails this many times, and the walk stops asking: the
+# Asking the allowance fails for this many sites, and the walk stops asking: the
 # failure describes the endpoint, and a dead one would otherwise be given three
-# tries on every site.
+# tries on every site. Counted by site, not by call — the walk asks each site's
+# figure several times, and counted by call two sites would use up all three.
 ATTEMPTS = 3
 
 # Bing's own codes; the English beside them is rewritten between versions.
@@ -52,6 +53,17 @@ def _number(value):
     return number if number > 0 else None
 
 
+def _code(value):
+    """Bing's ErrorCode as a number: 14 and "14" are the same refusal; absent is 0."""
+    if value is None:
+        return 0
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        # A code that is not a number is still not the absence of one.
+        return -1
+
+
 class Bing:
     slug = "bing"
 
@@ -63,7 +75,7 @@ class Bing:
         # all would print nine plausible identical numbers (busel measured 91 / 7 /
         # 300 come back as 91 three times).
         self.answered = {}
-        self.refusals = 0
+        self.unanswered = set()
 
     def site_url(self, domain):
         # As the property was verified; a mismatch answers NotAuthorized, which
@@ -80,8 +92,8 @@ class Bing:
 
     def _get(self, method, domain):
         try:
-            status, raw = self.call("GET", "%s/%s?apikey=%s&siteUrl=%s" % (
-                self.endpoint, method, web.quoted(self.key), web.quoted(self.site_url(domain))), timeout=30)
+            status, raw = self.call("GET", "%s/%s?siteUrl=%s&apikey=%s" % (
+                self.endpoint, method, web.quoted(self.site_url(domain)), web.quoted(self.key)), timeout=30)
         except web.Unreachable:
             return None
         answer = web.decoded(raw)
@@ -98,12 +110,12 @@ class Bing:
         """
         if domain in self.answered:
             return self.answered[domain]
-        if not domain or self.refusals >= ATTEMPTS:
+        if not domain or domain in self.unanswered or len(self.unanswered) >= ATTEMPTS:
             return QUOTA_WHEN_UNASKED
         answer = self._get("GetUrlSubmissionQuota", domain)
         monthly = _number((answer or {}).get("MonthlyQuota"))
         if monthly is None:
-            self.refusals += 1
+            self.unanswered.add(domain)
             return QUOTA_WHEN_UNASKED
         daily = monthly // DAYS_IN_MONTH
         # Held under the daily figure too: while the month stays where it has been
@@ -141,15 +153,16 @@ class Bing:
         if not urls:
             return {}
         status, answer = self._post("SubmitUrlBatch", {"siteUrl": self.site_url(domain), "urlList": list(urls)})
-        if status is None or not isinstance(answer, dict):
-            # The network or an HTML error page: not accepted, and the walk goes
-            # on. A dead endpoint still turns the night red, through "attempted and
-            # nothing taken".
-            return {url: False for url in urls}
-        code = answer.get("ErrorCode", 0)
-        if isinstance(code, int) and code != 0:
+        code = _code(answer.get("ErrorCode")) if isinstance(answer, dict) else 0
+        if code != 0:
             raise self.refusal(code, domain)
-        # Success is {"d": null}: no field to check, the absence of an error is it.
+        if status != 200 or not isinstance(answer, dict):
+            # The network, an HTML error page, or a 5xx in JSON without a code:
+            # not accepted, and the walk goes on. A dead endpoint still turns the
+            # night red, through "attempted and nothing taken".
+            return {url: False for url in urls}
+        # Success is {"d": null} with 200: no field to check, the absence of an
+        # error is it — which is why the status is read first.
         return {url: True for url in urls}
 
     @staticmethod

@@ -43,7 +43,7 @@ def call(method, url, headers=None, body=None, form=None, timeout=60):
     # Only the web: a sitemap index names the next address itself, and one
     # naming file:///etc/… or ftp:// would otherwise be opened by this program.
     if urlsplit(url).scheme not in ("http", "https"):
-        raise Unreachable("%s %s: only http and https are fetched" % (method, url))
+        raise Unreachable("%s %s: only http and https are fetched" % (method, _shown(url)))
     headers = dict(headers or {})
     data = None
     if body is not None:
@@ -55,23 +55,42 @@ def call(method, url, headers=None, body=None, form=None, timeout=60):
     headers.setdefault("User-Agent", "krot-index")
     request = Request(url, data=data, headers=headers, method=method)
     try:
-        with _OPENER.open(request, timeout=timeout) as answer:
-            return answer.status, _bounded(answer, method, url)
-    except HTTPError as refusal:
-        return refusal.code, _bounded(refusal, method, url)
+        # ⚠️ Nested: the body of a refusal is read inside its own handler, and a
+        # read cut off there — a 503 dropping the connection midway — would pass
+        # the sibling handler below and end the walk over every site.
+        try:
+            with _OPENER.open(request, timeout=timeout) as answer:
+                return answer.status, _bounded(answer, method, url)
+        except HTTPError as refusal:
+            return refusal.code, _bounded(refusal, method, url)
     except (URLError, socket.timeout, OSError, http.client.HTTPException, ValueError) as failure:
         # HTTPException: a body cut off midway, a status line that is not one.
         # ValueError: an address urllib cannot even parse. Both are "nobody
         # answered usefully", and escaping as themselves they would end the walk
         # over every site instead of this one request.
-        raise Unreachable("%s %s: %s" % (method, url, str(failure) or type(failure).__name__))
+        text = (str(failure) or type(failure).__name__).replace(url, _shown(url))
+        raise Unreachable("%s %s: %s" % (method, _shown(url), text))
 
 
 def _bounded(answer, method, url):
     raw = answer.read(MAX_BYTES + 1)
     if len(raw) > MAX_BYTES:
-        raise Unreachable("%s %s: answered more than %d bytes" % (method, url, MAX_BYTES))
+        raise Unreachable("%s %s: answered more than %d bytes" % (method, _shown(url), MAX_BYTES))
     return raw
+
+
+def _shown(url):
+    """The address as a message may carry it: without its query.
+
+    ⚠️ Bing wants its key in the query string, and urllib's own text for a
+    failure names the address too — so neither goes into a message whole. A
+    caller that prints this text must not be the one keeping the key out.
+    """
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return "an address that does not parse"
+    return "%s://%s%s" % (parts.scheme, parts.netloc, parts.path)
 
 
 def host_of(url):

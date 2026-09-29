@@ -40,7 +40,8 @@ class FakeServer:
 
     `outages` is a queue of failures served before the app sees anything: an
     int answers with that status, "drop" closes the connection unanswered,
-    "html" answers 200 with a page that is not JSON, and "lost" lets the app
+    "html" answers 200 with a page that is not JSON, "stall" answers 503 and
+    goes quiet for a second midway through its body, and "lost" lets the app
     handle the request — the write happens — and then answers 502, the way a
     proxy does when the service is slow to reply. None serves the request
     normally, to aim a failure at a later one; a (status, headers) pair answers
@@ -69,6 +70,18 @@ class FakeServer:
                     if outage == "drop":
                         self.close_connection = True
                         self.connection.close()
+                        return
+                    if outage == "stall":
+                        # A 503 that promises a body and goes quiet halfway
+                        # through it, longer than a short client timeout.
+                        self.send_response(503)
+                        self.send_header("Content-Length", "1000")
+                        self.end_headers()
+                        self.wfile.write(b"<html>Service")
+                        self.wfile.flush()
+                        # Not time.sleep: the unit conftest replaces it everywhere.
+                        threading.Event().wait(1)
+                        self.close_connection = True
                         return
                     if outage == "html":
                         return self.answer(200, b"<html>captive portal</html>")

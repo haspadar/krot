@@ -1,11 +1,12 @@
 import pytest
 
-from fakes.indexing import FakeIndexNowEndpoint, FakeSite
+from fakes.indexing import FakeIndexNowEndpoint, FakeSite, FakeStore
 from krot_index import night
 from krot_index.engines.indexnow import IndexNow, site_key
+from krot_index.submission import Submission
 
 SITE = "stadtdame.de"
-SECRET = "network-secret"
+SECRET = "network-secret"  # secret-lint: allow — a made-up value the tests share
 
 
 @pytest.fixture
@@ -31,7 +32,7 @@ def test_key_holds_the_formula_busel_published():
     # ⚠️ A value, not a property: every other test passes under any formula.
     # Failing here means every published key file must be reissued, not that
     # this number needs updating. Checked against PHP's
-    # substr(hash('sha256', 'network-secret:stadtdame.de'), 0, 32).
+    # substr(hash('sha256', 'network-secret:stadtdame.de'), 0, 32).  secret-lint: allow — the made-up value above
     assert site_key(SECRET, " Stadtdame.de ") == "007dbf4b4337deb97863e2368646c699"
 
 
@@ -57,6 +58,30 @@ def test_site_serving_another_key_is_an_ownership_refusal(endpoint, site):
     with pytest.raises(night.Refused) as refused:
         indexnow(endpoint, site).submit_all(SITE, ["https://stadtdame.de/"])
     assert refused.value.ownership
+
+
+def test_key_file_down_takes_nothing_without_blaming_the_key(endpoint, site):
+    site.files["/" + site_key(SECRET, SITE) + ".txt"] = (503, "Service Unavailable")
+    assert indexnow(endpoint, site).submit_all(SITE, ["https://stadtdame.de/"]) == {"https://stadtdame.de/": False}
+
+
+def test_key_file_down_posts_nothing(endpoint, site):
+    site.files["/" + site_key(SECRET, SITE) + ".txt"] = (503, "Service Unavailable")
+    indexnow(endpoint, site).submit_all(SITE, ["https://stadtdame.de/"])
+    assert endpoint.posts == []
+
+
+def test_site_unreachable_takes_nothing(endpoint, site):
+    engine = indexnow(endpoint, site)
+    site.close()
+    assert engine.submit_all(SITE, ["https://stadtdame.de/"]) == {"https://stadtdame.de/": False}
+
+
+def test_night_is_one_post_a_site(endpoint, site):
+    # ⚠️ Deliberate, as in busel: the rest waits for the next night. See AT_ONCE.
+    pages = {"https://stadtdame.de/%d" % number: False for number in range(10001)}
+    Submission(indexnow(endpoint, site), FakeStore()).of(SITE, pages)
+    assert [len(post["urlList"]) for post in endpoint.posts] == [10000]
 
 
 def test_202_is_accepted(endpoint, site):
