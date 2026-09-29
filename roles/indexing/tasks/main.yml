@@ -30,6 +30,9 @@
 - name: Assert a retired project is named and not also declared
   ansible.builtin.assert:
     that:
+      # A string: an unquoted 1 in YAML is an int, passes the pattern as text,
+      # and then matches no parsed name — retiring nothing, green.
+      - item is string
       - item is match('^[a-z0-9]+\Z')
       - item not in indexing_projects
     fail_msg: >-
