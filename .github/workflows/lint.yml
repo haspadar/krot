@@ -168,8 +168,18 @@ jobs:
       # `git status --porcelain`, not `git diff --exit-code`: a deleted index file
       # comes back as untracked, which `git diff` does not report at all — the check
       # would pass on the one case where the index is missing outright.
+      #
+      # On a push to main, HEAD is the PR's own merge commit, which names the
+      # PR number of a change archived in that same PR; the index committed in
+      # the branch could not know it. Reading merges from HEAD^1 checks the
+      # index as the PR saw it — the number arrives with the next rebuild.
       - name: wiki-index is up to date
+        env:
+          EVENT: ${{ github.event_name }}
         run: |
+          if [ "$EVENT" = push ] && git rev-parse -q --verify HEAD^2 >/dev/null; then
+            export WIKI_INDEX_MERGES_FROM=HEAD^1
+          fi
           python3 scripts/wiki-index.py
           if [ -n "$(git status --porcelain -- wiki/index/)" ]; then
             echo "wiki/index/ разошёлся с источниками — пересобери:"

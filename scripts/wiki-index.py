@@ -25,6 +25,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 import subprocess
 from datetime import date
@@ -96,10 +97,17 @@ def title_of(file: Path) -> str | None:
 
 
 def pull_requests_by_branch() -> dict[str, str]:
-    """Merge-коммиты GitHub: ветка → номер PR."""
+    """Merge-коммиты GitHub: ветка → номер PR.
+
+    ⚠️ С какой ревизии смотреть — `WIKI_INDEX_MERGES_FROM`, по умолчанию HEAD. CI на
+    пуше в main ставит туда HEAD^1: иначе merge-коммит самого PR отдаёт номер change,
+    заархивированному в этом же PR, и оглавление, собранное в ветке с «—», в main
+    читается устаревшим — `lint` краснел на каждом таком мерже (2026-09-29, три подряд).
+    Номер попадает в оглавление следующим PR, который его пересоберёт.
+    """
     try:
         output = subprocess.run(
-            ["git", "log", "--merges", "--format=%s"],
+            ["git", "log", "--merges", "--format=%s", os.environ.get("WIKI_INDEX_MERGES_FROM", "HEAD")],
             cwd=ROOT,
             capture_output=True,
             text=True,

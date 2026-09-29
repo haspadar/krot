@@ -13,10 +13,11 @@ changing a default that affects production) bump major.
   its application's reader role, its engines by explicit list, a key per engine and its sites
   with their sitemaps. State lives in a `krot` schema the role creates in the project's own
   database, owned by `krot_index` over peer; the reader gets `CONNECT`, `USAGE` and `SELECT`,
-  including on tables a later schema adds. The role refuses before changing anything when the
-  database or the reader is missing, the database already has a `krot` schema of another
-  owner, the cluster would not let `krot_index` in by peer, a declared engine has no key, or two
-  projects on the machine share a Google, Bing or Yandex key.
+  including on tables a later schema adds. The role refuses before it touches the cluster, the
+  program or any unit when the database or the reader is missing, the database already has a
+  `krot` schema of another owner, the cluster would not let `krot_index` in by peer, a declared
+  engine has no key, or two projects on the machine share a Google, Bing or Yandex key. The
+  packages the checks need (`python3-psycopg2` among them) are installed first.
 
   **A red unit means something to repair**: a key, ownership, the schema, an unreadable
   sitemap, a night where nothing was taken for no stated reason. A spent allowance and a
@@ -33,9 +34,15 @@ changing a default that affects production) bump major.
 
 - **`names-lint` in CI**: code, tests, scenarios, docs and the wiki do not name the projects
   that consume the collection or their sites. Words are compared by hash, inside identifiers
-  and file paths too.
+  and file paths too. The change archive (`openspec/changes/`) and the index generated from it
+  (`wiki/index/`) are the record of decisions as taken and are not checked.
 
 ### Changed
+
+- **`site_launch` checks `site_machine` within `--limit`.** The 5.8.0 entry describes this check,
+  but the code reached `main` after that release: 5.8.0 checked on localhost, which a `--limit`
+  leaving localhost out skipped without a word. Now a limit that leaves out the named machine
+  stops the launch instead of running nothing.
 
 - **Google's JWT signing moved to `module_utils/google_jwt.py`**, importable without Ansible so
   the program on the machine uses it too. The Google modules behave as before.
