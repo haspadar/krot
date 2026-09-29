@@ -12,6 +12,8 @@
     roles: "{{ indexing_user }},{{ indexing_plan.reader }}"
   become: true
   become_user: postgres
+  # --check on a machine the role has not been on: see main.yml.
+  when: not ansible_check_mode or indexing_pg_role.query_result[0].present
 
 # Owned by the program's role, so the tables schema.sql makes are its own and it
 # can write them. The application only reads — below. preflight.yml refused a
@@ -23,6 +25,19 @@
     owner: "{{ indexing_user }}"
   become: true
   become_user: postgres
+
+# The same for the schema: under --check it is not created, and a grant on it
+# would be refused. Asked apart from the version table below, since a schema a
+# failed run left without one still has grants --check can show.
+- name: Read whether the krot schema exists
+  community.postgresql.postgresql_query:
+    login_db: "{{ indexing_plan.database }}"
+    query: SELECT to_regnamespace('krot') IS NOT NULL AS present
+  become: true
+  become_user: postgres
+  check_mode: false
+  changed_when: false
+  register: indexing_schema_exists
 
 - name: Read whether the schema has its version table
   community.postgresql.postgresql_query:
@@ -63,9 +78,12 @@
   become: true
   become_user: "{{ indexing_user }}"
   changed_when: true
+  # Never under --check: a command is skipped there anyway, but becoming the
+  # program's account comes first, and on a machine it is not on yet that fails.
   when: >-
-    not indexing_schema_present.query_result[0].present
-    or indexing_schema_at.query_result[0].version != indexing_schema_version
+    not ansible_check_mode
+    and (not indexing_schema_present.query_result[0].present
+         or indexing_schema_at.query_result[0].version != indexing_schema_version)
 
 - name: Let the application into the schema
   community.postgresql.postgresql_privs:
@@ -76,6 +94,7 @@
     roles: "{{ indexing_plan.reader }}"
   become: true
   become_user: postgres
+  when: not ansible_check_mode or indexing_schema_exists.query_result[0].present
 
 - name: Let the application read the tables there now
   community.postgresql.postgresql_privs:
@@ -87,6 +106,7 @@
     roles: "{{ indexing_plan.reader }}"
   become: true
   become_user: postgres
+  when: not ansible_check_mode or indexing_schema_exists.query_result[0].present
 
 # ⚠️ And the tables a later schema adds: without this, a table from version 2
 # would be closed to the project's screens until somebody granted it by hand.
@@ -101,6 +121,7 @@
     roles: "{{ indexing_plan.reader }}"
   become: true
   become_user: postgres
+  when: not ansible_check_mode or indexing_schema_exists.query_result[0].present
 
 # No key in it, so readable by anybody on the machine: which sites, which
 # database. The keys are in the files below, readable only by the program.
