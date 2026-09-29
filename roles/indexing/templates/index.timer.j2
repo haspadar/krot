@@ -1,11 +1,11 @@
 {{ ansible_managed | comment }}
-{% set project = item.0.key %}
+{% set project = item.0.name %}
 {% set engine = item.1 %}
 [Unit]
 Description=Offer {{ project }}'s pages to {{ engine }} (timer)
 
 [Timer]
-OnCalendar={{ (item.0.value.schedules | default({}))[engine] | default(indexing_schedules[engine]) }}
+OnCalendar={{ item.0.schedules[engine] | default(indexing_schedules[engine]) }}
 RandomizedDelaySec={{ indexing_randomized_delay }}
 # The same minute every night rather than a new one: a night that wanders by
 # fifteen minutes each way reads, on Google's day, as runs an hour apart.

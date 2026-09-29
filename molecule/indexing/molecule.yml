@@ -33,13 +33,18 @@ provisioner:
           molecule:
             database: molecule_site
             reader: molecule_app
-            # Two engines, so two units; neither key is ever sent anywhere. The
+            # Three engines, so three units; no key is ever sent anywhere. The
             # run in verify.yml is IndexNow's, whose allowance is a constant and
-            # needs no network.
-            engines: [indexnow, bing]
+            # needs no network. Google is here for its install path: the key
+            # file, and the hour carrying its own time zone.
+            engines: [indexnow, bing, google]
             # secret-lint: allow — made-up keys, never leave the container.
             bing_key: molecule-bing
             indexnow_secret: molecule-indexnow  # secret-lint: allow
+            # A dict, as a lookup of a JSON note arrives; no real key in it.
+            google_service_account:
+              type: service_account
+              client_email: molecule@molecule.iam.gserviceaccount.com
             schedules:
               indexnow: "*-*-* 05:05:00"
             sites:

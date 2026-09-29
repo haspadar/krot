@@ -1,6 +1,6 @@
 {{ ansible_managed | comment }}
 {{ indexing_unit_marker }}
-{% set project = item.0.key %}
+{% set project = item.0.name %}
 {% set engine = item.1 %}
 [Unit]
 Description=Offer {{ project }}'s pages to {{ engine }}

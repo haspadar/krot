@@ -12,7 +12,7 @@
   tasks:
     - name: A timer per declared engine is enabled
       ansible.builtin.command: systemctl is-enabled krot-index-molecule-{{ item }}.timer
-      loop: [indexnow, bing]
+      loop: [indexnow, bing, google]
       register: indexing_enabled
       changed_when: false
       failed_when: indexing_enabled.stdout != "enabled"
@@ -22,6 +22,37 @@
       register: indexing_calendar
       changed_when: false
       failed_when: "'05:05:00' not in indexing_calendar.stdout"
+
+    # The zone rides in the expression: Google's day resets at midnight
+    # Pacific, whatever the machine's clock says.
+    - name: Google's night keeps its own time zone
+      ansible.builtin.command: systemctl show krot-index-molecule-google.timer -p TimersCalendar
+      register: indexing_google_calendar
+      changed_when: false
+      failed_when: "'America/Los_Angeles' not in indexing_google_calendar.stdout"
+
+    - name: The Google key is a file of its own, the program's alone
+      ansible.builtin.stat:
+        path: /etc/krot-index/molecule.google.json
+      register: indexing_google_key
+      failed_when: >-
+        not indexing_google_key.stat.exists
+        or indexing_google_key.stat.mode != '0600'
+        or indexing_google_key.stat.pw_name != 'krot_index'
+
+    - name: Read the Google key
+      ansible.builtin.slurp:
+        src: /etc/krot-index/molecule.google.json
+      register: indexing_google_content
+
+    # Written from a dict, it must still be JSON the program can load — not
+    # Python's repr of one.
+    - name: It holds the service account as JSON
+      ansible.builtin.assert:
+        that:
+          - (indexing_google_content.content | b64decode | from_json).client_email
+            == 'molecule@molecule.iam.gserviceaccount.com'
+        quiet: true
 
     - name: The keys are readable by the program's account alone
       ansible.builtin.stat:
@@ -37,14 +68,15 @@
         src: /etc/krot-index/molecule.env
       register: indexing_env_content
 
-    # Only the engines declared: a Google line here would point the program at a
-    # key file this project never had.
+    # Only the engines declared: a Yandex line here would be a key for an engine
+    # the project never asked for. Google's is a path, never the key itself.
     - name: It names the declared engines' keys and no other
       ansible.builtin.assert:
         that:
           - "'KROT_INDEX_BING_KEY=molecule-bing' in indexing_env_text"
           - "'KROT_INDEX_INDEXNOW_SECRET=' ~ indexing_made_up in indexing_env_text"
-          - "'GOOGLE' not in indexing_env_text"
+          - "'KROT_INDEX_GOOGLE_KEY_FILE=/etc/krot-index/molecule.google.json' in indexing_env_text"
+          - "'client_email' not in indexing_env_text"
           - "'YANDEX' not in indexing_env_text"
       vars:
         indexing_env_text: "{{ indexing_env_content.content | b64decode }}"
@@ -69,22 +101,38 @@
           - not indexing_planted.results[2].stat.exists
         quiet: true
 
-    - name: Look for the dropped project's keys
+    - name: Look for the dropped project's files
       ansible.builtin.stat:
-        path: /etc/krot-index/gone.env
-      register: indexing_gone_env
-      failed_when: indexing_gone_env.stat.exists
+        path: "/etc/krot-index/{{ item }}"
+      loop: [gone.env, gone.json, gone.google.json]
+      register: indexing_gone
+
+    - name: The dropped project's files are gone
+      ansible.builtin.assert:
+        that:
+          - indexing_gone.results | length == 3
+          - indexing_gone.results | selectattr('stat.exists') | list | length == 0
+        quiet: true
+
+    - name: Look for the file somebody else keeps there
+      ansible.builtin.stat:
+        path: /etc/krot-index/README
+      register: indexing_foreign_file
+      failed_when: not indexing_foreign_file.stat.exists
 
     - name: The tables belong to the program's role
       community.postgresql.postgresql_query:
         login_db: molecule_site
         query: >-
-          SELECT count(*) AS foreign FROM pg_tables
-          WHERE schemaname = 'krot' AND tableowner <> 'krot_index'
+          SELECT count(*) AS tables, count(*) FILTER (WHERE tableowner <> 'krot_index') AS foreign
+          FROM pg_tables WHERE schemaname = 'krot'
       become: true
       become_user: postgres
       register: indexing_owners
-      failed_when: indexing_owners.query_result[0].foreign != 0
+      # The count too: on an empty schema "none foreign" would hold vacuously.
+      failed_when: >-
+        indexing_owners.query_result[0].tables != 3
+        or indexing_owners.query_result[0].foreign != 0
 
     # The run itself. It is red on purpose — the sitemap is on a port nobody
     # listens on — but it reaches that only after the key, the peer login and

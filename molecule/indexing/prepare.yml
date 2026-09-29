@@ -40,6 +40,19 @@
       become: true
       become_user: postgres
 
+    # Ordinary hardening, and the case where a reader with every grant on the
+    # schema still cannot get in — unless the role grants CONNECT too.
+    - name: The project's database closed to PUBLIC
+      community.postgresql.postgresql_privs:
+        login_db: postgres
+        type: database
+        objs: molecule_site
+        privs: CONNECT
+        roles: PUBLIC
+        state: absent
+      become: true
+      become_user: postgres
+
     # busel's krot-index-google (cron's marker) and a dropped project's unit
     # (this role's marker): same prefix, opposite fates.
     - name: Two services already on the machine
@@ -76,11 +89,19 @@
         state: directory
         mode: "0755"
 
-    - name: The dropped project's keys, left behind
+    - name: The dropped project's files, left behind
       ansible.builtin.copy:
-        dest: /etc/krot-index/gone.env
-        content: "KROT_INDEX_BING_KEY=dropped\n"
+        dest: "/etc/krot-index/{{ item }}"
+        content: "left by a dropped project\n"
         mode: "0600"
+      loop: [gone.env, gone.json, gone.google.json]
+
+    # Not a name the role writes: whoever put it there owns it.
+    - name: A file somebody else keeps in the directory
+      ansible.builtin.copy:
+        dest: /etc/krot-index/README
+        content: "an operator's note\n"
+        mode: "0644"
 
     - name: Let systemd see the planted units
       ansible.builtin.systemd_service:

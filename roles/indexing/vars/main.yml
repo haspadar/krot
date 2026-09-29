@@ -27,6 +27,22 @@ indexing_key_fields:
   yandex: yandex_token
   indexnow: indexnow_secret
 
+# The projects without their keys — what every loop but the key tasks walks.
+# ⚠️ A failed loop item is printed whole, label or not: looping over
+# indexing_projects itself would put a project's Google private key into the
+# terminal and CI log on the first malformed entry.
+indexing_plans: >-
+  {%- set plans = [] -%}
+  {%- for project, spec in indexing_projects.items() -%}
+  {%- set _ = plans.append({'name': project,
+                            'database': spec.database | default(''),
+                            'reader': spec.reader | default(''),
+                            'engines': spec.engines | default([]),
+                            'schedules': spec.schedules | default({}),
+                            'sites': spec.sites | default([])}) -%}
+  {%- endfor -%}
+  {{ plans }}
+
 # Every (project, engine) pair declared, as unit names. Derived once so the
 # install, the enable and the retirement agree on what is declared.
 indexing_units: >-

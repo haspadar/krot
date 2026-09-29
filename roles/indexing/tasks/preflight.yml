@@ -1,0 +1,84 @@
+---
+# One project against the cluster, before anything on the machine changes.
+- name: Look for the project's database, reader and krot schema
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    query: >-
+      SELECT
+        EXISTS (SELECT 1 FROM pg_database WHERE datname = %(database)s) AS database,
+        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %(reader)s) AS reader
+    named_args:
+      database: "{{ indexing_plan.database }}"
+      reader: "{{ indexing_plan.reader }}"
+  become: true
+  become_user: postgres
+  check_mode: false
+  changed_when: false
+  register: indexing_found
+
+- name: Refuse a database or a reader that is not there
+  ansible.builtin.assert:
+    that:
+      - indexing_found.query_result[0].database
+      - indexing_found.query_result[0].reader
+    fail_msg: >-
+      {{ indexing_plan.name }}: database {{ indexing_plan.database }} or role
+      {{ indexing_plan.reader }} is not in the cluster. The project creates both;
+      this role only adds its schema.
+    quiet: true
+
+# ⚠️ A krot schema somebody else made is not adopted: handing it to the
+# program's role would take a namespace this role cannot vouch for, and
+# schema.sql would then run against tables it did not write.
+- name: Look for a krot schema already in the database
+  community.postgresql.postgresql_query:
+    login_db: "{{ indexing_plan.database }}"
+    query: >-
+      SELECT pg_get_userbyid(nspowner) AS owner FROM pg_namespace WHERE nspname = 'krot'
+  become: true
+  become_user: postgres
+  check_mode: false
+  changed_when: false
+  register: indexing_schema_owner
+
+- name: Refuse a krot schema this role did not make
+  ansible.builtin.assert:
+    that:
+      - indexing_schema_owner.query_result | length == 0
+        or indexing_schema_owner.query_result[0].owner == indexing_user
+    fail_msg: >-
+      {{ indexing_plan.database }} already has a krot schema owned by
+      {{ indexing_schema_owner.query_result[0].owner | default('') }}, not {{ indexing_user }}.
+      This role does not adopt it — find out whose it is first.
+    quiet: true
+
+# Checked, not assumed: peer is what maps the program's account to its Postgres
+# role without a password, and a cluster that asks for one here would fail every
+# night with a message about authentication.
+- name: Read how the cluster lets the program in
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    query: >-
+      SELECT auth_method FROM pg_hba_file_rules
+      WHERE type = 'local'
+        AND (database @> ARRAY['all'] OR database @> ARRAY[%(database)s])
+        AND (user_name @> ARRAY['all'] OR user_name @> ARRAY[%(user)s])
+      ORDER BY line_number LIMIT 1
+    named_args:
+      database: "{{ indexing_plan.database }}"
+      user: "{{ indexing_user }}"
+  become: true
+  become_user: postgres
+  check_mode: false
+  changed_when: false
+  register: indexing_hba
+
+- name: Refuse a cluster that would ask the program for a password
+  ansible.builtin.assert:
+    that:
+      - indexing_hba.query_result | length == 1
+      - indexing_hba.query_result[0].auth_method == 'peer'
+    fail_msg: >-
+      pg_hba.conf does not let {{ indexing_user }} into {{ indexing_plan.database }}
+      over the local socket by peer. The program has no password to offer.
+    quiet: true

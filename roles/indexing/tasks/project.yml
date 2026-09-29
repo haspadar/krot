@@ -1,57 +1,32 @@
 ---
-# One project: its database gets the krot schema, its keys and config land in
-# files the unit reads. Checks first — a refusal here must come before the first
-# change, not after half a schema.
-- name: Look for the project's database and reader
-  community.postgresql.postgresql_query:
-    login_db: postgres
-    query: >-
-      SELECT
-        EXISTS (SELECT 1 FROM pg_database WHERE datname = %(database)s) AS database,
-        EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %(reader)s) AS reader
-    named_args:
-      database: "{{ indexing_project.value.database }}"
-      reader: "{{ indexing_project.value.reader }}"
-  become: true
-  become_user: postgres
-  check_mode: false
-  changed_when: false
-  register: indexing_found
-
-- name: Refuse a database or a reader that is not there
-  ansible.builtin.assert:
-    that:
-      - indexing_found.query_result[0].database
-      - indexing_found.query_result[0].reader
-    fail_msg: >-
-      {{ indexing_project.key }}: database {{ indexing_project.value.database }} or role
-      {{ indexing_project.value.reader }} is not in the cluster. The project creates
-      both; this role only adds its schema.
-    quiet: true
-
-- name: Let the program connect to the database
+# One project, already checked by preflight.yml: its database gets the krot
+# schema, its keys and config land in files the unit reads.
+- name: Let the program and the application connect to the database
   community.postgresql.postgresql_privs:
     login_db: postgres
     type: database
-    objs: "{{ indexing_project.value.database }}"
+    objs: "{{ indexing_plan.database }}"
     privs: CONNECT
-    roles: "{{ indexing_user }}"
+    # The reader too: a database with PUBLIC's CONNECT revoked — ordinary
+    # hardening — would take every grant below and still keep the screens out.
+    roles: "{{ indexing_user }},{{ indexing_plan.reader }}"
   become: true
   become_user: postgres
 
 # Owned by the program's role, so the tables schema.sql makes are its own and it
-# can write them. The application only reads — below.
+# can write them. The application only reads — below. preflight.yml refused a
+# krot schema owned by anybody else, so this only ever creates.
 - name: Create the krot schema in the project's database
   community.postgresql.postgresql_schema:
-    login_db: "{{ indexing_project.value.database }}"
+    login_db: "{{ indexing_plan.database }}"
     name: krot
     owner: "{{ indexing_user }}"
   become: true
   become_user: postgres
 
-- name: Read the schema's version
+- name: Read whether the schema has its version table
   community.postgresql.postgresql_query:
-    login_db: "{{ indexing_project.value.database }}"
+    login_db: "{{ indexing_plan.database }}"
     query: SELECT to_regclass('krot.schema_version') IS NOT NULL AS present
   become: true
   become_user: postgres
@@ -61,7 +36,7 @@
 
 - name: Read the version it is at
   community.postgresql.postgresql_query:
-    login_db: "{{ indexing_project.value.database }}"
+    login_db: "{{ indexing_plan.database }}"
     query: SELECT coalesce(max(version), 0) AS version FROM krot.schema_version
   become: true
   become_user: postgres
@@ -82,7 +57,7 @@
       - -v
       - ON_ERROR_STOP=1
       - -d
-      - "{{ indexing_project.value.database }}"
+      - "{{ indexing_plan.database }}"
       - -f
       - "{{ indexing_program_dir }}/schema.sql"
   become: true
@@ -94,22 +69,22 @@
 
 - name: Let the application into the schema
   community.postgresql.postgresql_privs:
-    login_db: "{{ indexing_project.value.database }}"
+    login_db: "{{ indexing_plan.database }}"
     type: schema
     objs: krot
     privs: USAGE
-    roles: "{{ indexing_project.value.reader }}"
+    roles: "{{ indexing_plan.reader }}"
   become: true
   become_user: postgres
 
 - name: Let the application read the tables there now
   community.postgresql.postgresql_privs:
-    login_db: "{{ indexing_project.value.database }}"
+    login_db: "{{ indexing_plan.database }}"
     type: table
     schema: krot
     objs: ALL_IN_SCHEMA
     privs: SELECT
-    roles: "{{ indexing_project.value.reader }}"
+    roles: "{{ indexing_plan.reader }}"
   become: true
   become_user: postgres
 
@@ -117,34 +92,26 @@
 # would be closed to the project's screens until somebody granted it by hand.
 - name: Let the application read the tables added later
   community.postgresql.postgresql_privs:
-    login_db: "{{ indexing_project.value.database }}"
+    login_db: "{{ indexing_plan.database }}"
     type: default_privs
     target_roles: "{{ indexing_user }}"
     schema: krot
     objs: TABLES
     privs: SELECT
-    roles: "{{ indexing_project.value.reader }}"
+    roles: "{{ indexing_plan.reader }}"
   become: true
   become_user: postgres
-
-- name: Create the config directory
-  ansible.builtin.file:
-    path: "{{ indexing_config_dir }}"
-    state: directory
-    owner: root
-    group: root
-    mode: "0755"
 
 # No key in it, so readable by anybody on the machine: which sites, which
 # database. The keys are in the files below, readable only by the program.
 - name: Write the project's config
   ansible.builtin.copy:
     content: >-
-      {{ {'project': indexing_project.key,
-          'database': indexing_project.value.database,
-          'engines': indexing_project.value.engines,
-          'sites': indexing_project.value.sites} | to_nice_json }}
-    dest: "{{ indexing_config_dir }}/{{ indexing_project.key }}.json"
+      {{ {'project': indexing_plan.name,
+          'database': indexing_plan.database,
+          'engines': indexing_plan.engines,
+          'sites': indexing_plan.sites} | to_nice_json }}
+    dest: "{{ indexing_config_dir }}/{{ indexing_plan.name }}.json"
     owner: root
     group: root
     mode: "0644"
@@ -155,26 +122,26 @@
 - name: Write the project's Google key
   ansible.builtin.copy:
     content: >-
-      {{ (indexing_project.value.google_service_account
-          if indexing_project.value.google_service_account is string
-          else indexing_project.value.google_service_account | to_json) }}
-    dest: "{{ indexing_config_dir }}/{{ indexing_project.key }}.google.json"
+      {{ indexing_google if indexing_google is string else indexing_google | to_json }}
+    dest: "{{ indexing_config_dir }}/{{ indexing_plan.name }}.google.json"
     owner: "{{ indexing_user }}"
     group: "{{ indexing_user }}"
     mode: "0600"
+  vars:
+    indexing_google: "{{ indexing_projects[indexing_plan.name].google_service_account }}"
   no_log: true
-  when: "'google' in indexing_project.value.engines"
+  when: "'google' in indexing_plan.engines"
 
 - name: Drop a Google key no longer used
   ansible.builtin.file:
-    path: "{{ indexing_config_dir }}/{{ indexing_project.key }}.google.json"
+    path: "{{ indexing_config_dir }}/{{ indexing_plan.name }}.google.json"
     state: absent
-  when: "'google' not in indexing_project.value.engines"
+  when: "'google' not in indexing_plan.engines"
 
 - name: Write the project's keys
   ansible.builtin.template:
     src: project.env.j2
-    dest: "{{ indexing_config_dir }}/{{ indexing_project.key }}.env"
+    dest: "{{ indexing_config_dir }}/{{ indexing_plan.name }}.env"
     owner: "{{ indexing_user }}"
     group: "{{ indexing_user }}"
     mode: "0600"
