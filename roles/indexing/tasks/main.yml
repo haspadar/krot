@@ -102,6 +102,9 @@
 
 - name: Offer each project's pages
   when: indexing_plans | length > 0
+  vars:
+    indexing_timer_names_on_disk: >-
+      {{ indexing_timers_on_disk.files | map(attribute='path') | map('basename') | list }}
   block:
     # First, and before any check: the checks below ask the cluster through
     # psycopg2. Packages are the one change a refused run may leave.
@@ -147,6 +150,20 @@
         role_attr_flags: LOGIN,NOSUPERUSER,NOCREATEDB,NOCREATEROLE,NOREPLICATION,NOBYPASSRLS
       become: true
       become_user: postgres
+
+    # Under --check the role above is not created, and a grant to it would be
+    # refused rather than rehearsed. Asked, not inferred from `changed`: that is
+    # also an existing role whose attributes differ, whose grants --check can show.
+    - name: Read whether the program's Postgres role exists
+      community.postgresql.postgresql_query:
+        login_db: postgres
+        query: SELECT count(*) > 0 AS present FROM pg_roles WHERE rolname = %(name)s
+        named_args:
+          name: "{{ indexing_user }}"
+      become: true
+      become_user: postgres
+      check_mode: false
+      changed_when: false
       register: indexing_pg_role
 
     - name: Create the program directory
@@ -220,6 +237,14 @@
         label: "{{ item.0.name }} {{ item.1 }}"
       notify: Reload systemd
 
+    # Before the timers are written: --check writes none, and systemd cannot find
+    # a unit that is not on disk. One that is, drifted or not, is still asked.
+    - name: Find the timers already on disk
+      ansible.builtin.find:
+        paths: /etc/systemd/system
+        patterns: "krot-index-*.timer"
+      register: indexing_timers_on_disk
+
     - name: Install the timers
       ansible.builtin.template:
         src: index.timer.j2
@@ -242,28 +267,20 @@
         state: started
         enabled: true
       loop: "{{ indexing_units }}"
-      # --check writes no unit, and systemd cannot find one it would install: a
-      # timer whose file changes is left out here. The file task shows it.
-      when: not (ansible_check_mode and item in indexing_timers_to_write)
-      vars:
-        indexing_timers_to_write: >-
-          {%- set names = [] -%}
-          {%- for result in indexing_timers.results if result.changed -%}
-          {%- set _ = names.append('krot-index-' ~ result.item.0.name ~ '-' ~ result.item.1) -%}
-          {%- endfor -%}
-          {{ names }}
+      when: not ansible_check_mode or item ~ '.timer' in indexing_timer_names_on_disk
 
     # A reload alone leaves a running timer on the hour it was started with:
     # a schedule moved in the inventory would keep firing at the old one.
     - name: Restart the timers whose schedule changed
       ansible.builtin.systemd_service:
-        name: "krot-index-{{ item.item.0.name }}-{{ item.item.1 }}.timer"
+        name: "{{ indexing_changed_timer }}"
         state: restarted
       loop: "{{ indexing_timers.results | selectattr('changed') | list }}"
-      # Every one of them is a file --check did not write; see above.
-      when: not ansible_check_mode
       loop_control:
         label: "{{ item.item.0.name }} {{ item.item.1 }}"
+      vars:
+        indexing_changed_timer: "krot-index-{{ item.item.0.name }}-{{ item.item.1 }}.timer"
+      when: not ansible_check_mode or indexing_changed_timer in indexing_timer_names_on_disk
 
 - name: Find previously installed timers
   ansible.builtin.find:
