@@ -106,8 +106,10 @@ class Submission:
         # a zero count reads as an engine that answered nothing, and an empty site
         # would turn the unit red every night over nothing broken.
         states = {night.UNKNOWN: len(wanted)} if wanted else {}
-        sent = self.store.ever_offered(domain, self.engine.slug)
-        return self._offer(domain, wanted, states, sent, len(wanted))
+        # None: counted in _offer once tonight's pages are written, the same way
+        # an asked engine's count follows its asking. Counted here, the first
+        # night printed "0/5291 sent" over 5291 pages taken.
+        return self._offer(domain, wanted, states, None, len(wanted))
 
     def _offer(self, domain, unknown, states, answered, serving, asked=False):
         quota = self.share(domain)
@@ -133,5 +135,7 @@ class Submission:
                 submitted.append(url)
             if refused is not None:
                 break
+        if answered is None:
+            answered = self.store.ever_offered(domain, self.engine.slug)
         return night.Offer(states, submitted, len(unknown), refused, len(unknown) - len(fresh),
                            len(today), answered, serving, asked)

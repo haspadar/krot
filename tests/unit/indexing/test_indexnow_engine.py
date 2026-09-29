@@ -84,6 +84,41 @@ def test_night_is_one_post_a_site(endpoint, site):
     assert [len(post["urlList"]) for post in endpoint.posts] == [10000]
 
 
+def test_new_key_refused_once_is_taken_on_the_repeat(endpoint, site):
+    endpoint.answers = [403]
+    assert indexnow(endpoint, site).submit_all(SITE, ["https://abendseite.de/"]) == {"https://abendseite.de/": True}
+
+
+def test_repeat_waits_a_minute(endpoint, site):
+    endpoint.answers = [403]
+    pauses = []
+    IndexNow(SECRET, endpoint=endpoint.endpoint, origin=lambda domain: site.url(""), sleep=pauses.append).submit_all(
+        SITE, ["https://abendseite.de/"])
+    assert pauses == [60]
+
+
+def test_key_refused_twice_is_an_ownership_refusal(endpoint, site):
+    endpoint.status = 403
+    with pytest.raises(night.Refused) as refused:
+        indexnow(endpoint, site).submit_all(SITE, ["https://abendseite.de/"])
+    assert (refused.value.ownership, len(endpoint.posts)) == (True, 2)
+
+
+def test_pauses_stop_at_the_run_budget(endpoint, site):
+    # Past the budget a new key's 403 is "not taken": the unit must not be
+    # killed mid-walk sleeping a minute a site.
+    pauses = []
+    engine = IndexNow(SECRET, endpoint=endpoint.endpoint, origin=lambda domain: site.url(""), sleep=pauses.append)
+    engine.waits = 10
+    endpoint.answers = [403]
+    assert (engine.submit_all(SITE, ["https://abendseite.de/"]), pauses) == ({"https://abendseite.de/": False}, [])
+
+
+def test_taken_post_is_not_repeated(endpoint, site):
+    indexnow(endpoint, site).submit_all(SITE, ["https://abendseite.de/"])
+    assert len(endpoint.posts) == 1
+
+
 def test_202_is_accepted(endpoint, site):
     endpoint.status = 202
     assert indexnow(endpoint, site).submit_all(SITE, ["https://abendseite.de/"]) == {"https://abendseite.de/": True}

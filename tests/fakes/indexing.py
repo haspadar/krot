@@ -271,6 +271,9 @@ class FakeIndexNowEndpoint:
     def __init__(self):
         self.posts = []
         self.status = 200
+        # Statuses answered first, one a post, before `status` takes over: a key
+        # the protocol meets for the first time is refused once, then taken.
+        self.answers = []
         self.server = FakeServer(self)
 
     @property
@@ -279,7 +282,7 @@ class FakeIndexNowEndpoint:
 
     def handle(self, request):
         self.posts.append(request.body)
-        return self.status, None
+        return (self.answers.pop(0) if self.answers else self.status), None
 
     def close(self):
         self.server.close()
