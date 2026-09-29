@@ -11,6 +11,7 @@ does not serve it is named as such rather than as a night of 403s.
 """
 
 import hashlib
+import time
 
 from krot_index import night, web
 
@@ -28,14 +29,20 @@ AT_ONCE = 10000
 
 KEY_LENGTH = 32
 
+# Seconds before the one repeat of a post answered 403 while the key file was
+# just read right. Measured 2026-09-29 on the first post of three new keys:
+# 403 on every site, the file fetched by bingbot a second after the post with
+# 200, and the same post a minute later taken (200, 202). A key the protocol
+# meets for the first time is answered before it is checked.
+FIRST_KEY_WAIT = 60
+
 
 def site_key(secret, domain):
     """The site's key: half of sha256 over the project's secret and the domain.
 
     ⚠️ A contract with files already published. Existing sites serve keys made by
-    this formula; changed, the network would
-    post today's key while its sites serve yesterday's. Pinned by a test with a
-    value.
+    this formula; changed, the network would post today's key while its sites
+    serve yesterday's. Pinned by a test with a value.
     """
     return hashlib.sha256((secret + ":" + domain.strip().lower()).encode()).hexdigest()[:KEY_LENGTH]
 
@@ -43,10 +50,11 @@ def site_key(secret, domain):
 class IndexNow:
     slug = "indexnow"
 
-    def __init__(self, secret, call=web.call, endpoint=ENDPOINT, origin=None):
+    def __init__(self, secret, call=web.call, endpoint=ENDPOINT, origin=None, sleep=None):
         self.secret = secret  # secret-lint: allow — a parameter passed on, not a value
         self.call = call
         self.endpoint = endpoint
+        self.sleep = sleep or time.sleep
         # Where the site answers; a parameter only so a test can put the site on a
         # local port.
         self.origin = origin or (lambda domain: "https://" + domain)
@@ -121,11 +129,14 @@ class IndexNow:
             return {}
         if not self.prove(domain):
             return {url: False for url in urls}
-        key = site_key(self.secret, domain)
-        try:
-            status, _ = self.call("POST", self.endpoint, timeout=30, body={
-                "host": domain, "key": key, "keyLocation": self.key_location(domain), "urlList": list(urls)})
-        except web.Unreachable:
+        status = self.post(domain, urls)
+        if status == 403:
+            # prove() has just read the right key from the site, so this is the
+            # protocol not having checked a key it meets for the first time —
+            # not a wrong key. Once more after a pause; a second 403 is a refusal.
+            self.sleep(FIRST_KEY_WAIT)
+            status = self.post(domain, urls)
+        if status is None:
             return {url: False for url in urls}
         if status >= 500:
             # The service, not the protocol. Still red, but not as a refusal: a
@@ -137,10 +148,22 @@ class IndexNow:
             return {url: True for url in urls}
         raise self.refusal(status, domain)
 
+    def post(self, domain, urls):
+        """The status of one post, or None where nobody answered."""
+        try:
+            status, _ = self.call("POST", self.endpoint, timeout=30, body={
+                "host": domain, "key": site_key(self.secret, domain), "keyLocation": self.key_location(domain),
+                "urlList": list(urls)})
+        except web.Unreachable:
+            return None
+        return status
+
     def refusal(self, status, domain):
         if status == 403:
-            return night.Refused("IndexNow could not verify the key of %s" % domain, ownership=True,
-                                 repair="the key at %s is not the one posted" % self.key_location(domain))
+            return night.Refused("IndexNow could not verify the key of %s, twice a minute apart" % domain,
+                                 ownership=True,
+                                 repair="the site served %s right a moment before; the protocol still refuses it"
+                                        % self.key_location(domain))
         if status == 422:
             # Unlike 403 the file is fine here — prove() read it a moment ago.
             return night.Refused("IndexNow refused the addresses of %s" % domain, ownership=True,

@@ -159,6 +159,14 @@ def test_unwritten_offer_stops_the_night():
         Submission(FakeEngine(quota=10), store).of(SITE, {page("/"): False})
 
 
+def test_first_night_of_an_unasked_engine_counts_what_it_sent():
+    # Counted before the sending, the first night printed "0/5291 sent" over
+    # 5291 pages taken.
+    engine = FakeEngine(slug="indexnow", quota=10, per_site=True, asking=False)
+    offer = Submission(engine, FakeStore()).of(SITE, listings(3))
+    assert offer.covered() == (3, 3)
+
+
 def test_count_says_how_much_of_the_site_is_answered():
     offer = Submission(FakeEngine(quota=2), FakeStore()).of(SITE, listings(10))
     assert offer.covered() == (3, 10)
