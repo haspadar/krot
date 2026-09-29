@@ -44,6 +44,11 @@ class Walk:
             self.store.record(night.Spending(domain, self.engine.slug, offer,
                                              night.share_of(self.engine.daily_quota(domain), sharing),
                                              self.engine.quota_was_asked(domain)))
+            # By site: a per-site allowance is asked site by site, and a warning
+            # about only the last one is missing exactly when the last one was answered.
+            if not self.engine.quota_was_asked(domain):
+                self.warn(domain, "could not ask what the engine accepts today — planned against a "
+                                  "deliberately small number; every night means the key or the endpoint")
             if offer.fails():
                 failed += 1
             refused = offer.refused
@@ -56,9 +61,6 @@ class Walk:
                           % (self.engine.daily_quota(domain),
                              " — stopping, %d sites not reached" % left if left else " on the last site"))
                 break
-        if sites and not self.engine.quota_was_asked(sites[-1]["domain"]):
-            self.warn(sites[-1]["domain"], "could not ask what the engine accepts today — planned against a "
-                                           "deliberately small number; every night means the key or the endpoint")
         return failed
 
     def report(self, domain, offer):

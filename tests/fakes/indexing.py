@@ -79,13 +79,15 @@ class FakeEngine:
         self.submitted = []
         self.refuse_with = None
         self.quota_named = True
+        # Sites whose allowance went unanswered while the others' was named.
+        self.unnamed_for = set()
         self.silent = False
 
     def daily_quota(self, domain=""):
         return self.quota
 
     def quota_was_asked(self, domain=""):
-        return self.quota_named
+        return self.quota_named and domain not in self.unnamed_for
 
     def quota_is_per_site(self):
         return self.per_site
@@ -171,6 +173,113 @@ class FakeSite:
         if isinstance(served, tuple):
             return served[0], served[1], {"Content-Type": "text/html"}
         return 200, served, {"Content-Type": "application/xml"}
+
+    def close(self):
+        self.server.close()
+
+
+class FakeBingSubmission:
+    """Bing's Webmaster JSON API as far as submission goes: the allowance and SubmitUrlBatch.
+
+    Keeps each site's day and refuses the way Bing does — HTTP 200 with an
+    ErrorCode in the body.
+    """
+
+    def __init__(self, key="bing-units-key"):
+        self.key = key
+        # site url -> (daily, monthly) Bing names
+        self.quotas = {}
+        # site url -> what it accepted
+        self.accepted = {}
+        self.error_code = None
+        # (status, body) SubmitUrlBatch answers instead of taking the batch.
+        self.submit_answer = None
+        self.quota_down = False
+        self.server = FakeServer(self)
+
+    @property
+    def endpoint(self):
+        return self.server.url + "/webmaster/api.svc/json"
+
+    def handle(self, request):
+        if request.query.get("apikey") != self.key:
+            return 200, {"ErrorCode": 3, "Message": "ERROR!!! InvalidApiKey"}
+        if request.path.endswith("/GetUrlSubmissionQuota"):
+            if self.quota_down:
+                return 503, "<html>Service Unavailable</html>", {"Content-Type": "text/html"}
+            daily, monthly = self.quotas.get(request.query.get("siteUrl"), (100, 700))
+            return 200, {"d": {"__type": "UrlSubmissionQuota:#Microsoft.Bing.Webmaster.Api",
+                               "DailyQuota": daily, "MonthlyQuota": monthly}}
+        if request.path.endswith("/SubmitUrlBatch"):
+            if self.error_code is not None:
+                return 200, {"ErrorCode": self.error_code, "Message": "ERROR!!!"}
+            if self.submit_answer is not None:
+                return self.submit_answer
+            self.accepted.setdefault(request.body["siteUrl"], []).extend(request.body["urlList"])
+            return 200, {"d": None}
+        return 404, None
+
+    def close(self):
+        self.server.close()
+
+
+class FakeYandexRecrawl:
+    """Yandex Webmaster v4: the user, the hosts, and the recrawl queue."""
+
+    def __init__(self, accepts="yandex-units-token"):
+        self.accepts = accepts
+        self.user = 1130000061208761
+        # host_id -> the host's url, for sites the account holds, in its order
+        self.hosts = {}
+        self.queued = []
+        # host_id each page was queued against
+        self.queued_on = []
+        self.error = None
+        self.server = FakeServer(self)
+
+    @property
+    def api(self):
+        return self.server.url + "/v4"
+
+    def held(self, domain, scheme="https"):
+        port = 443 if scheme == "https" else 80
+        self.hosts["%s:%s:%d" % (scheme, domain, port)] = "%s://%s/" % (scheme, domain)
+
+    def handle(self, request):
+        if request.headers.get("Authorization") != "OAuth " + self.accepts:
+            return 401, {"error_code": "INVALID_OAUTH_TOKEN", "error_message": "Invalid oauth token"}
+        if request.path == "/v4/user":
+            return 200, {"user_id": self.user}
+        if request.path == "/v4/user/%d/hosts" % self.user:
+            return 200, {"hosts": [{"host_id": host, "ascii_host_url": url, "unicode_host_url": url, "verified": True}
+                                   for host, url in self.hosts.items()]}
+        if request.path.endswith("/recrawl/queue"):
+            if self.error is not None:
+                return self.error
+            self.queued.append(request.body["url"])
+            self.queued_on.append(request.path.split("/hosts/")[1].split("/recrawl")[0])
+            return 202, {"task_id": "ff7f4c3c-%04d" % len(self.queued), "quota_remainder": 150 - len(self.queued)}
+        return 404, None
+
+    def close(self):
+        self.server.close()
+
+
+class FakeIndexNowEndpoint:
+    """api.indexnow.org: takes a list and answers a status, nothing more."""
+
+    def __init__(self):
+        self.posts = []
+        self.status = 200
+        self.server = FakeServer(self)
+
+    @property
+    def endpoint(self):
+        return self.server.url + "/indexnow"
+
+    def handle(self, request):
+        self.posts.append(request.body)
+        return self.status, None
 
     def close(self):
         self.server.close()

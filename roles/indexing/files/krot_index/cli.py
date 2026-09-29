@@ -30,6 +30,9 @@ FAILED = 1
 # quotes and backslashes its own way — the key would arrive mangled.
 KEYS = {
     "google": "KROT_INDEX_GOOGLE_KEY_FILE",
+    "bing": "KROT_INDEX_BING_KEY",
+    "yandex": "KROT_INDEX_YANDEX_TOKEN",
+    "indexnow": "KROT_INDEX_INDEXNOW_SECRET",
 }
 
 
@@ -39,6 +42,18 @@ def build(name, key):
 
         with open(key) as source:
             return Google(source.read())
+    if name == "bing":
+        from krot_index.engines.bing import Bing
+
+        return Bing(key)
+    if name == "yandex":
+        from krot_index.engines.yandex import Yandex
+
+        return Yandex(key)
+    if name == "indexnow":
+        from krot_index.engines.indexnow import IndexNow
+
+        return IndexNow(key)
     raise ValueError(name)
 
 
