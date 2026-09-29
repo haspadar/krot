@@ -28,6 +28,14 @@
 #                cards_sitemap: optional regex on the sitemap file's address.
 indexing_projects: {}
 
+# Projects to take off this machine: their units and key files go. ⚠️ Only by
+# this list, never by absence from indexing_projects: each project applies this
+# role from its own inventory, so a project missing from this run's list is as
+# likely another project's as a dropped one — busel's run would otherwise take
+# gudok's nights down, and nothing would turn red, since there would be no unit
+# left to fail.
+indexing_retired_projects: []
+
 # When each engine's night starts, as OnCalendar expressions.
 #
 # ⚠️ Google's hour carries its own time zone: the 200 a day reset at midnight

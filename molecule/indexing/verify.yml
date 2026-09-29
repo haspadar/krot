@@ -87,18 +87,29 @@
         path: "/etc/systemd/system/{{ item }}"
       loop:
         - krot-index-google.service
+        - krot-index-other-google.service
+        - krot-index-other-google.timer
         - krot-index-gone-bing.service
         - krot-index-gone-bing.timer
+        - krot-index-molecule-yandex.service
+        - krot-index-molecule-yandex.timer
       register: indexing_planted
 
-    # busel's krot-index-google shares the prefix and carries cron's marker: kept.
-    # The dropped project's unit carries this role's: removed, timer and service.
-    - name: Only this role's dropped unit was retired
+    # Kept: busel's krot-index-google (cron's marker), and another project's
+    # unit with this role's marker — that project runs this role from its own
+    # inventory, and this run does not know it. Removed: the project retired by
+    # name, and the engine this run's own project no longer declares.
+    - name: Only what this run owns was retired
       ansible.builtin.assert:
         that:
+          - indexing_planted.results | length == 7
           - indexing_planted.results[0].stat.exists
-          - not indexing_planted.results[1].stat.exists
-          - not indexing_planted.results[2].stat.exists
+          - indexing_planted.results[1].stat.exists
+          - indexing_planted.results[2].stat.exists
+          - not indexing_planted.results[3].stat.exists
+          - not indexing_planted.results[4].stat.exists
+          - not indexing_planted.results[5].stat.exists
+          - not indexing_planted.results[6].stat.exists
         quiet: true
 
     - name: Look for the dropped project's files
@@ -112,6 +123,19 @@
         that:
           - indexing_gone.results | length == 3
           - indexing_gone.results | selectattr('stat.exists') | list | length == 0
+        quiet: true
+
+    - name: Look for another project's files
+      ansible.builtin.stat:
+        path: "/etc/krot-index/{{ item }}"
+      loop: [other.env, other.json]
+      register: indexing_other
+
+    - name: Another project's keys stay
+      ansible.builtin.assert:
+        that:
+          - indexing_other.results | length == 2
+          - indexing_other.results | selectattr('stat.exists') | list | length == 2
         quiet: true
 
     - name: Look for the file somebody else keeps there

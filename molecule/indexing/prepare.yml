@@ -10,7 +10,14 @@
     indexing_planted:
       - unit: krot-index-google
         marker: "# krot-cron-job"
+      # Taken off by indexing_retired_projects: goes.
       - unit: krot-index-gone-bing
+        marker: "# krot-indexing-unit"
+      # Another project's, installed by its own run of this role: stays.
+      - unit: krot-index-other-google
+        marker: "# krot-indexing-unit"
+      # An engine this scenario's project no longer declares: goes.
+      - unit: krot-index-molecule-yandex
         marker: "# krot-indexing-unit"
   tasks:
     - name: Install Postgres
@@ -94,7 +101,7 @@
         dest: "/etc/krot-index/{{ item }}"
         content: "left by a dropped project\n"
         mode: "0600"
-      loop: [gone.env, gone.json, gone.google.json]
+      loop: [gone.env, gone.json, gone.google.json, other.env, other.json]
 
     # Not a name the role writes: whoever put it there owns it.
     - name: A file somebody else keeps in the directory
