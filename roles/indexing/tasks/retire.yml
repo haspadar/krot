@@ -1,0 +1,30 @@
+---
+# krot-index-<engine> of busel, installed by the cron role, matches the same glob,
+# so ownership is decided by this role's marker in the paired service, never by
+# the name. Removing busel's would stop an engine it still runs on its own.
+- name: Look for this role's marker in the paired service
+  ansible.builtin.slurp:
+    src: "/etc/systemd/system/{{ indexing_timer_file | regex_replace('\\.timer$', '.service') }}"
+  register: indexing_retire_service
+  # A timer without its service proves nothing about ownership: left alone.
+  failed_when: false
+
+- name: Retire the unit
+  when:
+    - indexing_retire_service.content is defined
+    - indexing_unit_marker in (indexing_retire_service.content | b64decode)
+  block:
+    - name: Stop and disable the retired timer
+      ansible.builtin.systemd_service:
+        name: "{{ indexing_timer_file }}"
+        state: stopped
+        enabled: false
+
+    - name: Remove the retired unit files
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ item }}"
+        state: absent
+      loop:
+        - "{{ indexing_timer_file }}"
+        - "{{ indexing_timer_file | regex_replace('\\.timer$', '.service') }}"
+      notify: Reload systemd

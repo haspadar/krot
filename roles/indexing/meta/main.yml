@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    Nightly offering of each project's pages to Google, Bing, Yandex and
+    IndexNow: the krot-index program, a timer per project and engine, and the
+    krot schema in the project's own database.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - seo
+    - indexing
+
+dependencies: []

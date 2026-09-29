@@ -1,0 +1,39 @@
+---
+# Not in defaults: none of these is a choice a project makes, and changing one on
+# a machine that already runs the role would orphan what is there.
+
+# The account the program runs as, and the Postgres role of the same name that
+# peer authentication maps it to — no password anywhere.
+indexing_user: krot_index
+
+indexing_program_dir: /usr/local/lib/krot-index
+indexing_config_dir: /etc/krot-index
+
+# Written into every service this role installs and read back when deciding
+# whether a krot-index-*.timer is ours to remove. busel's own krot-index-<engine>
+# units, installed by the cron role, carry cron's marker and are left alone.
+indexing_unit_marker: "# krot-indexing-unit"
+
+# The version schema.sql creates. krot-index refuses a database at any other;
+# a unit test holds the three — this, schema.sql and the program — equal.
+indexing_schema_version: 1
+
+indexing_engines: [google, bing, yandex, indexnow]
+
+# Where each engine's key sits in a project's entry.
+indexing_key_fields:
+  google: google_service_account
+  bing: bing_key
+  yandex: yandex_token
+  indexnow: indexnow_secret
+
+# Every (project, engine) pair declared, as unit names. Derived once so the
+# install, the enable and the retirement agree on what is declared.
+indexing_units: >-
+  {%- set units = [] -%}
+  {%- for project, spec in indexing_projects.items() -%}
+  {%- for engine in spec.engines | default([]) -%}
+  {%- set _ = units.append('krot-index-' ~ project ~ '-' ~ engine) -%}
+  {%- endfor -%}
+  {%- endfor -%}
+  {{ units }}

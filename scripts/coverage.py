@@ -41,12 +41,7 @@ UNCOVERED = {
 # Roles that will get a scenario, in the order they are being written. Separate
 # from UNCOVERED because the two mean opposite things: one is "never", the other
 # is "not yet". Both count as named; a role in neither list fails the check.
-PLANNED = [
-    # The program arrived before the role that installs it (change
-    # 2026-09-29-offer-pages-to-search-engines, PR 2); the role and its scenario
-    # come in PR 4. The program itself is covered by tests/unit/indexing.
-    "indexing",
-]
+PLANNED = []
 
 # A role can have more than one scenario, and firewall does: its two branches
 # configure the web ports in contradictory ways, so one converge cannot cover
@@ -83,8 +78,8 @@ EXTRA_SCENARIOS = {
 #
 # These two cannot be moved that way. Deleting a scenario, or gutting the roles
 # it covers, drops covered_tasks below the floor; adding tasks anywhere does not.
-MIN_COVERED_ROLES = 23
-MIN_COVERED_TASKS = 264
+MIN_COVERED_ROLES = 24
+MIN_COVERED_TASKS = 306
 
 
 def count_tasks(role: Path) -> int:

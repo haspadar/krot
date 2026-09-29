@@ -24,7 +24,7 @@ roles: []
 | [`docker`](../../roles/docker/) | 3 | [operations/docker.md](../operations/docker.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`fail2ban`](../../roles/fail2ban/) | 5 | [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`firewall`](../../roles/firewall/) | 9 | [operations/cloudflare.md](../operations/cloudflare.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
-| [`indexing`](../../roles/indexing/) | 0 | — *не объяснена* |
+| [`indexing`](../../roles/indexing/) | 4 | [operations/search-engine-indexing.md](../operations/search-engine-indexing.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`nginx`](../../roles/nginx/) | 21 | [operations/cloudflare.md](../operations/cloudflare.md), [operations/logging.md](../operations/logging.md), [operations/secrets.md](../operations/secrets.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`php`](../../roles/php/) | 20 | [operations/logging.md](../operations/logging.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [research/fpm-pools-cannot-share-a-socket.md](../research/fpm-pools-cannot-share-a-socket.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`postgresql`](../../roles/postgresql/) | 17 | [operations/logging.md](../operations/logging.md), [operations/postgresql.md](../operations/postgresql.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
@@ -42,9 +42,3 @@ roles: []
 | [`site_serve_precheck`](../../roles/site_serve_precheck/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_tls`](../../roles/site_tls/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`umami`](../../roles/umami/) | 18 | [operations/analytics-counter.md](../operations/analytics-counter.md), [operations/secrets.md](../operations/secrets.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
-
-## Не объяснены ни одной страницей — 1
-
-Нормальное состояние для новой роли. Ненормальное — если так остаётся долго.
-
-- `indexing`

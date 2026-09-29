@@ -1,0 +1,64 @@
+---
+# systemd for real, as in the cron scenario, and a real cluster: the role's work
+# is a schema in someone else's database and a unit that writes into it as its
+# own account over peer, and nothing short of running the unit shows that the
+# grants, the ownership and the peer mapping hold together.
+driver:
+  name: docker
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-indexing
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  config_options:
+    defaults:
+      roles_path: ../../roles
+  inventory:
+    host_vars:
+      krot-indexing:
+        indexing_projects:
+          molecule:
+            database: molecule_site
+            reader: molecule_app
+            # Two engines, so two units; neither key is ever sent anywhere. The
+            # run in verify.yml is IndexNow's, whose allowance is a constant and
+            # needs no network.
+            engines: [indexnow, bing]
+            # secret-lint: allow — made-up keys, never leave the container.
+            bing_key: molecule-bing
+            indexnow_secret: molecule-indexnow  # secret-lint: allow
+            schedules:
+              indexnow: "*-*-* 05:05:00"
+            sites:
+              # A port nothing listens on: the sitemap is unreadable at once, and
+              # the night still passes the key, the database and the schema check
+              # and writes its row — which is what verify.yml reads back.
+              - domain: molecule.test
+                sitemap_url: http://127.0.0.1:9/sitemap.xml
+                cards_path: '^/card/'
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible
