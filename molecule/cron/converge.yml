@@ -10,6 +10,10 @@
       ansible.builtin.include_role:
         name: cron
       vars:
+        # prepare.yml leaves jobs of another project and of an earlier version
+        # on the machine; verify.yml checks this run took only its own.
+        cron_project: molecule
+        cron_retired_jobs: [legacy-retired]
         cron_jobs:
           # The plain case: output to the journal, no file, no permissions to
           # get wrong. This is what the role exists to make the default.

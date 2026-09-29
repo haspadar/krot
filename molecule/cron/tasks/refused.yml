@@ -1,0 +1,41 @@
+---
+# One colliding job, from verify.yml: the role must refuse it in the check named
+# for it, before it writes anything — not in another check, not later by accident.
+- name: Run the role with the colliding job
+  block:
+    - name: Apply the role
+      ansible.builtin.include_role:
+        name: cron
+      vars:
+        cron_project: molecule
+        cron_jobs: ["{{ colliding.job }}"]
+
+    - name: The run was not refused
+      ansible.builtin.fail:
+        msg: "{{ colliding.job.name }} was installed over what was there."
+  rescue:
+    - name: The refusal came from the check meant for it
+      ansible.builtin.assert:
+        that: ansible_failed_task.name is search(colliding.refused_by | regex_escape)
+        fail_msg: >-
+          {{ colliding.job.name }} failed in {{ ansible_failed_task.name }},
+          not in "{{ colliding.refused_by }}".
+
+# Refused before anything is written: the declared jobs of the converge are
+# still this project's, and the colliding job left no file of its own.
+- name: Read what the run would have touched
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - /etc/systemd/system/krot-journal-job.timer
+    - /etc/logrotate.d/krot-cron-molecule
+    - /var/log/krot/other.log
+  register: after_refusal
+
+- name: Nothing was written or removed
+  ansible.builtin.assert:
+    that:
+      - after_refusal.results[0].stat.exists
+      - after_refusal.results[1].stat.exists
+      - not after_refusal.results[2].stat.exists
+    fail_msg: The refused run of {{ colliding.job.name }} changed the machine.

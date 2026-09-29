@@ -1,4 +1,20 @@
 ---
+# The project first: every unit carries its name, and a run retires, overwrites
+# and rotates only its own. Without one a run on a shared machine would take the
+# other projects' jobs for its own. \Z, not $: Python's $ also matches before a
+# final newline.
+- name: Assert the jobs name their project
+  ansible.builtin.assert:
+    that:
+      - cron_project is string
+      - cron_project is match('^[a-z0-9]+\Z')
+    fail_msg: >-
+      cron_project must name the project these jobs belong to, [a-z0-9]+. The
+      machine may be shared: a run retires, overwrites and rotates only the jobs
+      of the project it names.
+    quiet: true
+  when: cron_jobs | length > 0 or cron_retired_jobs | length > 0
+
 # A malformed job must stop the run, not install a unit that fails at 3am. The
 # checks are cheap and the alternative is the failure mode this role exists to
 # remove: something that looks scheduled and never runs.
@@ -45,104 +61,247 @@
       and stops rotating every log on the machine, not just this one.
     quiet: true
 
-- name: Create the job log directory
-  ansible.builtin.file:
-    path: "{{ cron_log_dir }}"
-    state: directory
-    owner: "{{ cron_user }}"
-    group: adm
-    mode: "0750"
-  when: cron_file_jobs | length > 0
+# A string: an unquoted 1 in YAML is an int and would match no unit, retiring
+# nothing, green.
+- name: Assert a retired job is named and not also declared
+  ansible.builtin.assert:
+    that:
+      - item is string
+      - item is match('^[a-z0-9][a-z0-9-]*\Z')
+      - item not in (cron_jobs | map(attribute='name') | list)
+    fail_msg: >-
+      {{ item }} is in cron_retired_jobs but is not a job name, or is still
+      declared in cron_jobs. A job is either run or taken off.
+    quiet: true
+  loop: "{{ cron_retired_jobs }}"
 
-# A job that writes to a file needs the file to exist with the right owner
-# before it first runs. Creating it lazily on first write is what put the
-# original crontab line into a directory it could not write to.
-- name: Create the job log files
-  ansible.builtin.file:
-    path: "{{ item.log_file }}"
-    state: touch
-    owner: "{{ item.user | default(cron_user) }}"
-    group: adm
-    mode: "0640"
-    access_time: preserve
-    modification_time: preserve
-  loop: "{{ cron_file_jobs }}"
-  loop_control:
-    label: "{{ item.name }}"
+- name: Schedule the project's jobs
+  when: cron_project | length > 0
+  block:
+    # Filled by retire.yml; empty at the start, or a second call of the role in
+    # one play would still name units the first one saw.
+    - name: Start the list of unowned jobs
+      ansible.builtin.set_fact:
+        cron_unowned_jobs: []
 
-# Half of the original defect was a log file with nobody to rotate it. A file
-# without a rotation entry grows until the disk is full, which is a second
-# silent failure sitting behind the first.
-- name: Rotate the job log files
-  ansible.builtin.template:
-    src: logrotate.j2
-    dest: /etc/logrotate.d/krot-cron
-    owner: root
-    group: root
-    mode: "0644"
-  when: cron_file_jobs | length > 0
+    # Before anything is written: a unit of the same name that is another
+    # project's, or not this role's at all (krot-cf-ranges is the firewall's),
+    # would be overwritten by the template below without a word.
+    - name: Read the units already under the declared names
+      ansible.builtin.slurp:
+        src: "/etc/systemd/system/krot-{{ item.name }}.service"
+      loop: "{{ cron_jobs }}"
+      loop_control:
+        label: "{{ item.name }}"
+      register: cron_existing_services
+      failed_when: false
 
-- name: Remove the rotation entry when no job writes to a file
-  ansible.builtin.file:
-    path: /etc/logrotate.d/krot-cron
-    state: absent
-  when: cron_file_jobs | length == 0
+    - name: Assert no declared job takes another's unit
+      ansible.builtin.assert:
+        that:
+          - cron_job_marker in cron_existing_unit
+          - cron_existing_owner in ['', cron_project]
+        fail_msg: >-
+          krot-{{ item.item.name }}.service is already on this machine and
+          {{ ('is the job of project ' ~ cron_existing_owner ~ '. If that is this
+          project under an earlier cron_project, set it back or remove the unit by
+          hand; otherwise pick another name')
+             if cron_job_marker in cron_existing_unit
+             else "is not a cron job but another role's unit. Pick another name" }}:
+          installing it would overwrite that unit.
+        quiet: true
+      vars:
+        cron_existing_unit: "{{ item.content | b64decode }}"
+        cron_existing_owner: >-
+          {{ cron_existing_unit
+             | regex_search('^' ~ (cron_project_prefix | regex_escape) ~ '(.*)$', '\1', multiline=True)
+             | default([], true) | first | default('', true) | trim }}
+      loop: "{{ cron_existing_services.results | selectattr('content', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.item.name }}"
 
-- name: Install the job services
-  ansible.builtin.template:
-    src: job.service.j2
-    dest: "/etc/systemd/system/krot-{{ item.name }}.service"
-    owner: root
-    group: root
-    mode: "0644"
-  loop: "{{ cron_jobs }}"
-  loop_control:
-    label: "{{ item.name }}"
-  notify: Reload systemd
+    # logrotate reads every file in /etc/logrotate.d as one config, and a log
+    # named twice stops rotation for the whole machine. Another project's file
+    # already rotating a log of ours would be that duplicate.
+    - name: Find the other projects' rotation files
+      ansible.builtin.find:
+        paths: /etc/logrotate.d
+        patterns: "krot-cron-*"
+      register: cron_rotation_files
 
-- name: Install the job timers
-  ansible.builtin.template:
-    src: job.timer.j2
-    dest: "/etc/systemd/system/krot-{{ item.name }}.timer"
-    owner: root
-    group: root
-    mode: "0644"
-  loop: "{{ cron_jobs }}"
-  loop_control:
-    label: "{{ item.name }}"
-  notify: Reload systemd
+    - name: Read them
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop: >-
+        {{ cron_rotation_files.files | map(attribute='path')
+           | reject('equalto', cron_logrotate_file) | list }}
+      register: cron_other_rotations
 
-# systemd has to see the new files before the timers below are enabled,
-# otherwise enabling refers to a unit it does not know yet.
-- name: Apply pending unit changes
-  ansible.builtin.meta: flush_handlers
+    - name: Assert no log of ours is rotated by another project
+      ansible.builtin.assert:
+        that:
+          - cron_log_files | select('in', cron_rotated_elsewhere) | list | length == 0
+        fail_msg: >-
+          {% for result in cron_other_rotations.results -%}
+          {% set taken = cron_log_files | select('in', result.content | b64decode
+             | regex_findall('(?m)^([^ ]+) [{]$')) | list -%}
+          {% if taken %}{{ result.item }} rotates {{ taken | join(', ') }}. {% endif -%}
+          {% endfor -%}
+          A log named twice stops logrotate for every log on the machine: give it
+          another path, or remove that file if its project has left the machine.
+        quiet: true
+      vars:
+        cron_rotated_elsewhere: >-
+          {{ cron_other_rotations.results | map(attribute='content') | map('b64decode')
+             | map('regex_findall', '(?m)^([^ ]+) [{]$') | flatten }}
 
-- name: Enable the job timers
-  ansible.builtin.systemd_service:
-    name: "krot-{{ item.name }}.timer"
-    state: started
-    enabled: true
-  loop: "{{ cron_jobs }}"
-  loop_control:
-    label: "{{ item.name }}"
+    - name: Create the job log directory
+      ansible.builtin.file:
+        path: "{{ cron_log_dir }}"
+        state: directory
+        owner: "{{ cron_user }}"
+        group: adm
+        mode: "0750"
+      when: cron_file_jobs | length > 0
 
-- name: Find previously installed job timers
-  ansible.builtin.find:
-    paths: /etc/systemd/system
-    patterns: "krot-*.timer"
-  register: cron_installed_timers
+    # A job that writes to a file needs the file to exist with the right owner
+    # before it first runs. Creating it lazily on first write is what put the
+    # original crontab line into a directory it could not write to.
+    - name: Create the job log files
+      ansible.builtin.file:
+        path: "{{ item.log_file }}"
+        state: touch
+        owner: "{{ item.user | default(cron_user) }}"
+        group: adm
+        mode: "0640"
+        access_time: preserve
+        modification_time: preserve
+      loop: "{{ cron_file_jobs }}"
+      loop_control:
+        label: "{{ item.name }}"
 
-# A job dropped from the inventory has to stop running. Left behind, it keeps
-# firing against a release that may no longer expect it — and it is invisible in
-# the inventory that is supposed to be the record of what this machine does.
-#
-# Only timers with a matching .service carrying this role's marker are removed:
-# krot-cf-ranges.timer belongs to the firewall role and shares the prefix.
-- name: Retire timers no longer declared
-  ansible.builtin.include_tasks: retire.yml
-  loop: "{{ cron_installed_timers.files | map(attribute='path') | map('basename') | list }}"
-  loop_control:
-    loop_var: cron_timer_file
-    label: "{{ cron_timer_file }}"
-  when: cron_timer_file | regex_replace('^krot-(.*)\\.timer$', '\\1')
-        not in (cron_jobs | map(attribute='name') | list)
+    # The one file earlier versions shared between projects. Its entries for our
+    # logs go: the per-project file below repeats them, and on a repeat logrotate
+    # rotates nothing. The rest stay — they are the only rotation of a project
+    # that has not run this version yet — and the file goes once it is empty.
+    - name: Read the rotation file shared by earlier versions
+      ansible.builtin.slurp:
+        src: "{{ cron_legacy_logrotate_file }}"
+      register: cron_legacy_rotation
+      failed_when: false
+
+    - name: Keep only the other projects' entries in it
+      when: cron_legacy_rotation.content is defined
+      vars:
+        cron_legacy_kept: >-
+          {{ cron_legacy_rotation.content | b64decode
+             | regex_findall('(?ms)^[^ \n]+ [{]$.*?^[}]$')
+             | reject('regex', '^(' ~ (cron_log_files | map('regex_escape') | join('|') or '(?!)') ~ ') ')
+             | list }}
+      block:
+        - name: Rewrite it without our entries
+          ansible.builtin.copy:
+            content: "{{ cron_legacy_kept | join('\n\n') }}\n"
+            dest: "{{ cron_legacy_logrotate_file }}"
+            owner: root
+            group: root
+            mode: "0644"
+          when: cron_legacy_kept | length > 0
+
+        - name: Remove it once nothing is left in it
+          ansible.builtin.file:
+            path: "{{ cron_legacy_logrotate_file }}"
+            state: absent
+          when: cron_legacy_kept | length == 0
+
+    # Half of the original defect was a log file with nobody to rotate it. A file
+    # without a rotation entry grows until the disk is full, which is a second
+    # silent failure sitting behind the first.
+    - name: Rotate the job log files
+      ansible.builtin.template:
+        src: logrotate.j2
+        dest: "{{ cron_logrotate_file }}"
+        owner: root
+        group: root
+        mode: "0644"
+      when: cron_file_jobs | length > 0
+
+    - name: Remove the rotation entry when no job writes to a file
+      ansible.builtin.file:
+        path: "{{ cron_logrotate_file }}"
+        state: absent
+      when: cron_file_jobs | length == 0
+
+    - name: Install the job services
+      ansible.builtin.template:
+        src: job.service.j2
+        dest: "/etc/systemd/system/krot-{{ item.name }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ cron_jobs }}"
+      loop_control:
+        label: "{{ item.name }}"
+      notify: Reload systemd
+
+    - name: Install the job timers
+      ansible.builtin.template:
+        src: job.timer.j2
+        dest: "/etc/systemd/system/krot-{{ item.name }}.timer"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ cron_jobs }}"
+      loop_control:
+        label: "{{ item.name }}"
+      notify: Reload systemd
+
+    # systemd has to see the new files before the timers below are enabled,
+    # otherwise enabling refers to a unit it does not know yet.
+    - name: Apply pending unit changes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Enable the job timers
+      ansible.builtin.systemd_service:
+        name: "krot-{{ item.name }}.timer"
+        state: started
+        enabled: true
+      loop: "{{ cron_jobs }}"
+      loop_control:
+        label: "{{ item.name }}"
+
+    - name: Find previously installed job timers
+      ansible.builtin.find:
+        paths: /etc/systemd/system
+        patterns: "krot-*.timer"
+      register: cron_installed_timers
+
+    # A job dropped from the inventory has to stop running. Left behind, it keeps
+    # firing against a release that may no longer expect it — and it is invisible in
+    # the inventory that is supposed to be the record of what this machine does.
+    #
+    # Only this project's: every project applies the role from its own inventory,
+    # so a job this run does not declare may be another project's. Ownership is the
+    # marker and the project line in the paired service, never the file name:
+    # krot-cf-ranges.timer belongs to the firewall role and shares the prefix.
+    - name: Retire this project's jobs no longer declared
+      ansible.builtin.include_tasks: retire.yml
+      loop: "{{ cron_installed_timers.files | map(attribute='path') | map('basename') | list }}"
+      loop_control:
+        loop_var: cron_timer_file
+        label: "{{ cron_timer_file }}"
+      when: cron_timer_file | regex_replace('^krot-(.*)\\.timer$', '\\1')
+            not in (cron_jobs | map(attribute='name') | list)
+
+    # Said, not done: a unit from before projects were told apart may be any
+    # project's, and retiring it would be the very mistake this role now avoids.
+    - name: Name the unowned jobs left running
+      ansible.builtin.debug:
+        msg: >-
+          {{ cron_unowned_jobs | join(', ') }} carry no project: installed by an
+          earlier version of this role and declared by no project that has run
+          since. They keep running. The project that owns one claims it by
+          declaring it; one nobody owns is retired by naming it in
+          cron_retired_jobs. Whose it is: systemctl cat krot-<name>.service, and
+          the inventories of the projects on this machine.
+      when: cron_unowned_jobs | length > 0

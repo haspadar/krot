@@ -149,6 +149,7 @@ Jobs are declared by the inventory, and the role expands each into a `krot-<name
 `krot-<name>.timer` pair:
 
 ```yaml
+cron_project: shop           # [a-z0-9]+, required once cron_jobs is not empty
 cron_jobs:
   - name: traffic
     description: Visitor figures for every site, copied out of Analytics
@@ -161,6 +162,14 @@ cron_jobs:
 
 Krot knows no job name at all: the list is a project variable, and the next server will declare
 its own.
+
+**A machine may carry several projects, each applying the role from its own inventory.** Every unit
+names its project, and a run retires, overwrites and rotates only its own project's jobs. A declared
+job whose unit is already another project's, or another role's, is refused before anything is
+written. Units from before 6.0.0 carry no project: a run leaves them running and names them; the
+project that owns one claims it by declaring it, and one nobody owns is retired by listing it in
+`cron_retired_jobs`. Upgrade every project on a shared machine before the next run of any: one
+still on 5.x takes every `krot-*` job for its own.
 
 **Why systemd timers rather than a crontab line.** On a production machine an hourly job did not run once in five
 days, and this was visible from nowhere. Its output was redirected into `/var/log/`, where `km`
@@ -214,7 +223,7 @@ on **every** trigger, and the gap between consecutive runs of an hourly job star
 45 and 75 minutes at `cron_randomized_delay: 15m`.
 
 File output is possible (`log_file`) but not the default: the role then creates the file with the
-right owner **and** writes `/etc/logrotate.d/krot-cron`, because half of that pair reproduces the
+right owner **and** writes `/etc/logrotate.d/krot-cron-<project>`, because half of that pair reproduces the
 original defect.
 
 **`working_directory` is a release symlink, and after a botched deploy it points nowhere.** Such a

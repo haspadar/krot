@@ -16,3 +16,68 @@
         state: present
         update_cache: true
         cache_valid_time: 3600
+
+    # The machine is shared: what other runs left here, each of which this run
+    # must tell apart from its own. verify.yml reads back which survived.
+    #
+    #   other-job      another project's job: stays
+    #   legacy-job     an earlier version's, no project, not named: stays, named
+    #   legacy-retired an earlier version's, named in cron_retired_jobs: goes,
+    #                  with its log
+    #   dropped-job    this project's, no longer declared: goes
+    #   percent-job    an earlier version's, declared here: claimed
+    #   foreign        a unit of another role, no marker at all: stays
+    - name: Leave units of other runs on the machine
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/krot-{{ item.0.name }}.{{ item.1 }}"
+        content: "{{ item.0.head if item.1 == 'service' else '' }}{{ unit_body[item.1] }}"
+        mode: "0644"
+      loop: "{{ planted | product(['service', 'timer']) | list }}"
+      loop_control:
+        label: "krot-{{ item.0.name }}.{{ item.1 }}"
+      vars:
+        unit_body:
+          service: "[Service]\nType=oneshot\nExecStart=/bin/true\n"
+          timer: "[Timer]\nOnCalendar=daily\n\n[Install]\nWantedBy=timers.target\n"
+        planted:
+          - name: other-job
+            head: "# krot-cron-job\n# krot-cron-project=other\n"
+          - name: legacy-job
+            head: "# krot-cron-job\n"
+          - name: legacy-retired
+            head: "# krot-cron-job\n# krot-cron-log=/var/log/krot/legacy-retired.log\n"
+          - name: dropped-job
+            head: "# krot-cron-job\n# krot-cron-project=molecule\n"
+          # An earlier version's unit that converge.yml declares: claimed, not
+          # refused — every project's first run on this version is this case.
+          - name: percent-job
+            head: "# krot-cron-job\n"
+          - name: foreign
+            head: ""
+
+    - name: Leave the log of the job to be retired
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: "{{ 'directory' if item.endswith('krot') else 'touch' }}"
+        mode: "0750"
+      loop:
+        - /var/log/krot
+        - /var/log/krot/legacy-retired.log
+
+    # Another project's rotation, which must stay, and the file earlier versions
+    # shared. That one repeats file-job's log — left whole it would stop
+    # logrotate for the whole machine, and verify.yml asks logrotate itself — and
+    # also rotates a project that has not run this version yet, which must keep
+    # its entry until it does.
+    - name: Leave rotation files of other runs
+      ansible.builtin.copy:
+        dest: "/etc/logrotate.d/{{ item.file }}"
+        content: "{% for log in item.logs %}{{ log }} {\n    daily\n    missingok\n}\n{% endfor %}"
+        mode: "0644"
+      loop:
+        - {file: krot-cron-other, logs: [/var/log/krot/other.log]}
+        - {file: krot-cron, logs: [/var/log/krot/file-job.log, /var/log/krot/not-upgraded.log]}
+
+    - name: Let systemd see them
+      ansible.builtin.systemd_service:
+        daemon_reload: true

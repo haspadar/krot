@@ -4,6 +4,16 @@
 # orphan every unit already on the machine.
 cron_job_marker: "# krot-cron-job"
 
+# Next to the marker: whose job it is. A unit with the marker and without this
+# line was installed before projects were told apart, and has no known owner.
+cron_project_prefix: "# krot-cron-project="
+cron_project_marker: "{{ cron_project_prefix }}{{ cron_project }}"
+
+# One rotation file per project: a shared one was rewritten by every project's
+# run with only its own jobs. The one shared file of earlier versions is removed.
+cron_logrotate_file: "/etc/logrotate.d/krot-cron-{{ cron_project }}"
+cron_legacy_logrotate_file: /etc/logrotate.d/krot-cron
+
 # Jobs that opted into a file instead of the journal, and the paths they write
 # to. Both are asked for repeatedly below; deriving them once keeps the filter
 # from drifting between the assert, the file tasks and the rotation template.

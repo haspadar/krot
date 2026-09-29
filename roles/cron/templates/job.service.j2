@@ -1,5 +1,6 @@
 {{ ansible_managed | comment }}
 {{ cron_job_marker }}
+{{ cron_project_marker }}
 [Unit]
 Description={{ item.description | default('Krot job: ' ~ item.name) | replace('\n', ' ') }}
 After=network-online.target
