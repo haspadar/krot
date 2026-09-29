@@ -2,7 +2,7 @@
 kind: guide
 title: Выкатка и ключи репозиториев
 owner: haspadar
-verified: 2026-08-15
+verified: 2026-09-29
 roles: [deploy, deploy_keys]
 ---
 

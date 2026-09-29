@@ -52,7 +52,7 @@ ssh <host> 'id; sudo -n true && echo sudo-ok'
 
 ```yaml
 - name: Provision the machine
-  hosts: webservers
+  hosts: webservers   # группа машин из инвентаря проекта, имя любое
   roles:
     - role: haspadar.krot.common
     - role: haspadar.krot.deploy_keys   # ключ на репозиторий, до выкатки

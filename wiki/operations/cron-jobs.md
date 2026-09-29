@@ -2,7 +2,7 @@
 kind: guide
 title: Периодические задачи
 owner: haspadar
-verified: 2026-08-17
+verified: 2026-09-29
 roles: [cron]
 ---
 

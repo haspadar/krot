@@ -2,7 +2,7 @@
 kind: guide
 title: Отказы, которые не видно
 owner: haspadar
-verified: 2026-09-23
+verified: 2026-09-29
 roles: [cron, nginx, postgresql, php]
 ---
 

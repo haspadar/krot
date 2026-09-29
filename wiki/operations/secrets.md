@@ -2,7 +2,7 @@
 kind: guide
 title: Секреты
 owner: haspadar
-verified: 2026-08-29
+verified: 2026-09-29
 roles: [backup, nginx, umami]
 ---
 

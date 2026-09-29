@@ -2,7 +2,7 @@
 kind: guide
 title: Cloudflare-замок и закрытые сайты
 owner: haspadar
-verified: 2026-09-23
+verified: 2026-09-29
 roles: [firewall, nginx, bootstrap]
 ---
 

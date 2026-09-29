@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **1**, заархивировано — **20**.
+В работе — **0**, заархивировано — **21**.
 
 Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **10** из 21: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
@@ -19,7 +19,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
-| [`2026-09-29-keep-projects-out-of-code`](../../openspec/changes/2026-09-29-keep-projects-out-of-code/proposal.md) | **в работе** | — | Код коллекции не называет проекты, которые её потребляют |
+| [`keep-projects-out-of-code`](../../openspec/changes/archive/2026-09-29-keep-projects-out-of-code/proposal.md) | 2026-09-29 | — | Код коллекции не называет проекты, которые её потребляют |
 | [`offer-pages-to-search-engines`](../../openspec/changes/archive/2026-09-29-offer-pages-to-search-engines/proposal.md) | 2026-09-29 | [#62](https://github.com/haspadar/krot/pull/62) | Ночная отправка страниц поисковикам — роль krot, а не код проекта |
 | [`retire-only-own-projects`](../../openspec/changes/archive/2026-09-29-retire-only-own-projects/proposal.md) | 2026-09-29 | [#66](https://github.com/haspadar/krot/pull/66) | Уборка `indexing` трогает только проекты своего прогона |
 | [`site-launch`](../../openspec/changes/archive/2026-09-26-site-launch/proposal.md) | 2026-09-26 | — | Запуск сайта ролями krot: от регистратора до sitemap, принятого поисковиками |
