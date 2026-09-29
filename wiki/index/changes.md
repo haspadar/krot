@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **1**, заархивировано — **24**.
+В работе — **0**, заархивировано — **25**.
 
 Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **10** из 25: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
@@ -21,8 +21,8 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
-| [`hide-consumer-names-in-wiki-index`](../../openspec/changes/hide-consumer-names-in-wiki-index/proposal.md) | **в работе** | — | Оглавление вики не называет проекты-потребители |
 | [`check-indexing-on-a-fresh-machine`](../../openspec/changes/archive/2026-09-29-check-indexing-on-a-fresh-machine/proposal.md) | 2026-09-29 | [#70](https://github.com/haspadar/krot/pull/70) | `--check` роли indexing проходит на машине, где её ещё не было |
+| [`hide-consumer-names-in-wiki-index`](../../openspec/changes/archive/2026-09-29-hide-consumer-names-in-wiki-index/proposal.md) | 2026-09-29 | — | Оглавление вики не называет проекты-потребители |
 | [`keep-projects-out-of-code`](../../openspec/changes/archive/2026-09-29-keep-projects-out-of-code/proposal.md) | 2026-09-29 | [#67](https://github.com/haspadar/krot/pull/67) | Код коллекции не называет проекты, которые её потребляют |
 | [`offer-pages-to-search-engines`](../../openspec/changes/archive/2026-09-29-offer-pages-to-search-engines/proposal.md) | 2026-09-29 | [#62](https://github.com/haspadar/krot/pull/62) | Ночная отправка страниц поисковикам — роль krot, а не код проекта |
 | [`retire-only-own-cron-units`](../../openspec/changes/archive/2026-09-29-retire-only-own-cron-units/proposal.md) | 2026-09-29 | [#71](https://github.com/haspadar/krot/pull/71) | Роль cron снимает и перезаписывает только задачи своего проекта |
