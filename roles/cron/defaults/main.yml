@@ -26,6 +26,18 @@
 #                      this role — see below.
 cron_jobs: []
 
+# The project these jobs belong to, [a-z0-9]+; required once cron_jobs is not
+# empty. A machine is shared by projects, each applying this role from its own
+# inventory with its own cron_jobs: the name is written into every unit, and a
+# run retires, overwrites and rotates only its own project's jobs. Empty with no
+# jobs, the role does nothing at all — not even retire.
+cron_project: ""
+
+# Jobs installed by a version before cron_project, carrying no project, that no
+# project declares any more. Their owner cannot be told, so a run only names
+# them; listing one here retires it. Only such unowned units are touched.
+cron_retired_jobs: []
+
 # The account application jobs run as. Same operator user Deployer pushes
 # releases with, because the code they run is that user's code.
 cron_user: km

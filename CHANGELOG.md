@@ -3,6 +3,30 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 6.0.0
+
+### Changed
+
+- **`cron` role: a run retires, overwrites and rotates only its own project's jobs.** A machine
+  is shared by projects, each applying the role from its own inventory; until now a run took
+  every `krot-*` unit carrying the role's marker for its own, so one project's run retired
+  another's jobs with their logs, and the one shared `/etc/logrotate.d/krot-cron` was rewritten
+  by each run with its own entries only. `cron_project` (`[a-z0-9]+`) is now required once
+  `cron_jobs` is not empty and is written into every unit.
+- **A declared job whose unit is another project's or another role's is refused** before
+  anything is written, and so is a log already rotated by another project's file.
+- **Rotation moved to `/etc/logrotate.d/krot-cron-<project>`**; the shared `krot-cron` is removed.
+
+### Added
+
+- **`cron_retired_jobs`**: units installed before 6.0.0 carry no project and are no longer
+  retired by any run, only named in its output. A project claims one by declaring it; one
+  nobody owns is retired by listing it here.
+
+### Upgrading
+
+- Set `cron_project` in every inventory that declares `cron_jobs`.
+
 ## 5.9.1
 
 ### Fixed

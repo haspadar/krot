@@ -1,0 +1,20 @@
+---
+# One colliding job, from verify.yml: the role must refuse it in a check, before
+# it writes anything, and not fail later by accident.
+- name: Run the role with the colliding job
+  block:
+    - name: Apply the role
+      ansible.builtin.include_role:
+        name: cron
+      vars:
+        cron_project: molecule
+        cron_jobs: ["{{ colliding_job }}"]
+
+    - name: The run was not refused
+      ansible.builtin.fail:
+        msg: "{{ colliding_job.name }} was installed over what was there."
+  rescue:
+    - name: The refusal came from a check, not from a later task
+      ansible.builtin.assert:
+        that: ansible_failed_task.name is search('Assert')
+        fail_msg: "{{ colliding_job.name }} failed in {{ ansible_failed_task.name }}, not in a check."

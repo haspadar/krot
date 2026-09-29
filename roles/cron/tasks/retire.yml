@@ -2,7 +2,8 @@
 # krot-cf-ranges.timer belongs to the firewall role and matches the same glob,
 # so ownership is decided by a marker this role writes into its own services,
 # never by the file name. Removing another role's timer would take the
-# Cloudflare range refresh down without a word.
+# Cloudflare range refresh down without a word. And among this role's units only
+# this project's: the project line next to the marker says whose job it is.
 - name: Look for this role's marker in the paired service
   ansible.builtin.slurp:
     src: "/etc/systemd/system/{{ cron_timer_file | regex_replace('\\.timer$', '.service') }}"
@@ -11,10 +12,32 @@
   # left alone: the safe error here is an extra unit, not a deleted one.
   failed_when: false
 
+- name: Tell whose job it is
+  ansible.builtin.set_fact:
+    cron_retire_unit: "{{ cron_retire_service.content | default('') | b64decode }}"
+    cron_retire_name: "{{ cron_timer_file | regex_replace('^krot-(.*)\\.timer$', '\\1') }}"
+
+# '' for a unit from before the project line, which has no known owner.
+- name: Read the project out of it
+  ansible.builtin.set_fact:
+    cron_retire_owner: >-
+      {{ cron_retire_unit
+         | regex_search('^' ~ (cron_project_prefix | regex_escape) ~ '(.*)$', '\1', multiline=True)
+         | default([], true) | first | default('', true) | trim }}
+
+- name: Remember an unowned job nobody retired
+  ansible.builtin.set_fact:
+    cron_unowned_jobs: "{{ cron_unowned_jobs | default([]) + [cron_retire_name] }}"
+  when:
+    - cron_job_marker in cron_retire_unit
+    - cron_retire_owner == ''
+    - cron_retire_name not in cron_retired_jobs
+
 - name: Retire the job
   when:
-    - cron_retire_service.content is defined
-    - cron_job_marker in (cron_retire_service.content | b64decode)
+    - cron_job_marker in cron_retire_unit
+    - cron_retire_owner == cron_project
+      or (cron_retire_owner == '' and cron_retire_name in cron_retired_jobs)
   block:
     - name: Stop and disable the retired timer
       ansible.builtin.systemd_service:
@@ -33,7 +56,7 @@
     - name: Find the log file the retired job wrote to
       ansible.builtin.set_fact:
         cron_retired_log: >-
-          {{ (cron_retire_service.content | b64decode
+          {{ (cron_retire_unit
               | regex_search('^# krot-cron-log=(.+)$', '\1', multiline=True)
               | default([], true) | first | default('', true)) | trim }}
 
