@@ -139,8 +139,9 @@
         - /etc/logrotate.d/krot-cron
 
     # logrotate refuses to process anything at all when two entries claim one
-    # log — not just the duplicate, every log on the machine. That is what cost
-    # a production machine three days of unrotated logs, so the scenario asks logrotate itself.
+    # log — not just the duplicate, every log on the machine. That once cost a
+    # production machine three days of unrotated logs, so the scenario asks
+    # logrotate itself.
     - name: Logrotate accepts the machine's full configuration
       ansible.builtin.command: logrotate --debug /etc/logrotate.conf
       register: logrotate_check

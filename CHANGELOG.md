@@ -42,7 +42,7 @@ changing a default that affects production) bump major.
   `site_cloudflare_settings_base` (strict TLS, HTTPS only, browser cache TTL 0) one by one, so
   naming one setting never drops the others. `ssl` and `always_use_https` cannot be
   overridden: preflight stops the launch, since a downgrade would read like any other setting.
-  The preflight report now names each setting with the value it would get. one project keeps the browser cache TTL at 14400: its
+  The preflight report now names each setting with the value it would get. One project keeps the browser cache TTL at 14400: its
   pages go out `no-cache`, and the dry run on a real site showed that TTL as the only
   difference from the roles' base.
 

@@ -38,7 +38,7 @@ class Refused(Exception):
         # without a batch form sends page by page, and a refusal on the thirtieth
         # does not undo the twenty-nine: dropped with the exception, they would be
         # offered again tomorrow — the allowance spent on repeats, the report
-        # saying 0 offered. the earlier implementation lost them exactly this way.
+        # saying 0 offered. The earlier implementation lost them exactly this way.
         self.accepted = []
 
 

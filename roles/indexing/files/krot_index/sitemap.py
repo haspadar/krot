@@ -67,7 +67,7 @@ class Sitemap:
 
         ⚠️ The sitemap is the site's word, not the project's, and is trusted
         only as far as the project's own declaration reaches: nested files from
-        the host of the declared address, pages from `domain`. such a project never has
+        the host of the declared address, pages from `domain`. Such a project never has
         this question — it builds its URLs from its own paths. Here a sitemap
         listing another host would send this program to fetch it, hand its pages
         to the engine under this site's property, and forget every real page of

@@ -32,10 +32,10 @@ roles: [cron, nginx, postgresql, php]
 
 ## Задача, о которой нельзя узнать, что она не запускалась
 
-На busel почасовая задача `colony:traffic` **пять суток не отработала ни разу**.
+На рабочей машине почасовая задача `app:traffic` **пять суток не отработала ни разу**.
 
 ```
-17 * * * * cd /var/www/busel/current && APP_ENV=prod /usr/bin/php bin/console colony:traffic >> /var/log/busel-traffic.log 2>&1
+17 * * * * cd /var/www/app/current && APP_ENV=prod /usr/bin/php bin/console app:traffic >> /var/log/app-traffic.log 2>&1
 ```
 
 `/var/log` — `root:syslog`, `drwxr-xr-x`; у `km` записи туда нет. Перенаправление падало **до**
@@ -57,7 +57,7 @@ roles: [cron, nginx, postgresql, php]
 
 `working_directory` в задаче — это релизный симлинк, и после неудачного деплоя он указывает в
 никуда. Очевидная защита — `AssertPathIsDirectory=` — **не работает**, и по двум причинам, обе
-замерены на busel (systemd 255):
+замерены на рабочей машине (systemd 255):
 
 1. провалившийся assert **не роняет unit**, а пропускает запуск, оставляя `Result=success` и
    пустой `systemctl --failed`;
@@ -70,7 +70,7 @@ roles: [cron, nginx, postgresql, php]
 
 ## Unit-файл отказывает так же тихо
 
-Замерено на busel: `date +%Y-%m-%d` в `ExecStart` напечатал
+Замерено на рабочей машине: `date +%Y-%m-%d` в `ExecStart` напечатал
 
 ```
 /etc/systemd/system-<machine-id>-/run/credentials/<юнит>
@@ -92,7 +92,7 @@ logrotate не выбирает победителя: он печатает `dup
 обрабатывает ни одного файла на машине** — php и postgresql, ни в чём не повинные, тоже перестают
 ротироваться.
 
-На busel это продержалось трое суток и обнаружилось только через `systemctl --failed`.
+На рабочей машине это продержалось трое суток и обнаружилось только через `systemctl --failed`.
 
 Дубликат определяется **по разрешённому пути, а не по тексту шаблона** — проверено экспериментом:
 явный `access.log` против `*.log` даёт ту же ошибку. Иначе сформулированный glob не спасает.

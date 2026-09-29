@@ -9,13 +9,14 @@ review found a hundred such lines across roles, modules, tests and scenarios.
 
 The words are compared by hash, so this file does not name what it forbids —
 it would otherwise be the one place in the tree that still did. A word is any
-run of [a-z0-9] after lowercasing, which catches `acc-<name>`, `<name>'s` and
-`<name>.de` alike.
+run of [a-z0-9] after splitting camel case and lowercasing, which catches
+`acc-<name>`, `<name>'s`, `<name>.de` and `<Name>Deploy` alike. File paths are
+read the same way as lines. A name glued to another lowercase word
+(`<name>shared`) is not caught: splitting there would need a dictionary.
 
-wiki/ and openspec/ are left out on purpose: the wiki explains how projects
-plug the collection in and names them where that is the point, and the change
-archive is history. To forbid another word, add the sha256 of its lowercase
-spelling below — `printf '%s' word | shasum -a 256`.
+Left out: openspec/changes/, the record of decisions as they were taken, and
+wiki/index/, which is generated from it. To forbid another word, add the sha256
+of its lowercase spelling below — `printf '%s' word | shasum -a 256`.
 """
 
 from __future__ import annotations
@@ -42,9 +43,12 @@ FORBIDDEN = {
     "8566db9ce3b9c7aaf81f1d2e7ad7df8e0588efd1431c29a927d9d6401700cec0",
 }
 
-SKIP_PREFIXES = ("wiki/", "openspec/", "collections/", ".ruff_cache/")
+SKIP_PREFIXES = ("openspec/changes/", "wiki/index/")
 BINARY_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".pdf", ".gz", ".tar", ".zip", ".ico"}
 WORD = re.compile(r"[a-z0-9]+")
+# ShopDeploy -> Shop Deploy, HTTPServer -> HTTP Server: a name inside an
+# identifier is still a name.
+CAMEL = re.compile(r"(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])")
 
 
 def tracked_files() -> list[Path]:
@@ -59,7 +63,8 @@ def tracked_files() -> list[Path]:
 
 
 def forbidden(line: str) -> bool:
-    return any(hashlib.sha256(word.encode()).hexdigest() in FORBIDDEN for word in WORD.findall(line.lower()))
+    words = WORD.findall(CAMEL.sub(" ", line).lower())
+    return any(hashlib.sha256(word.encode()).hexdigest() in FORBIDDEN for word in words)
 
 
 def main() -> int:
@@ -69,6 +74,9 @@ def main() -> int:
         relative = path.relative_to(ROOT).as_posix()
         if relative.startswith(SKIP_PREFIXES):
             continue
+        # The path first: a file named after a project says so before a line does.
+        if forbidden(relative):
+            errors.append(f"{relative}: the file's own path")
         if path.suffix.lower() in BINARY_SUFFIXES or not path.is_file():
             continue
         try:
@@ -88,7 +96,7 @@ def main() -> int:
         print("Коллекция не знает, кто её подключает: назовите это «проект», «рабочая машина», "
               "выдуманный домен.")
         return 1
-    print(f"Чужих проектов не найдено: проверено {checked} файлов вне wiki/ и openspec/.")
+    print(f"Чужих проектов не найдено: проверено {checked} файлов вне openspec/changes/ и wiki/index/.")
     return 0
 
 
