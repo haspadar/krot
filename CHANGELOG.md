@@ -3,6 +3,24 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 6.1.0
+
+### Added
+
+- **`collecting` role: each project's crawler visits folded from nginx's logs every night.** The
+  `krot-collect` program runs two timers per project — `ranges` fetches the address ranges
+  crawlers publish, `crawl` reads the sites' logs — and writes a `krot_collect` schema in the
+  project's own database: visits by site, crawler family and day, the site's sections, 5xx and
+  response times of the whole site. The rules repeat an earlier implementation, checked against
+  it on the same inputs; tables and keys match it, so its history moves over with
+  `INSERT … SELECT`.
+- **A log that cannot be read is red, not a quiet day**: a file the account cannot open, a
+  truncated archive, and — new — a file of twenty lines or more none of which is in the declared
+  format. Days read before a failing file are kept; that file's own days are not marked read.
+- **Its own schema**, apart from the indexing role's: the two programs each demand their own
+  version row. A consumer whose Doctrine filters `krot.` has to widen the filter to
+  `'~^(?!krot(_\w+)?\.)~'` before the first run.
+
 ## 6.0.0
 
 ### Changed

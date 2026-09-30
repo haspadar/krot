@@ -17,9 +17,13 @@
       - [203.0.113.8, "GET /.env", 404, 150, "GPTBot/1.1", " rt=0.002"]
       - [198.51.100.4, "GET /berlin", 200, 7000, "Mozilla/5.0 (Windows NT 10.0) Chrome/120", " rt=0.300"]
       - [198.51.100.4, "GET /robots.txt", 503, 0, "Mozilla/5.0 (compatible; bingbot/2.0)", ""]
-    collecting_lines: >-
-      {% for hit in collecting_hits %}[{day}:10:0{{ loop.index0 }}:00 +0300] {{ hit[0] }} - {host}
-      "{{ hit[1] }} HTTP/1.1" {{ hit[2] }} {{ hit[3] }} "-" "{{ hit[4] }}" cf=DE{{ hit[5] }}{{ '\n' }}{% endfor %}
+    # One line per hit; the break inside the line sits in a Jinja comment, so it
+    # never reaches the file.
+    collecting_lines: |
+      {% for hit in collecting_hits %}
+      [{day}:10:0{{ loop.index0 }}:00 +0300] {{ hit[0] }} - {host} "{{ hit[1] }} HTTP/1.1" {#
+      #}{{ hit[2] }} {{ hit[3] }} "-" "{{ hit[4] }}" cf=DE{{ hit[5] }}
+      {% endfor %}
     collecting_logs:
       - {host: whole.test, file: whole.test-access.log, ago: 0}
       - {host: whole.test, file: whole.test-access.log.1, ago: 1}

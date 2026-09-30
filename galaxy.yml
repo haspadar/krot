@@ -1,7 +1,7 @@
 ---
 namespace: haspadar
 name: krot
-version: 6.0.0
+version: 6.1.0
 readme: README.md
 authors:
   - haspadar

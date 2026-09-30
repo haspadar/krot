@@ -67,7 +67,7 @@
       ansible.builtin.assert:
         that:
           - "'whole.test: 3 days' in collecting_journal.stdout"
-          - "'broken.test: ' in collecting_journal.stdout and 'truncated' in collecting_journal.stdout"
+          - "'broken.test: cannot read /var/log/nginx/broken.test-access.log.2.gz whole' in collecting_journal.stdout"
           - "'broken.test: kept 2 days' in collecting_journal.stdout"
           - "'none in the declared format' in collecting_journal.stdout"
           - "'locked.test: cannot read' in collecting_journal.stdout"

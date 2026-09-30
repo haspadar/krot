@@ -2,7 +2,7 @@
 kind: index
 title: Роли коллекции
 owner: generated
-verified: 2026-09-29
+verified: 2026-09-30
 roles: []
 ---
 
@@ -11,12 +11,13 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-Всего **27**. Источник — `roles/`. Роль отвечает на вопрос «что ставится на машину»; страница вики — «как с этим работать и что кусается».
+Всего **28**. Источник — `roles/`. Роль отвечает на вопрос «что ставится на машину»; страница вики — «как с этим работать и что кусается».
 
 | Роль | Ручек в `defaults` | Объясняет страница |
 |---|---|---|
 | [`backup`](../../roles/backup/) | 17 | [operations/database-backups.md](../operations/database-backups.md), [operations/secrets.md](../operations/secrets.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`bootstrap`](../../roles/bootstrap/) | 7 | [operations/cloudflare.md](../operations/cloudflare.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
+| [`collecting`](../../roles/collecting/) | 5 | [operations/crawler-collection.md](../operations/crawler-collection.md) |
 | [`common`](../../roles/common/) | 5 | [operations/logging.md](../operations/logging.md), [operations/testing-roles.md](../operations/testing-roles.md), [research/apt-allowed-origins-appends.md](../research/apt-allowed-origins-appends.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`cron`](../../roles/cron/) | 10 | [operations/cron-jobs.md](../operations/cron-jobs.md), [operations/logging.md](../operations/logging.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`deploy`](../../roles/deploy/) | 6 | [operations/deploy.md](../operations/deploy.md) |
