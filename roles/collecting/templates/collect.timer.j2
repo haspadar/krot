@@ -1,0 +1,18 @@
+{{ ansible_managed | comment }}
+{% set project = item.0.name %}
+{% set job = item.1 %}
+[Unit]
+Description=Collect {{ project }}'s crawler visits: {{ job }} (timer)
+
+[Timer]
+OnCalendar={{ item.0.schedules[job] | default(collecting_schedules[job]) }}
+RandomizedDelaySec={{ collecting_randomized_delay }}
+# The same minute every night rather than a new one.
+FixedRandomDelay=true
+# A machine that was off at the hour catches up on boot: the crawl reads from
+# the last day it stored, so a late night loses nothing.
+Persistent=true
+Unit=krot-collect-{{ project }}-{{ job }}.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,138 @@
+---
+# One project, already checked by preflight.yml: its database gets the
+# krot_collect schema, its config lands in a file the units read.
+- name: Let the program and the application connect to the database
+  community.postgresql.postgresql_privs:
+    login_db: postgres
+    type: database
+    objs: "{{ collecting_plan.database }}"
+    privs: CONNECT
+    # The reader too: a database with PUBLIC's CONNECT revoked would take every
+    # grant below and still keep the screens out.
+    roles: "{{ collecting_user }},{{ collecting_plan.reader }}"
+  become: true
+  become_user: postgres
+  # --check on a machine the role has not been on: see main.yml.
+  when: not ansible_check_mode or collecting_pg_role.query_result[0].present
+
+# Owned by the program's role, so the tables schema.sql makes are its own and it
+# can write them; the application only reads. preflight.yml refused a schema
+# owned by anybody else, so this only ever creates.
+- name: Create the krot_collect schema in the project's database
+  community.postgresql.postgresql_schema:
+    login_db: "{{ collecting_plan.database }}"
+    name: krot_collect
+    owner: "{{ collecting_user }}"
+  become: true
+  become_user: postgres
+
+# Under --check the schema is not created and a grant on it would be refused.
+- name: Read whether the krot_collect schema exists
+  community.postgresql.postgresql_query:
+    login_db: "{{ collecting_plan.database }}"
+    query: SELECT to_regnamespace('krot_collect') IS NOT NULL AS present
+  become: true
+  become_user: postgres
+  check_mode: false
+  changed_when: false
+  register: collecting_schema_exists
+
+- name: Read whether the schema has its version table
+  community.postgresql.postgresql_query:
+    login_db: "{{ collecting_plan.database }}"
+    query: SELECT to_regclass('krot_collect.schema_version') IS NOT NULL AS present
+  become: true
+  become_user: postgres
+  check_mode: false
+  changed_when: false
+  register: collecting_schema_present
+
+- name: Read the version it is at
+  community.postgresql.postgresql_query:
+    login_db: "{{ collecting_plan.database }}"
+    query: SELECT coalesce(max(version), 0) AS version FROM krot_collect.schema_version
+  become: true
+  become_user: postgres
+  check_mode: false
+  changed_when: false
+  register: collecting_schema_at
+  when: collecting_schema_present.query_result[0].present
+
+# Only when the version differs, so a second pass changes nothing. As the
+# program's account over peer, so every table is owned by the role that writes
+# it. ON_ERROR_STOP: without it psql prints ERROR and exits 0.
+- name: Apply the schema
+  ansible.builtin.command:
+    argv:
+      - psql
+      - -X
+      - -q
+      - -v
+      - ON_ERROR_STOP=1
+      - -d
+      - "{{ collecting_plan.database }}"
+      - -f
+      - "{{ collecting_program_dir }}/schema.sql"
+  become: true
+  become_user: "{{ collecting_user }}"
+  changed_when: true
+  # Never under --check: a command is skipped there anyway, but becoming the
+  # program's account comes first, and on a machine it is not on yet that fails.
+  when: >-
+    not ansible_check_mode
+    and (not collecting_schema_present.query_result[0].present
+         or collecting_schema_at.query_result[0].version != collecting_schema_version)
+
+- name: Let the application into the schema
+  community.postgresql.postgresql_privs:
+    login_db: "{{ collecting_plan.database }}"
+    type: schema
+    objs: krot_collect
+    privs: USAGE
+    roles: "{{ collecting_plan.reader }}"
+  become: true
+  become_user: postgres
+  when: not ansible_check_mode or collecting_schema_exists.query_result[0].present
+
+- name: Let the application read the tables there now
+  community.postgresql.postgresql_privs:
+    login_db: "{{ collecting_plan.database }}"
+    type: table
+    schema: krot_collect
+    objs: ALL_IN_SCHEMA
+    privs: SELECT
+    roles: "{{ collecting_plan.reader }}"
+  become: true
+  become_user: postgres
+  when: not ansible_check_mode or collecting_schema_exists.query_result[0].present
+
+# ⚠️ And the tables a later schema adds: without this, a table of version 2 would
+# be closed to the project's screens until somebody granted it by hand.
+- name: Let the application read the tables added later
+  community.postgresql.postgresql_privs:
+    login_db: "{{ collecting_plan.database }}"
+    type: default_privs
+    target_roles: "{{ collecting_user }}"
+    schema: krot_collect
+    objs: TABLES
+    privs: SELECT
+    roles: "{{ collecting_plan.reader }}"
+  become: true
+  become_user: postgres
+  when: not ansible_check_mode or collecting_schema_exists.query_result[0].present
+
+# No key in it, so readable by anybody on the machine: which sites, which logs,
+# which rules.
+- name: Write the project's config
+  ansible.builtin.copy:
+    content: >-
+      {{ {'project': collecting_plan.name,
+          'database': collecting_plan.database,
+          'logs': collecting_plan.logs,
+          'crawl': collecting_plan.crawl,
+          'extra_range_sources': collecting_plan.extra_range_sources,
+          'sites': collecting_plan.sites} | to_nice_json }}
+    dest: "{{ collecting_config_dir }}/{{ collecting_plan.name }}.json"
+    owner: root
+    group: root
+    mode: "0644"

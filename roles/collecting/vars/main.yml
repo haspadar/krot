@@ -1,0 +1,66 @@
+---
+# Not in defaults: none of these is a choice a project makes, and changing one on
+# a machine that already runs the role would orphan what is there.
+
+# The account the program runs as, and the Postgres role of the same name that
+# peer authentication maps it to — no password anywhere. Apart from krot_index:
+# the search engines' keys of a later version must not be readable by the program
+# that offers pages, nor the other way round.
+collecting_user: krot_collect
+
+collecting_program_dir: /usr/local/lib/krot-collect
+collecting_config_dir: /etc/krot-collect
+
+# Written into every service this role installs and read back when deciding
+# whether a krot-collect-*.timer is ours to remove.
+collecting_unit_marker: "# krot-collecting-unit"
+
+# The version schema.sql creates. krot-collect refuses a database at any other;
+# a unit test holds the three — this, schema.sql and the program — equal.
+collecting_schema_version: 1
+
+collecting_jobs: [ranges, crawl]
+
+# The log formats the program knows by name (krot_collect/logline.py FORMATS).
+collecting_log_formats: [time_first]
+
+# Section names the program assigns itself; a project's rule may not take one.
+collecting_built_in_sections: [home, robots, sitemap, media, other]
+
+collecting_range_shapes: [json, lines, markup]
+
+# The projects as the program reads them, defaults filled. Also what every loop
+# walks: a later version adds keys to a project, and a failed loop item is
+# printed whole — a projection without them is what keeps them off the terminal.
+collecting_plans: >-
+  {%- set plans = [] -%}
+  {%- for project, spec in collecting_projects.items() -%}
+  {%- set logs = spec.logs | default({}) -%}
+  {%- set crawl = spec.crawl | default({}) -%}
+  {%- set _ = plans.append({'name': project,
+                            'database': spec.database | default(''),
+                            'reader': spec.reader | default(''),
+                            'timers': spec.timers | default(true),
+                            'logs': {'directory': logs.directory | default('/var/log/nginx'),
+                                     'pattern': logs.pattern | default('{domain}-access.log*'),
+                                     'format': logs.format | default('time_first')},
+                            'crawl': {'media_prefix': crawl.media_prefix | default(none),
+                                      'ai_paths': crawl.ai_paths | default(false),
+                                      'extra_agents': crawl.extra_agents | default([]),
+                                      'sections': crawl.sections | default({})},
+                            'extra_range_sources': crawl.extra_range_sources | default([]),
+                            'schedules': spec.schedules | default({}),
+                            'sites': spec.sites | default([])}) -%}
+  {%- endfor -%}
+  {{ plans }}
+
+# Every (project, job) pair declared, as unit names. Derived once so the install,
+# the enable and the retirement agree on what is declared.
+collecting_units: >-
+  {%- set units = [] -%}
+  {%- for project in collecting_projects -%}
+  {%- for job in collecting_jobs -%}
+  {%- set _ = units.append('krot-collect-' ~ project ~ '-' ~ job) -%}
+  {%- endfor -%}
+  {%- endfor -%}
+  {{ units }}

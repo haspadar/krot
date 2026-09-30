@@ -1,0 +1,19 @@
+{{ ansible_managed | comment }}
+{{ collecting_unit_marker }}
+{% set project = item.0.name %}
+{% set job = item.1 %}
+[Unit]
+Description=Collect {{ project }}'s crawler visits: {{ job }}
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User={{ collecting_user }}
+Environment=PYTHONPATH={{ collecting_program_dir }}
+# A site that hangs must not hold the unit: the timer would keep firing into a
+# unit still active, and the collection would stop while it looked scheduled.
+TimeoutStartSec={{ collecting_timeouts[job] }}
+# Exit 1 when any site or source could not be read: systemctl --failed is where
+# a blind collector has to show.
+ExecStart=/usr/bin/python3 -m krot_collect --config {{ collecting_config_dir }}/{{ project }}.json {{ job }}

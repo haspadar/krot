@@ -18,6 +18,7 @@
 # purpose — it would need updating with every scenario, and a stale number in a
 # comment about honesty is a poor look.
 molecule/backup/verify.yml command-instead-of-module
+molecule/collecting/verify.yml command-instead-of-module
 molecule/common/verify.yml command-instead-of-module
 molecule/cron/verify.yml command-instead-of-module
 molecule/fail2ban/verify.yml command-instead-of-module

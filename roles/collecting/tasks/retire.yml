@@ -1,0 +1,28 @@
+---
+# Ownership is this role's marker in the paired service, never the name.
+- name: Look for this role's marker in the paired service
+  ansible.builtin.slurp:
+    src: "/etc/systemd/system/{{ collecting_timer_file | regex_replace('\\.timer$', '.service') }}"
+  register: collecting_retire_service
+  # A timer without its service proves nothing about ownership: left alone.
+  failed_when: false
+
+- name: Retire the unit
+  when:
+    - collecting_retire_service.content is defined
+    - collecting_unit_marker in (collecting_retire_service.content | b64decode)
+  block:
+    - name: Stop and disable the retired timer
+      ansible.builtin.systemd_service:
+        name: "{{ collecting_timer_file }}"
+        state: stopped
+        enabled: false
+
+    - name: Remove the retired unit files
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ item }}"
+        state: absent
+      loop:
+        - "{{ collecting_timer_file }}"
+        - "{{ collecting_timer_file | regex_replace('\\.timer$', '.service') }}"
+      notify: Reload systemd

@@ -1,0 +1,232 @@
+---
+# The machine and the database, not Ansible's report. systemctl rather than
+# systemd_service for the reason the cron scenario gives: the module's status is
+# read before it acts (wiki/research/systemd-service-status-is-stale.md), and the
+# crawl below is meant to fail, which the module takes for its own error.
+- name: Verify
+  hosts: krot-collecting
+  vars:
+    collecting_whole_days: 3
+  tasks:
+    - name: Both jobs of the project are enabled
+      ansible.builtin.command: systemctl is-enabled krot-collect-molecule-{{ item }}.timer
+      loop: [ranges, crawl]
+      register: collecting_enabled
+      changed_when: false
+      failed_when: collecting_enabled.stdout != "enabled"
+
+    - name: A project that asked for no timers has none running
+      ansible.builtin.command: systemctl is-enabled krot-collect-quiet-{{ item }}.timer
+      loop: [ranges, crawl]
+      register: collecting_quiet
+      changed_when: false
+      failed_when: collecting_quiet.stdout != "disabled"
+
+    - name: The program's account is in the log group
+      ansible.builtin.command: id -nG krot_collect
+      register: collecting_groups
+      changed_when: false
+      failed_when: "'adm' not in collecting_groups.stdout.split()"
+
+    - name: The tables belong to the program's role
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: >-
+          SELECT count(*) AS tables, count(*) FILTER (WHERE tableowner <> 'krot_collect') AS foreign
+          FROM pg_tables WHERE schemaname = 'krot_collect'
+      become: true
+      become_user: postgres
+      register: collecting_owners
+      # The count too: on an empty schema "none foreign" would hold vacuously.
+      failed_when: >-
+        collecting_owners.query_result[0].tables != 7
+        or collecting_owners.query_result[0].foreign != 0
+
+    # Red on purpose: three of five sites cannot be read. It reaches that after
+    # the peer login, the schema's version and every readable file.
+    - name: Run the crawl
+      ansible.builtin.command: systemctl start --wait krot-collect-molecule-crawl.service
+      register: collecting_run
+      changed_when: true
+      failed_when: false
+
+    - name: The crawl failed the way a person is meant to see
+      ansible.builtin.command: systemctl show krot-collect-molecule-crawl.service -p Result -p ExecMainStatus
+      register: collecting_result
+      changed_when: false
+      failed_when: >-
+        'Result=exit-code' not in collecting_result.stdout
+        or 'ExecMainStatus=1' not in collecting_result.stdout
+
+    - name: Read what it said
+      ansible.builtin.command: journalctl -u krot-collect-molecule-crawl.service --no-pager -n 40
+      register: collecting_journal
+      changed_when: false
+
+    - name: And it named every site and why
+      ansible.builtin.assert:
+        that:
+          - "'whole.test: 3 days' in collecting_journal.stdout"
+          - "'broken.test: ' in collecting_journal.stdout and 'truncated' in collecting_journal.stdout"
+          - "'broken.test: kept 2 days' in collecting_journal.stdout"
+          - "'none in the declared format' in collecting_journal.stdout"
+          - "'locked.test: cannot read' in collecting_journal.stdout"
+          - "'closed.test: no log on disk' in collecting_journal.stdout"
+          - "'3 of 5 sites could not be read' in collecting_journal.stdout"
+        fail_msg: "{{ collecting_journal.stdout }}"
+        quiet: true
+
+    - name: Read which days were marked read, per site
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: SELECT site, count(*) AS days FROM krot_collect.crawler_read GROUP BY site ORDER BY site
+      become: true
+      become_user: postgres
+      register: collecting_read
+
+    # The broken archive's day is not marked; the two before it are.
+    - name: Whole files are read whole, the broken archive's day is not
+      ansible.builtin.assert:
+        that:
+          - >-
+            collecting_read.query_result | items2dict(key_name='site', value_name='days')
+            == {'whole.test': collecting_whole_days, 'broken.test': 2}
+        fail_msg: "{{ collecting_read.query_result }}"
+        quiet: true
+
+    - name: Read the day's figures of the whole site
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: >-
+          SELECT requests, human, errors_5xx, rt_count, slow, robots_5xx
+          FROM krot_collect.request_day WHERE site = 'whole.test' ORDER BY day DESC LIMIT 1
+      become: true
+      become_user: postgres
+      register: collecting_day
+
+    # Seven lines: a person, five families and a claimed trainer asking for
+    # credentials; one line without rt=, one slow, a 503 on robots.
+    - name: The day's figures are the lines' figures
+      ansible.builtin.assert:
+        that:
+          - >-
+            collecting_day.query_result[0] == {'requests': 7, 'human': 1, 'errors_5xx': 1, 'rt_count': 6,
+            'slow': 1, 'robots_5xx': 1}
+        fail_msg: "{{ collecting_day.query_result }}"
+        quiet: true
+
+    - name: Read the families of the whole site's newest day
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: >-
+          SELECT string_agg(family, ',' ORDER BY family) AS families FROM krot_collect.crawler_day
+          WHERE site = 'whole.test' AND day = (SELECT max(day) FROM krot_collect.crawler_day)
+      become: true
+      become_user: postgres
+      register: collecting_families
+
+    # The project's own monitor, a photograph apart from pages, a scan filed as
+    # what it is rather than under the name it claimed.
+    - name: Every verdict landed
+      ansible.builtin.assert:
+        that:
+          - collecting_families.query_result[0].families
+            == 'bingbot,chatgpt-user,googlebot,googlebot-image-media,impostor,monitor'
+        fail_msg: "{{ collecting_families.query_result }}"
+        quiet: true
+
+    - name: Check the sums against each other
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: >-
+          SELECT
+            (SELECT count(*) FROM krot_collect.crawler_day d WHERE requests <> (
+               SELECT sum(requests) FROM krot_collect.crawler_section s
+               WHERE (s.site, s.family, s.day) = (d.site, d.family, d.day))) AS sections_off,
+            (SELECT count(*) FROM krot_collect.request_day r WHERE requests <> human + coalesce((
+               SELECT sum(requests) FROM krot_collect.crawler_day d
+               WHERE (d.site, d.day) = (r.site, r.day)), 0)) AS families_off,
+            (SELECT count(*) FROM krot_collect.request_day r WHERE NOT EXISTS (
+               SELECT 1 FROM krot_collect.crawler_read m WHERE (m.site, m.day) = (r.site, r.day))) AS unmarked,
+            (SELECT count(*) FROM krot_collect.request_day) AS days
+      become: true
+      become_user: postgres
+      register: collecting_sums
+      failed_when: >-
+        collecting_sums.query_result[0] != {'sections_off': 0, 'families_off': 0, 'unmarked': 0, 'days': 5}
+
+    - name: The reader's page was kept without its query
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: SELECT DISTINCT family, path FROM krot_collect.crawler_path
+      become: true
+      become_user: postgres
+      register: collecting_paths
+      failed_when: >-
+        collecting_paths.query_result != [{'family': 'chatgpt-user', 'path': '/card/7'}]
+
+    - name: The application reads the figures
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        session_role: molecule_app
+        query: SELECT count(*) AS rows FROM krot_collect.crawler_read
+      become: true
+      become_user: postgres
+      register: collecting_app_read
+      failed_when: collecting_app_read.query_result[0].rows != 5
+
+    - name: And cannot write them
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        session_role: molecule_app
+        query: DELETE FROM krot_collect.crawler_read
+      become: true
+      become_user: postgres
+      register: collecting_app_write
+      failed_when: "'permission denied' not in (collecting_app_write.msg | default(''))"
+
+    # Side by side in one database: each program demands exactly its own row.
+    - name: Both schemas keep their own version
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: >-
+          SELECT (SELECT array_agg(version) FROM krot.schema_version) AS indexing,
+                 (SELECT array_agg(version) FROM krot_collect.schema_version) AS collecting
+      become: true
+      become_user: postgres
+      register: collecting_versions
+      failed_when: >-
+        collecting_versions.query_result[0] != {'indexing': [1], 'collecting': [1]}
+
+    - name: Look for the planted units
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/{{ item }}"
+      loop:
+        - krot-collect-other-crawl.timer
+        - krot-collect-notes-crawl.timer
+        - krot-collect-gone-crawl.timer
+        - krot-collect-gone-crawl.service
+        - krot-collect-molecule-search.timer
+        - krot-collect-molecule-search.service
+      register: collecting_planted
+
+    # Kept: another project's unit, and a hand-written one without the marker.
+    # Removed: the project retired by name, and a job this project does not run.
+    - name: Only what this run owns was retired
+      ansible.builtin.assert:
+        that:
+          - collecting_planted.results | map(attribute='stat.exists') | list
+            == [true, true, false, false, false, false]
+        quiet: true
+
+    - name: Look for the dropped project's config and another project's
+      ansible.builtin.stat:
+        path: "/etc/krot-collect/{{ item }}"
+      loop: [gone.json, other.json]
+      register: collecting_configs
+
+    - name: The dropped project's config went, the other stayed
+      ansible.builtin.assert:
+        that:
+          - collecting_configs.results | map(attribute='stat.exists') | list == [false, true]
+        quiet: true

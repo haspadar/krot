@@ -1,0 +1,334 @@
+---
+# Everything the inventory can get wrong is refused here, before the machine is
+# touched: a unit installed over a malformed entry is a night that fails after
+# midnight, or worse, one that runs green over nothing.
+#
+# \Z, not $: Python's $ also matches before a final newline, and a value from a
+# YAML `|` block would pass carrying one.
+- name: Assert each project is usable
+  ansible.builtin.assert:
+    that:
+      - item.name is match('^[a-z0-9]+\Z')
+      - item.database | length > 0
+      - item.reader | length > 0
+      - item.timers is boolean
+      - item.logs.format in collecting_log_formats
+      - item.logs.pattern is search('\{domain\}')
+      - item.crawl.ai_paths is boolean
+      - item.crawl.media_prefix is none or item.crawl.media_prefix is match('^/')
+      - item.sites | length > 0
+    fail_msg: >-
+      Project {{ item.name }} needs a name of [a-z0-9]+ (it is read back out of
+      krot-collect-<project>-<job>, so no dash), a database, a reader, at least one
+      site, a log format out of {{ collecting_log_formats | join(', ') }}, a log
+      pattern holding {domain}, and a media_prefix starting with / if any.
+    quiet: true
+  loop: "{{ collecting_plans }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Assert every site names a domain
+  ansible.builtin.assert:
+    that:
+      - item.1.domain | default('') is match('^[a-z0-9][a-z0-9.-]*\Z')
+    fail_msg: "A site of {{ item.0.name }} needs a lowercase domain; its log file is named after it."
+    quiet: true
+  loop: "{{ collecting_plans | subelements('sites') }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1.domain | default('<unnamed>') }}"
+
+# The sum check — sections of a family equal its requests — holds only while
+# every path lands in exactly one section; a rule taking a built-in name, or two
+# rules sharing one, would make the sections unreadable without breaking it.
+- name: Assert each project's section rules
+  ansible.builtin.assert:
+    that:
+      - rules | map(attribute='section', default='') | select('match', '^[a-z_]{1,16}\Z') | list | length
+        == rules | length
+      - rules | map(attribute='section') | unique | list | length == rules | length
+      - rules | map(attribute='section') | select('in', collecting_built_in_sections) | list | length == 0
+      - rules | rejectattr('prefixes', 'defined') | list | length == 0
+      - rules | map(attribute='prefixes') | flatten | reject('match', '^/.') | list | length == 0
+      - rules | map(attribute='bare', default='other') | reject('in', ['self', 'other']) | list | length == 0
+      - sections.bare_segment | default(none) is none or sections.bare_segment is match('^[a-z_]{1,16}\Z')
+      - sections.slice is not defined
+        or (sections.slice.segments | int > 0 and sections.slice.last | length > 0
+            and sections.slice.section is match('^[a-z_]{1,16}\Z'))
+    fail_msg: >-
+      {{ item.name }}'s sections: every rule needs a section of [a-z_]{1,16}, its
+      own, none of {{ collecting_built_in_sections | join(', ') }}, prefixes starting
+      with / and bare self or other; bare_segment and slice.section follow the same
+      naming, and a slice needs segments and a pattern for the last one.
+    quiet: true
+  vars:
+    sections: "{{ item.crawl.sections }}"
+    rules: "{{ item.crawl.sections.rules | default([]) }}"
+  loop: "{{ collecting_plans }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Assert each project's own crawler marks and range sources
+  ansible.builtin.assert:
+    that:
+      - item.crawl.extra_agents | rejectattr('mark', 'defined') | list | length == 0
+      - item.crawl.extra_agents | rejectattr('family', 'defined') | list | length == 0
+      - item.crawl.extra_agents | map(attribute='family') | reject('match', '^[a-z0-9-]{1,40}\Z') | list | length == 0
+      - item.crawl.extra_agents | map(attribute='ai', default='read') | reject('in', ['read', 'train']) | list
+        | length == 0
+      - item.extra_range_sources | rejectattr('name', 'defined') | list | length == 0
+      - item.extra_range_sources | map(attribute='shape', default='') | reject('in', collecting_range_shapes)
+        | list | length == 0
+      - item.extra_range_sources | map(attribute='url', default='') | reject('match', '^https://') | list
+        | length == 0
+      - item.extra_range_sources | rejectattr('families', 'defined') | list | length == 0
+    fail_msg: >-
+      {{ item.name }}: every extra agent needs a mark and a family ([a-z0-9-], at
+      most 40 — a suffix is appended to it) and ai of read or train if any; every
+      extra range source a name, an https url, a shape out of
+      {{ collecting_range_shapes | join(', ') }} and its families.
+    quiet: true
+  loop: "{{ collecting_plans }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Assert a retired project is named and not also declared
+  ansible.builtin.assert:
+    that:
+      - item is string
+      - item is match('^[a-z0-9]+\Z')
+      - item not in collecting_projects
+    fail_msg: >-
+      {{ item }} is in collecting_retired_projects but is not a project name, or is
+      still declared in collecting_projects. A project is either run or taken off.
+    quiet: true
+  loop: "{{ collecting_retired_projects }}"
+
+- name: Collect each project's crawler visits
+  when: collecting_plans | length > 0
+  vars:
+    collecting_timer_names_on_disk: >-
+      {{ collecting_timers_on_disk.files | map(attribute='path') | map('basename') | list }}
+  block:
+    # First, and before any check: the checks ask the cluster through psycopg2.
+    # Packages are the one change a refused run may leave.
+    - name: Install what the program needs
+      ansible.builtin.apt:
+        name:
+          - python3
+          - python3-psycopg2
+          # The schema is applied as the program's account, and Ansible hands a
+          # module to an unprivileged account by ACL (see the umami role).
+          - acl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    # Every project is checked before any is changed: a typo in the second
+    # project's reader must not leave the first half-provisioned.
+    - name: Check each project against the cluster
+      ansible.builtin.include_tasks: preflight.yml
+      loop: "{{ collecting_plans }}"
+      loop_control:
+        loop_var: collecting_plan
+        label: "{{ collecting_plan.name }}"
+
+    # In adm: nginx's logrotate writes the logs 0640 www-data adm, and an account
+    # outside the group reads Permission denied on every one — which the program
+    # reports red rather than as a quiet night.
+    - name: Create the program's account
+      ansible.builtin.user:
+        name: "{{ collecting_user }}"
+        system: true
+        shell: /usr/sbin/nologin
+        create_home: false
+        home: /nonexistent
+        groups: [adm]
+        append: true
+
+    # Every attribute named, not LOGIN alone: the module leaves unnamed ones as
+    # they are, and a role of this name that existed with more would hand it to
+    # every night on the machine.
+    - name: Create the program's Postgres role
+      community.postgresql.postgresql_user:
+        login_db: postgres
+        name: "{{ collecting_user }}"
+        role_attr_flags: LOGIN,NOSUPERUSER,NOCREATEDB,NOCREATEROLE,NOREPLICATION,NOBYPASSRLS
+      become: true
+      become_user: postgres
+
+    # Under --check the role above is not created, and a grant to it would be
+    # refused rather than rehearsed. Asked, not inferred from `changed`.
+    - name: Read whether the program's Postgres role exists
+      community.postgresql.postgresql_query:
+        login_db: postgres
+        query: SELECT count(*) > 0 AS present FROM pg_roles WHERE rolname = %(name)s
+        named_args:
+          name: "{{ collecting_user }}"
+      become: true
+      become_user: postgres
+      check_mode: false
+      changed_when: false
+      register: collecting_pg_role
+
+    - name: Create the program directory
+      ansible.builtin.file:
+        path: "{{ collecting_program_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Install the program
+      ansible.builtin.copy:
+        src: krot_collect
+        dest: "{{ collecting_program_dir }}/"
+        owner: root
+        group: root
+        mode: "0644"
+        directory_mode: "0755"
+
+    # The only way to know the copy is whole: a module that did not arrive would
+    # otherwise show after midnight as a traceback.
+    - name: Check the program imports whole on this machine
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+            import psycopg2;
+            from krot_collect import cli, crawl, ranges, store, agents, sections;
+            agents.Agents(); ranges.load()
+      environment:
+        PYTHONPATH: "{{ collecting_program_dir }}"
+      changed_when: false
+
+    - name: Install the schema file
+      ansible.builtin.copy:
+        src: schema.sql
+        dest: "{{ collecting_program_dir }}/schema.sql"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Create the config directory
+      ansible.builtin.file:
+        path: "{{ collecting_config_dir }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Prepare each project's database and config
+      ansible.builtin.include_tasks: project.yml
+      loop: "{{ collecting_plans }}"
+      loop_control:
+        loop_var: collecting_plan
+        label: "{{ collecting_plan.name }}"
+
+    - name: Install the services
+      ansible.builtin.template:
+        src: collect.service.j2
+        dest: "/etc/systemd/system/krot-collect-{{ item.0.name }}-{{ item.1 }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ collecting_plans | product(collecting_jobs) | list }}"
+      loop_control:
+        label: "{{ item.0.name }} {{ item.1 }}"
+      notify: Reload systemd
+
+    # Before the timers are written: --check writes none, and systemd cannot find
+    # a unit that is not on disk. One that is, drifted or not, is still asked.
+    - name: Find the timers already on disk
+      ansible.builtin.find:
+        paths: /etc/systemd/system
+        patterns: "krot-collect-*.timer"
+      register: collecting_timers_on_disk
+
+    - name: Install the timers
+      ansible.builtin.template:
+        src: collect.timer.j2
+        dest: "/etc/systemd/system/krot-collect-{{ item.0.name }}-{{ item.1 }}.timer"
+        owner: root
+        group: root
+        mode: "0644"
+      loop: "{{ collecting_plans | product(collecting_jobs) | list }}"
+      loop_control:
+        label: "{{ item.0.name }} {{ item.1 }}"
+      notify: Reload systemd
+      register: collecting_timers
+
+    - name: Apply pending unit changes
+      ansible.builtin.meta: flush_handlers
+
+    - name: Enable the timers
+      ansible.builtin.systemd_service:
+        name: "{{ collecting_timer }}"
+        state: started
+        enabled: true
+      loop: "{{ collecting_plans | selectattr('timers') | product(collecting_jobs) | list }}"
+      loop_control:
+        label: "{{ item.0.name }} {{ item.1 }}"
+      vars:
+        collecting_timer: "krot-collect-{{ item.0.name }}-{{ item.1 }}.timer"
+      when: not ansible_check_mode or collecting_timer in collecting_timer_names_on_disk
+
+    # timers: false — installed, not running: the project is moving its history
+    # in, and a night written before that would start the schema over.
+    - name: Keep the timers of a project that asked for none off
+      ansible.builtin.systemd_service:
+        name: "{{ collecting_timer }}"
+        state: stopped
+        enabled: false
+      loop: "{{ collecting_plans | rejectattr('timers') | product(collecting_jobs) | list }}"
+      loop_control:
+        label: "{{ item.0.name }} {{ item.1 }}"
+      vars:
+        collecting_timer: "krot-collect-{{ item.0.name }}-{{ item.1 }}.timer"
+      when: not ansible_check_mode or collecting_timer in collecting_timer_names_on_disk
+
+    # A reload alone leaves a running timer on the hour it was started with: a
+    # schedule moved in the inventory would keep firing at the old one.
+    - name: Restart the timers whose schedule changed
+      ansible.builtin.systemd_service:
+        name: "{{ collecting_changed_timer }}"
+        state: restarted
+      loop: "{{ collecting_timers.results | selectattr('changed') | selectattr('item.0.timers') | list }}"
+      loop_control:
+        label: "{{ item.item.0.name }} {{ item.item.1 }}"
+      vars:
+        collecting_changed_timer: "krot-collect-{{ item.item.0.name }}-{{ item.item.1 }}.timer"
+      when: not ansible_check_mode or collecting_changed_timer in collecting_timer_names_on_disk
+
+- name: Find previously installed timers
+  ansible.builtin.find:
+    paths: /etc/systemd/system
+    patterns: "krot-collect-*.timer"
+  register: collecting_installed_timers
+
+# A job dropped from a project of THIS run, or a project named in
+# collecting_retired_projects, has to stop. Nothing else: every project applies
+# this role from its own inventory, so a unit of a project this run does not know
+# belongs to another project's run. And only units carrying this role's marker.
+- name: Retire timers no longer declared
+  ansible.builtin.include_tasks: retire.yml
+  loop: "{{ collecting_installed_timers.files | map(attribute='path') | map('basename') | list }}"
+  loop_control:
+    loop_var: collecting_timer_file
+    label: "{{ collecting_timer_file }}"
+  vars:
+    # '' for a name that is not krot-collect-<project>-<job>.
+    collecting_timer_project: >-
+      {{ collecting_timer_file | regex_replace('^krot-collect-([a-z0-9]+)-[a-z]+\.timer$', '\1')
+         if collecting_timer_file is match('^krot-collect-[a-z0-9]+-[a-z]+\.timer$') else '' }}
+  when:
+    - collecting_timer_file | regex_replace('\\.timer$', '') not in collecting_units
+    - collecting_timer_project in collecting_projects or collecting_timer_project in collecting_retired_projects
+
+# The config of a retired project goes; one merely absent from this run may be
+# another project's. The schema and its rows stay in the project's database.
+- name: Remove the config of retired projects
+  ansible.builtin.file:
+    path: "{{ collecting_config_dir }}/{{ item }}.json"
+    state: absent
+  loop: "{{ collecting_retired_projects }}"
