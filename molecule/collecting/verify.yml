@@ -91,7 +91,7 @@
           - >-
             collecting_read.query_result | items2dict(key_name='site', value_name='days')
             == {'whole.test': collecting_whole_days, 'broken.test': 2}
-        fail_msg: "{{ collecting_read.query_result }}"
+        fail_msg: "{{ collecting_read.query_result | to_json }}"
         quiet: true
 
     - name: Read the day's figures of the whole site
@@ -112,7 +112,7 @@
           - >-
             collecting_day.query_result[0] == {'requests': 7, 'human': 1, 'errors_5xx': 1, 'rt_count': 6,
             'slow': 1, 'robots_5xx': 1}
-        fail_msg: "{{ collecting_day.query_result }}"
+        fail_msg: "{{ collecting_day.query_result | to_json }}"
         quiet: true
 
     - name: Read the families of the whole site's newest day
@@ -132,7 +132,7 @@
         that:
           - collecting_families.query_result[0].families
             == 'bingbot,chatgpt-user,googlebot,googlebot-image-media,impostor,monitor'
-        fail_msg: "{{ collecting_families.query_result }}"
+        fail_msg: "{{ collecting_families.query_result | to_json }}"
         quiet: true
 
     - name: Check the sums against each other
