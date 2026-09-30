@@ -23,10 +23,24 @@ indexing_schema_version: 1
 indexing_schema: krot_index
 indexing_legacy_schema: krot
 
-# Polls 30 s apart before the rename: a little over the longest night in
-# indexing_timeouts (Yandex, 3h), past which systemd has stopped the unit itself.
-# Still running after that, the run fails with the unit named, schema untouched.
-indexing_rename_wait_retries: 370
+# Polls 30 s apart before the rename: the longest night in indexing_timeouts and
+# five minutes over, past which systemd has stopped the unit itself (deactivating
+# included). Read from the timeouts rather than written down, so a project that
+# lengthens a night lengthens the wait with it. Spans as systemd writes them: 3h,
+# 90min, 1h30min, a bare number of seconds. Still running after that, the run
+# fails with the unit named, schema untouched.
+indexing_rename_wait_retries: >-
+  {%- set units = {'h': 3600, 'hr': 3600, 'hour': 3600, 'hours': 3600,
+                   'm': 60, 'min': 60, 'minute': 60, 'minutes': 60} -%}
+  {%- set spans = [] -%}
+  {%- for span in indexing_timeouts.values() -%}
+  {%- set total = namespace(seconds=0) -%}
+  {%- for number, unit in (span | string) | regex_findall('(\d+)\s*([a-z]*)') -%}
+  {%- set total.seconds = total.seconds + (number | int) * units.get(unit, 1) -%}
+  {%- endfor -%}
+  {%- set _ = spans.append(total.seconds) -%}
+  {%- endfor -%}
+  {{ ((spans | max) + 300) // 30 }}
 
 indexing_engines: [google, bing, yandex, indexnow]
 

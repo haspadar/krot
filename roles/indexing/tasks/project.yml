@@ -39,25 +39,36 @@
 # is offered again tomorrow. Waited for, not stopped — a night cut short loses
 # more. Only nights already running matter: one started later is 7.x, installed
 # before this loop, and reads through search_path across the rename. A oneshot
-# is `activating` while it runs, hence the states.
+# is `activating` while it runs, hence the states. The poll cannot tell the two
+# apart, so a run at night waits out 7.x nights too, back to back — and may give
+# up; the upgrade is a daytime run.
 - name: Wait for the project's running nights before the rename
-  ansible.builtin.command:
-    argv:
-      - systemctl
-      - list-units
-      - --type=service
-      - --state=activating,active,deactivating
-      - --no-legend
-      - --plain
-      - "krot-index-{{ indexing_plan.name }}-*.service"
-  register: indexing_running
-  changed_when: false
-  check_mode: false
-  until: indexing_running.stdout | trim | length == 0
-  retries: "{{ indexing_rename_wait_retries }}"
-  delay: 30
   # Under --check the rename is rolled back, so there is nothing to wait for.
   when: not ansible_check_mode and indexing_legacy.query_result[0].due
+  block:
+    - name: Poll the project's nights until none is running
+      ansible.builtin.command:
+        argv:
+          - systemctl
+          - list-units
+          - --type=service
+          - --state=activating,active,deactivating
+          - --no-legend
+          - --plain
+          - "krot-index-{{ indexing_plan.name }}-*.service"
+      register: indexing_running
+      changed_when: false
+      check_mode: false
+      until: indexing_running.stdout | trim | length == 0
+      retries: "{{ indexing_rename_wait_retries }}"
+      delay: 30
+  rescue:
+    - name: Refuse the rename while a night still runs
+      ansible.builtin.fail:
+        msg: >-
+          {{ indexing_plan.name }}: {{ indexing_running.stdout_lines | default([]) | map('split') | map('first')
+          | join(', ') }} still running after {{ indexing_rename_wait_retries | int * 30 // 60 }} minutes.
+          {{ indexing_legacy_schema }} is not renamed; run the role again in the daytime.
 
 # Renamed rather than created anew and copied: the rows, the application's grants
 # and the default privileges on later tables all hang on the schema, not on its

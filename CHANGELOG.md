@@ -9,8 +9,8 @@ changing a default that affects production) bump major.
 
 - **`indexing` role: the upgrade waits for the project's running nights before renaming its
   schema.** A night 6.x started writes `krot.*` by name, and a rename under it left pages sent
-  to the engine but unrecorded, offered again the next night. The role waits up to the longest
-  night (3h) and fails before the rename if one is still running; it never stops a night.
+  to the engine but unrecorded, offered again the next night. The role waits as long as the
+  longest night in `indexing_timeouts`, plus five minutes, and fails before the rename if one is still running; it never stops a night.
 
 ## 7.0.0
 
