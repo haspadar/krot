@@ -7,18 +7,22 @@ polite to. What needs care is memory, hence lines read one at a time.
 from krot_collect import logline
 from krot_collect.logfiles import Unreadable
 
-# ⚠️ A file of at least this many lines of which NOT ONE parsed is a failure, not
-# a quiet day: the log's format has drifted from the program's, and storing the
-# day would write "nobody came" for every site on the machine. New in this
-# program — the earlier one skipped such lines silently. Zero parsed rather than a
-# share: a half-written vhost fills a live file with junk for a while, and a share
-# would redden over that, while a live site in the right format never has twenty
-# lines and none of them readable.
+# ⚠️ A file with at least this many lines out of the declared format, and more
+# than GARBAGE_SHARE of it, is a failure, not a quiet day: the log's format has
+# drifted from the program's. Wholly, storing the day writes "nobody came"; halfway
+# — a format changed mid-file — it writes a day short by the changed part, and
+# nothing tells that from a quieter day. New in this program — the earlier one
+# skipped such lines silently. nginx writes every line of a vhost in its one
+# format, so a healthy file has none; the floor keeps a few odd lines of a small
+# site from reddening it. After a format change the file holding both goes red for
+# a night or two, until the days after it are marked read and the walk stops short
+# of it.
 GARBAGE_LINES = 20
+GARBAGE_SHARE = 0.01
 
 
 class Garbage(Unreadable):
-    """A file that read whole and held no line in the declared format."""
+    """A file that read whole and held too many lines out of the declared format."""
 
 
 class Collection:
@@ -105,9 +109,11 @@ class Walk:
                             continue
                         from_this_file.add(one.day)
                     yield text
-                if count >= GARBAGE_LINES and parsed == 0:
-                    raise Garbage("%s holds %d lines and none in the declared format — the log format has "
-                                  "drifted from the program's" % (path, count))
+                strays = count - parsed
+                if strays >= GARBAGE_LINES and strays > count * GARBAGE_SHARE:
+                    held = "none" if parsed == 0 else "only %d" % parsed
+                    raise Garbage("%s holds %d lines and %s in the declared format — the log format has "
+                                  "drifted from the program's" % (path, count, held))
             except Unreadable as refusal:
                 # The walk ends here. This file's own days do not stand: a truncated
                 # archive is found only at its end, after its lines were counted —

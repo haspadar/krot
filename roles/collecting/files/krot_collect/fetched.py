@@ -58,6 +58,10 @@ def judge(source, lines, published=None):
     if shaped < len(offered) * READABLE:
         return refused("%s returned %d ranges out of %d lines — too few to be a list of networks; a source "
                        "serving addresses without their network mask reads as this" % (source, shaped, len(offered)))
+    # ⚠️ Shaped yet none kept — every network too wide: stored, the answer would
+    # replace yesterday's list with nothing and unconfirm the source's families.
+    if not ranges:
+        return refused("%s returned %d ranges and every one too wide to trust" % (source, shaped))
     # Repeats are NOT unreadable: counting a source's thrice-printed page as broken
     # every night would teach the eye to skip the warning that matters.
     return Fetched(ranges, None, len(offered) - len(seen) - repeats, published)

@@ -162,7 +162,7 @@ class Tally:
 
 
 def stored_path(path):
-    """Without its query, cut to what the column holds — by bytes, as Postgres counts.
+    """Without its query, cut to 255 bytes — within the column's 255 characters however they encode.
 
     The query is dropped for the reason sections drop it: `/berlin?page=2` kept
     whole would file one page under as many rows as it has parameters.

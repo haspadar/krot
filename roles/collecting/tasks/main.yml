@@ -15,13 +15,13 @@
       - item.logs.format in collecting_log_formats
       - item.logs.pattern is search('\{domain\}')
       - item.crawl.ai_paths is boolean
-      - item.crawl.media_prefix is none or item.crawl.media_prefix is match('^/')
+      - item.crawl.media_prefix is none or item.crawl.media_prefix is match('^/(.*/)?\\Z')
       - item.sites | length > 0
     fail_msg: >-
       Project {{ item.name }} needs a name of [a-z0-9]+ (it is read back out of
       krot-collect-<project>-<job>, so no dash), a database, a reader, at least one
       site, a log format out of {{ collecting_log_formats | join(', ') }}, a log
-      pattern holding {domain}, and a media_prefix starting with / if any.
+      pattern holding {domain}, and a media_prefix starting and ending with / if any.
     quiet: true
   loop: "{{ collecting_plans }}"
   loop_control:
@@ -71,6 +71,9 @@
   ansible.builtin.assert:
     that:
       - item.crawl.extra_agents | rejectattr('mark', 'defined') | list | length == 0
+      # An empty mark is in every User-Agent: all traffic would become the family.
+      - item.crawl.extra_agents | map(attribute='mark') | map('string') | reject('match', '^.{3,}\\Z') | list
+        | length == 0
       - item.crawl.extra_agents | rejectattr('family', 'defined') | list | length == 0
       - item.crawl.extra_agents | map(attribute='family') | reject('match', '^[a-z0-9-]{1,40}\Z') | list | length == 0
       - item.crawl.extra_agents | map(attribute='ai', default='read') | reject('in', ['read', 'train']) | list

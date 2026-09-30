@@ -45,7 +45,10 @@ class LogFiles:
         collected" stop at the wrong place.
         """
         found = glob.glob(os.path.join(self.directory, self.pattern.replace("{domain}", glob.escape(domain))))
-        return sorted(found, key=age)
+        # By name first: glob's order is the directory's, and two files of one age
+        # (`.log.gz` beside a `dateext` rotation) must come in the same order every
+        # night, or the walk would stop in a different place each time.
+        return sorted(sorted(found), key=age)
 
     def lines(self, path):
         """The lines of one file, one at a time, gzipped or not.

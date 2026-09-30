@@ -60,6 +60,10 @@ def test_a_too_wide_network_is_dropped_without_refusing_the_list():
     assert (answer.refused, len(answer.ranges), answer.unreadable) == (False, 4, 1)
 
 
+def test_a_list_of_nothing_but_too_wide_networks_is_refused():
+    assert judge("s", ["0.0.0.0/0", "::/0"]).refused
+
+
 def source(shape="json", **extra):
     return dict({"name": "s", "url": "https://s.example/list", "shape": shape, "families": ["googlebot"]}, **extra)
 

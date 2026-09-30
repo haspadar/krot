@@ -89,6 +89,13 @@ def test_a_first_run_reads_every_file(tmp_path):
     assert store.stored[SITE].days == {date(2026, 8, 20), date(2026, 8, 21), date(2026, 8, 22)}
 
 
+def test_files_of_one_age_come_in_the_order_of_their_names(tmp_path):
+    for name in ["a.example-access.log.gz", "a.example-access.log"]:
+        (tmp_path / name).write_bytes(b"")
+    found = LogFiles(str(tmp_path)).of(SITE)
+    assert [os.path.basename(path) for path in found] == ["a.example-access.log", "a.example-access.log.gz"]
+
+
 def test_the_newest_stored_day_is_read_again_and_older_ones_are_not(tmp_path):
     write(str(tmp_path), "a.example-access.log", [22])
     write(str(tmp_path), "a.example-access.log.1", [20, 21])
@@ -152,6 +159,22 @@ def test_a_file_of_nothing_but_junk_fails_the_site(tmp_path):
 
 def test_a_few_junk_lines_are_a_quiet_day(tmp_path):
     (tmp_path / "a.example-access.log").write_text("junk line\n" * (GARBAGE_LINES - 1))
+    ok, _, _ = collect(str(tmp_path), FakeStore())
+    assert ok
+
+
+def test_a_format_changed_halfway_fails_the_site(tmp_path):
+    body = "".join(line(1) for _ in range(GARBAGE_LINES)) + "junk line\n" * GARBAGE_LINES
+    (tmp_path / "a.example-access.log").write_text(body)
+    store = FakeStore()
+    ok, _, err = collect(str(tmp_path), store)
+    assert (ok, SITE in store.stored, "only %d in the declared format" % GARBAGE_LINES in err) == (False, False, True)
+
+
+def test_a_few_odd_lines_in_a_busy_file_are_not_a_failure(tmp_path):
+    lines = GARBAGE_LINES * 100
+    body = "".join(line(1) for _ in range(lines)) + "junk line\n" * GARBAGE_LINES
+    (tmp_path / "a.example-access.log").write_text(body)
     ok, _, _ = collect(str(tmp_path), FakeStore())
     assert ok
 
