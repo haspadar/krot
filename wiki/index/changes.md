@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **1**, заархивировано — **25**.
+В работе — **0**, заархивировано — **26**.
 
 Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **10** из 26: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
@@ -21,7 +21,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
-| [`collect-crawler-visits`](../../openspec/changes/collect-crawler-visits/proposal.md) | **в работе** | — | Сбор обходов краулеров из логов nginx — роль `collecting` |
+| [`collect-crawler-visits`](../../openspec/changes/archive/2026-09-30-collect-crawler-visits/proposal.md) | 2026-09-30 | — | Сбор обходов краулеров из логов nginx — роль `collecting` |
 | [`check-indexing-on-a-fresh-machine`](../../openspec/changes/archive/2026-09-29-check-indexing-on-a-fresh-machine/proposal.md) | 2026-09-29 | [#70](https://github.com/haspadar/krot/pull/70) | `--check` роли indexing проходит на машине, где её ещё не было |
 | [`hide-consumer-names-in-wiki-index`](../../openspec/changes/archive/2026-09-29-hide-consumer-names-in-wiki-index/proposal.md) | 2026-09-29 | [#72](https://github.com/haspadar/krot/pull/72) | Оглавление вики не называет проекты-потребители |
 | [`keep-projects-out-of-code`](../../openspec/changes/archive/2026-09-29-keep-projects-out-of-code/proposal.md) | 2026-09-29 | [#67](https://github.com/haspadar/krot/pull/67) | Код коллекции не называет проекты, которые её потребляют |
