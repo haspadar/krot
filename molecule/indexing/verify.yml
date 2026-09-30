@@ -283,9 +283,42 @@
         fail_msg: "{{ indexing_old_runs.query_result | to_json }}"
         quiet: true
 
+    # A night 6.x started, still reading the old name when the upgrade comes:
+    # renamed under it, psql fails and the file stays empty.
+    - name: A night of the project still running when the role comes
+      ansible.builtin.command:
+        argv:
+          - systemd-run
+          - --unit=krot-index-molecule-slow
+          - --uid=postgres
+          - --property=Type=oneshot
+          - --no-block
+          - --
+          - sh
+          - -c
+          - sleep 150; psql -d molecule_site -tAc 'SELECT count(*) FROM krot.index_run' > /tmp/slow-night
+      changed_when: true
+
     - name: Run the role over it
       ansible.builtin.include_role:
         name: indexing
+
+    - name: Read what the running night saw
+      ansible.builtin.slurp:
+        src: /tmp/slow-night
+      register: indexing_slow_night
+
+    # Attempts too: without them the night could simply have ended before the role
+    # got there, and the file would say nothing about the wait.
+    - name: The role waited for it before renaming
+      ansible.builtin.assert:
+        that:
+          - indexing_slow_night.content | b64decode | trim == '1'
+          - indexing_running.attempts > 1
+        fail_msg: >-
+          night saw {{ indexing_slow_night.content | b64decode | trim | to_json }},
+          the wait took {{ indexing_running.attempts | default('no') }} attempts
+        quiet: true
 
     - name: Read where the program's schema is now
       community.postgresql.postgresql_query:
