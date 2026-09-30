@@ -1,4 +1,4 @@
--- The krot schema in a project's database: what krot-index sent and heard.
+-- The krot_index schema in a project's database: what krot-index sent and heard.
 --
 -- Applied by the indexing role, never by the program: a program that created its
 -- own schema on a database that had been recreated would forget everything it
@@ -11,7 +11,7 @@
 --
 -- Idempotent: the role runs it on every pass.
 
-CREATE TABLE IF NOT EXISTS krot.page_index (
+CREATE TABLE IF NOT EXISTS krot_index.page_index (
     site         varchar(255)  NOT NULL,
     engine       varchar(16)   NOT NULL,
     url          varchar(2048) NOT NULL,
@@ -23,9 +23,9 @@ CREATE TABLE IF NOT EXISTS krot.page_index (
     PRIMARY KEY (site, engine, url)
 );
 
-CREATE INDEX IF NOT EXISTS page_index_site_engine_state ON krot.page_index (site, engine, state);
+CREATE INDEX IF NOT EXISTS page_index_site_engine_state ON krot_index.page_index (site, engine, state);
 
-CREATE TABLE IF NOT EXISTS krot.index_run (
+CREATE TABLE IF NOT EXISTS krot_index.index_run (
     site      varchar(255) NOT NULL,
     engine    varchar(16)  NOT NULL,
     -- The machine's day: nobody but this machine measured the night.
@@ -45,9 +45,9 @@ CREATE TABLE IF NOT EXISTS krot.index_run (
     PRIMARY KEY (site, engine, day)
 );
 
-CREATE INDEX IF NOT EXISTS index_run_day ON krot.index_run (day);
+CREATE INDEX IF NOT EXISTS index_run_day ON krot_index.index_run (day);
 
-CREATE TABLE IF NOT EXISTS krot.schema_version (
+CREATE TABLE IF NOT EXISTS krot_index.schema_version (
     version integer NOT NULL
 );
 
@@ -55,6 +55,6 @@ CREATE TABLE IF NOT EXISTS krot.schema_version (
 -- because the role reapplies this on every pass and a timer starting between the
 -- two statements would find no version and go red over a healthy database.
 BEGIN;
-DELETE FROM krot.schema_version;
-INSERT INTO krot.schema_version (version) VALUES (1);
+DELETE FROM krot_index.schema_version;
+INSERT INTO krot_index.schema_version (version) VALUES (1);
 COMMIT;

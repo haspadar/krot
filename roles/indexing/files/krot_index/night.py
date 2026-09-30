@@ -146,7 +146,7 @@ def refusal_of(offer):
 
 
 class Spending:
-    """One row of krot.index_run: what the night was allowed and what it did."""
+    """One row of krot_index.index_run: what the night was allowed and what it did."""
 
     def __init__(self, site, engine, offer, share, asked):
         unreadable = offer.states is None

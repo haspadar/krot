@@ -9,7 +9,7 @@
 # ambiguous to read back. Each value:
 #
 #   database:  required. The project's database on this machine's cluster; the
-#              role creates the `krot` schema in it.
+#              role creates the `krot_index` schema in it.
 #   reader:    required. The project's application role: gets USAGE and SELECT
 #              on the schema, so the project's screens can read what was sent.
 #   engines:   required, a list out of google, bing, yandex, indexnow. Explicit,

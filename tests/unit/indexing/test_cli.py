@@ -14,9 +14,10 @@ class Unreachable:
 
 
 class Schemaless:
-    """A database that answers, without the krot schema in it."""
+    """A database that answers, without the krot_index schema in it."""
 
     autocommit = False
+    rowcount = -1
 
     def __call__(self, **kwargs):
         return self
@@ -31,7 +32,10 @@ class Schemaless:
         return False
 
     def execute(self, sql, args=()):
-        raise RuntimeError('relation "krot.schema_version" does not exist')
+        # A search path naming schemas that are not there is accepted, as Postgres does.
+        if sql.startswith("SET search_path"):
+            return
+        raise RuntimeError('relation "schema_version" does not exist')
 
 
 @pytest.fixture

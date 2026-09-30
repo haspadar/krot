@@ -3,6 +3,23 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 7.0.0
+
+### Changed
+
+- **`indexing` role: the schema is `krot_index`, named after its program as `krot_collect` is.**
+  The first 7.x run renames the program's own `krot` schema in place, so its rows, the reader's
+  grants and the default privileges on later tables move with it. Until a database is renamed,
+  the program reads its tables under the old name: the program is one per machine, and another
+  project's database is renamed only by that project's own run. A database where the program's
+  account owns both names is refused before anything changes; a `krot` schema of anybody else's
+  is left alone.
+- **A project's screens switch with the run that renames their database**: queries on
+  `krot.page_index` or `krot.index_run` fail from that moment. Unqualified names under
+  `SET search_path TO krot_index, krot` read either, so the screens can go first. A Doctrine
+  `schema_filter` excluding `krot.` must become `'~^(?!krot(_\w+)?\.)~'` before the run, or
+  `doctrine:schema:update` offers to drop `krot_index`.
+
 ## 6.1.0
 
 ### Added
@@ -15,8 +32,8 @@ changing a default that affects production) bump major.
   it on the same inputs; tables and keys match it, so its history moves over with
   `INSERT … SELECT`.
 - **A log that cannot be read is red, not a quiet day**: a file the account cannot open, a
-  truncated archive, and — new — a file of twenty lines or more none of which is in the declared
-  format. Days read before a failing file are kept; that file's own days are not marked read.
+  truncated archive, and — new — a file where twenty lines or more, and over 1% of it, are not
+  in the declared format. Days read before a failing file are kept; that file's own days are not marked read.
 - **Its own schema**, apart from the indexing role's: the two programs each demand their own
   version row. A consumer whose Doctrine filters `krot.` has to widen the filter to
   `'~^(?!krot(_\w+)?\.)~'` before the first run.

@@ -18,6 +18,11 @@ indexing_unit_marker: "# krot-indexing-unit"
 # a unit test holds the three — this, schema.sql and the program — equal.
 indexing_schema_version: 1
 
+# Named after the program, as the collector's krot_collect is. Before 7.0.0 it was
+# krot; project.yml renames the program's own schema of that name once.
+indexing_schema: krot_index
+indexing_legacy_schema: krot
+
 indexing_engines: [google, bing, yandex, indexnow]
 
 # Where each engine's key sits in a project's entry.

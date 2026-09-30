@@ -1,6 +1,6 @@
 ---
-# One project, already checked by preflight.yml: its database gets the krot
-# schema, its keys and config land in files the unit reads.
+# One project, already checked by preflight.yml: its database gets the
+# krot_index schema, its keys and config land in files the unit reads.
 - name: Let the program and the application connect to the database
   community.postgresql.postgresql_privs:
     login_db: postgres
@@ -15,24 +15,62 @@
   # --check on a machine the role has not been on: see main.yml.
   when: not ansible_check_mode or indexing_pg_role.query_result[0].present
 
+# Asked here and not taken from preflight.yml, whose register a later project
+# of the same run has overwritten by now.
+- name: Look for the schema as a run before 7.0.0 left it
+  community.postgresql.postgresql_query:
+    login_db: "{{ indexing_plan.database }}"
+    query: >-
+      SELECT EXISTS (SELECT 1 FROM pg_namespace
+                     WHERE nspname = %(legacy)s AND pg_get_userbyid(nspowner) = %(user)s)
+         AND to_regnamespace(%(schema)s) IS NULL AS due
+    named_args:
+      legacy: "{{ indexing_legacy_schema }}"
+      schema: "{{ indexing_schema }}"
+      user: "{{ indexing_user }}"
+  become: true
+  become_user: postgres
+  check_mode: false
+  changed_when: false
+  register: indexing_legacy
+
+# Renamed rather than created anew and copied: the rows, the application's grants
+# and the default privileges on later tables all hang on the schema, not on its
+# name, and move with it. Identifiers cannot be bound, hence the names from vars.
+# Under --check too: the module runs it in a transaction and rolls it back, so
+# the dry run shows the rename it is about to make.
+- name: Rename the program's schema from its name before 7.0.0
+  community.postgresql.postgresql_query:
+    login_db: "{{ indexing_plan.database }}"
+    query: ALTER SCHEMA {{ indexing_legacy_schema }} RENAME TO {{ indexing_schema }}
+  become: true
+  become_user: postgres
+  changed_when: true
+  when: indexing_legacy.query_result[0].due
+
 # Owned by the program's role, so the tables schema.sql makes are its own and it
 # can write them. The application only reads — below. preflight.yml refused a
-# krot schema owned by anybody else, so this only ever creates.
-- name: Create the krot schema in the project's database
+# krot_index schema owned by anybody else, so this only ever creates.
+- name: Create the krot_index schema in the project's database
   community.postgresql.postgresql_schema:
     login_db: "{{ indexing_plan.database }}"
-    name: krot
+    name: "{{ indexing_schema }}"
     owner: "{{ indexing_user }}"
   become: true
   become_user: postgres
+  # The rename above makes it; under --check, which rolls the rename back, this
+  # would otherwise report a creation that no real run makes.
+  when: not indexing_legacy.query_result[0].due
 
 # The same for the schema: under --check it is not created, and a grant on it
 # would be refused. Asked apart from the version table below, since a schema a
 # failed run left without one still has grants --check can show.
-- name: Read whether the krot schema exists
+- name: Read whether the krot_index schema exists
   community.postgresql.postgresql_query:
     login_db: "{{ indexing_plan.database }}"
-    query: SELECT to_regnamespace('krot') IS NOT NULL AS present
+    query: SELECT to_regnamespace(%(schema)s) IS NOT NULL AS present
+    named_args:
+      schema: "{{ indexing_schema }}"
   become: true
   become_user: postgres
   check_mode: false
@@ -42,7 +80,7 @@
 - name: Read whether the schema has its version table
   community.postgresql.postgresql_query:
     login_db: "{{ indexing_plan.database }}"
-    query: SELECT to_regclass('krot.schema_version') IS NOT NULL AS present
+    query: SELECT to_regclass('krot_index.schema_version') IS NOT NULL AS present
   become: true
   become_user: postgres
   check_mode: false
@@ -52,7 +90,7 @@
 - name: Read the version it is at
   community.postgresql.postgresql_query:
     login_db: "{{ indexing_plan.database }}"
-    query: SELECT coalesce(max(version), 0) AS version FROM krot.schema_version
+    query: SELECT coalesce(max(version), 0) AS version FROM krot_index.schema_version
   become: true
   become_user: postgres
   check_mode: false
@@ -89,7 +127,7 @@
   community.postgresql.postgresql_privs:
     login_db: "{{ indexing_plan.database }}"
     type: schema
-    objs: krot
+    objs: "{{ indexing_schema }}"
     privs: USAGE
     roles: "{{ indexing_plan.reader }}"
   become: true
@@ -100,7 +138,7 @@
   community.postgresql.postgresql_privs:
     login_db: "{{ indexing_plan.database }}"
     type: table
-    schema: krot
+    schema: "{{ indexing_schema }}"
     objs: ALL_IN_SCHEMA
     privs: SELECT
     roles: "{{ indexing_plan.reader }}"
@@ -115,7 +153,7 @@
     login_db: "{{ indexing_plan.database }}"
     type: default_privs
     target_roles: "{{ indexing_user }}"
-    schema: krot
+    schema: "{{ indexing_schema }}"
     objs: TABLES
     privs: SELECT
     roles: "{{ indexing_plan.reader }}"
