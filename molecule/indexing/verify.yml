@@ -237,8 +237,9 @@
       become: true
       become_user: postgres
 
-# A machine as 6.x left it: the same schema, rows, grants and default privileges,
-# under the name it had then. The role's next run is the upgrade.
+# A machine where the program is already 7.x and this database's schema still
+# has the name 6.x gave it — another project's run upgraded the program, or this
+# run failed before the rename. The night has to keep working through it.
 - name: Verify the upgrade from the schema's name before 7.0.0
   hosts: krot-indexing
   tasks:
@@ -250,6 +251,38 @@
       become_user: postgres
       changed_when: true
 
+    # One row a day per site and engine, replaced by a second night: gone, it can
+    # only come back through the old name.
+    - name: Take out the first night's row
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: DELETE FROM krot.index_run
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    # Red for the sitemap as before, after the schema's check and with its row.
+    - name: Run a night against the old name
+      ansible.builtin.command: systemctl start --wait krot-index-molecule-indexnow.service
+      changed_when: true
+      failed_when: false
+
+    - name: Read what the night wrote under the old name
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: SELECT count(*) AS runs FROM krot.index_run
+      become: true
+      become_user: postgres
+      register: indexing_old_runs
+
+    # Read the version and wrote the row, both by the old name.
+    - name: The program worked through the old name
+      ansible.builtin.assert:
+        that:
+          - indexing_old_runs.query_result[0].runs == 1
+        fail_msg: "{{ indexing_old_runs.query_result | to_json }}"
+        quiet: true
+
     - name: Run the role over it
       ansible.builtin.include_role:
         name: indexing
@@ -260,29 +293,21 @@
         query: >-
           SELECT (SELECT array_agg(nspname::text ORDER BY nspname) FROM pg_namespace
                   WHERE nspname IN ('krot', 'krot_index')) AS schemas,
-                 (SELECT count(*) FROM krot_index.index_run) AS runs
+                 (SELECT count(*) FROM krot_index.index_run) AS runs,
+                 (SELECT count(*) FROM pg_tables WHERE schemaname = 'krot_index' AND tablename = 'later') AS later
       become: true
       become_user: postgres
       register: indexing_moved
 
-    # The night's row came along: renamed, not recreated empty.
+    # The night's row and the table added after the schema: renamed, not made
+    # anew by the create task.
     - name: Renamed with its rows, not made anew
       ansible.builtin.assert:
         that:
           - >-
-            indexing_moved.query_result[0] == {'schemas': ['krot_index'], 'runs': 1}
+            indexing_moved.query_result[0] == {'schemas': ['krot_index'], 'runs': 1, 'later': 1}
         fail_msg: "{{ indexing_moved.query_result | to_json }}"
         quiet: true
-
-    # Granted through default privileges on a table made after the schema — the
-    # grant a schema recreated instead of renamed would lose.
-    - name: The application still reads the later table
-      community.postgresql.postgresql_query:
-        login_db: molecule_site
-        session_role: molecule_app
-        query: SELECT count(*) AS rows FROM krot_index.later
-      become: true
-      become_user: postgres
 
     - name: A second schema of the program's under the old name, made by hand
       community.postgresql.postgresql_schema:
@@ -308,3 +333,20 @@
               - "'owns both' in ansible_failed_result.msg"
             fail_msg: "{{ ansible_failed_result.msg }}"
             quiet: true
+
+    - name: Read the schemas after the refusal
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: >-
+          SELECT array_agg(nspname::text ORDER BY nspname) AS schemas FROM pg_namespace
+          WHERE nspname IN ('krot', 'krot_index')
+      become: true
+      become_user: postgres
+      register: indexing_after_refusal
+
+    - name: Refused before anything changed
+      ansible.builtin.assert:
+        that:
+          - indexing_after_refusal.query_result[0].schemas == ['krot', 'krot_index']
+        fail_msg: "{{ indexing_after_refusal.query_result | to_json }}"
+        quiet: true

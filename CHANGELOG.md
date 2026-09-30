@@ -9,10 +9,16 @@ changing a default that affects production) bump major.
 
 - **`indexing` role: the schema is `krot_index`, named after its program as `krot_collect` is.**
   The first 7.x run renames the program's own `krot` schema in place, so its rows, the reader's
-  grants and the default privileges on later tables move with it. A project's screens querying
-  `krot.page_index` or `krot.index_run` must switch to `krot_index.` with this upgrade. A
-  database where the program's account owns both names is refused before anything changes; a
-  `krot` schema of anybody else's is left alone.
+  grants and the default privileges on later tables move with it. Until a database is renamed,
+  the program reads its tables under the old name: the program is one per machine, and another
+  project's database is renamed only by that project's own run. A database where the program's
+  account owns both names is refused before anything changes; a `krot` schema of anybody else's
+  is left alone.
+- **A project's screens switch with the run that renames their database**: queries on
+  `krot.page_index` or `krot.index_run` fail from that moment. Unqualified names under
+  `SET search_path TO krot_index, krot` read either, so the screens can go first. A Doctrine
+  `schema_filter` excluding `krot.` must become `'~^(?!krot(_\w+)?\.)~'` before the run, or
+  `doctrine:schema:update` offers to drop `krot_index`.
 
 ## 6.1.0
 

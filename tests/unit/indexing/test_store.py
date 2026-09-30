@@ -33,6 +33,7 @@ def admin(psycopg2):
     connection.autocommit = True
     with connection.cursor() as cursor:
         cursor.execute("DROP SCHEMA IF EXISTS krot_index CASCADE")
+        cursor.execute("DROP SCHEMA IF EXISTS krot CASCADE")
         cursor.execute("CREATE SCHEMA krot_index")
         with open(SCHEMA) as source:
             cursor.execute(source.read())
@@ -67,6 +68,19 @@ def test_absent_schema_is_refused(store, admin):
     sql(admin, "DROP SCHEMA krot_index CASCADE")
     with pytest.raises(Missing):
         store.check()
+
+
+def test_the_schema_under_its_name_before_7_is_read_until_renamed(store, admin):
+    sql(admin, "ALTER SCHEMA krot_index RENAME TO krot")
+    store.remember(SITE, "google", HOME, night.KNOWN)
+    assert sql(admin, "SELECT url FROM krot.page_index") == [(HOME,)]
+
+
+def test_the_renamed_schema_is_read_over_the_old_name(store, admin):
+    sql(admin, "CREATE SCHEMA krot")
+    sql(admin, "CREATE TABLE krot.page_index (LIKE krot_index.page_index)")
+    store.remember(SITE, "google", HOME, night.KNOWN)
+    assert sql(admin, "SELECT count(*) FROM krot_index.page_index") == [(1,)]
 
 
 def test_schema_applied_twice_holds_one_version(admin):

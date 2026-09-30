@@ -1,6 +1,6 @@
 ---
 # One project against the cluster, before anything on the machine changes.
-- name: Look for the project's database, reader and krot schema
+- name: Look for the project's database and reader
   community.postgresql.postgresql_query:
     login_db: postgres
     query: >-
@@ -46,20 +46,27 @@
   changed_when: false
   register: indexing_schemas
 
-# Both of the program's own at once: somebody made the second by hand, and which
-# holds the history is for a person to say, not for a rename to overwrite.
-- name: Refuse a schema this role did not make, or the program's under both names
+- name: Refuse a schema this role did not make
   ansible.builtin.assert:
     that:
       - indexing_schemas.query_result | selectattr('name', 'equalto', indexing_schema)
         | rejectattr('owner', 'equalto', indexing_user) | list | length == 0
+    fail_msg: >-
+      {{ indexing_plan.database }} already has a {{ indexing_schema }} schema owned by
+      somebody other than {{ indexing_user }}. This role does not adopt it — find out
+      whose it is first.
+    quiet: true
+
+# Both of the program's own at once: somebody made the second by hand, and which
+# holds the history is for a person to say, not for a rename to overwrite.
+- name: Refuse the program's schema under both names
+  ansible.builtin.assert:
+    that:
       - indexing_schemas.query_result | selectattr('owner', 'equalto', indexing_user) | list | length < 2
     fail_msg: >-
-      {{ indexing_plan.database }}: {{ indexing_schemas.query_result | to_json }}.
-      Either {{ indexing_schema }} belongs to somebody other than {{ indexing_user }}
-      — this role does not adopt it, find out whose it is first — or {{ indexing_user }}
-      owns both {{ indexing_legacy_schema }} and {{ indexing_schema }}, and one of
-      them has to go by hand once it is clear which holds the history.
+      In {{ indexing_plan.database }} {{ indexing_user }} owns both {{ indexing_legacy_schema }}
+      and {{ indexing_schema }}. One has to go by hand once it is clear which holds
+      the history.
     quiet: true
 
 # Checked, not assumed: peer is what maps the program's account to its Postgres
