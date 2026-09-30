@@ -1,0 +1,180 @@
+---
+# The machine as a project leaves it: a cluster, the project's databases and its
+# application role, nginx's log directory with a file of every kind the crawl
+# must tell apart, and units already there that the retirement must tell apart.
+- name: Prepare
+  hosts: krot-collecting
+  vars:
+    # {day} is counted back from today below: fixed dates would fall out of the
+    # fourteen-month window the day this scenario grows old.
+    # One day's lines: a person, five families, a claimed trainer asking for
+    # credentials; one line without rt=, one slow, a 503 on robots.
+    collecting_hits:
+      - [66.249.66.1, "GET /card/7", 200, 5120, "Mozilla/5.0 (compatible; Googlebot/2.1)", " rt=0.120"]
+      - [66.249.66.1, "GET /media/a.jpg", 200, 90000, "Googlebot-Image/1.0", " rt=0.010"]
+      - [216.144.248.20, "HEAD /", 200, 0, "Mozilla/5.0 (compatible; watchdog-probe bot/1)", " rt=0.004"]
+      - [203.0.113.7, "GET /card/7?utm=x", 200, 4000, "Mozilla/5.0 ChatGPT-User/1.0", " rt=1.500"]
+      - [203.0.113.8, "GET /.env", 404, 150, "GPTBot/1.1", " rt=0.002"]
+      - [198.51.100.4, "GET /berlin", 200, 7000, "Mozilla/5.0 (Windows NT 10.0) Chrome/120", " rt=0.300"]
+      - [198.51.100.4, "GET /robots.txt", 503, 0, "Mozilla/5.0 (compatible; bingbot/2.0)", ""]
+    # One line per hit; the break inside the line sits in a Jinja comment, so it
+    # never reaches the file.
+    collecting_lines: |
+      {% for hit in collecting_hits %}
+      [{day}:10:0{{ loop.index0 }}:00 +0300] {{ hit[0] }} - {host} "{{ hit[1] }} HTTP/1.1" {#
+      #}{{ hit[2] }} {{ hit[3] }} "-" "{{ hit[4] }}" cf=DE{{ hit[5] }}
+      {% endfor %}
+    collecting_logs:
+      - {host: whole.test, file: whole.test-access.log, ago: 0}
+      - {host: whole.test, file: whole.test-access.log.1, ago: 1}
+      - {host: whole.test, file: whole.test-access.log.2, ago: 2, gz: true}
+      - {host: broken.test, file: broken.test-access.log, ago: 0}
+      - {host: broken.test, file: broken.test-access.log.1, ago: 1}
+      - {host: broken.test, file: broken.test-access.log.2, ago: 2, gz: true, truncate: true}
+      - {host: locked.test, file: locked.test-access.log, ago: 0, locked: true}
+    collecting_planted:
+      # Taken off by collecting_retired_projects: goes.
+      - unit: krot-collect-gone-crawl
+        marker: "# krot-collecting-unit"
+      # Another project's, installed by its own run of this role: stays.
+      - unit: krot-collect-other-crawl
+        marker: "# krot-collecting-unit"
+      # A job this scenario's project does not run: goes.
+      - unit: krot-collect-molecule-search
+        marker: "# krot-collecting-unit"
+      # Same prefix, somebody else's unit without the marker: stays.
+      - unit: krot-collect-notes-crawl
+        marker: "# written by hand"
+  tasks:
+    - name: Install Postgres
+      ansible.builtin.apt:
+        name:
+          - postgresql
+          - python3-psycopg2
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Start the cluster
+      ansible.builtin.systemd_service:
+        name: postgresql
+        state: started
+
+    - name: The project's application role
+      community.postgresql.postgresql_user:
+        name: molecule_app
+      become: true
+      become_user: postgres
+
+    - name: The project's databases
+      community.postgresql.postgresql_db:
+        name: "{{ item }}"
+        owner: molecule_app
+      loop: [molecule_site, molecule_quiet]
+      become: true
+      become_user: postgres
+
+    # Ordinary hardening, and the case where a reader with every grant on the
+    # schema still cannot get in — unless the role grants CONNECT too.
+    - name: The databases closed to PUBLIC
+      community.postgresql.postgresql_privs:
+        login_db: postgres
+        type: database
+        objs: "{{ item }}"
+        privs: CONNECT
+        roles: PUBLIC
+        state: absent
+      loop: [molecule_site, molecule_quiet]
+      become: true
+      become_user: postgres
+
+    # As Ubuntu's nginx package leaves it: readable by the adm group only.
+    - name: The log directory of nginx
+      ansible.builtin.file:
+        path: /var/log/nginx
+        state: directory
+        owner: root
+        group: adm
+        mode: "0755"
+
+    - name: The sites' logs, as nginx writes them
+      ansible.builtin.copy:
+        dest: "/var/log/nginx/{{ item.file }}"
+        content: >-
+          {{ collecting_lines
+             | replace('{host}', item.host)
+             | replace('{day}', '%d/%b/%Y' | strftime(ansible_date_time.epoch | int - item.ago * 86400)) }}
+        owner: "{{ 'root' if item.locked | default(false) else 'www-data' }}"
+        group: "{{ 'root' if item.locked | default(false) else 'adm' }}"
+        mode: "{{ '0600' if item.locked | default(false) else '0640' }}"
+      loop: "{{ collecting_logs }}"
+      loop_control:
+        label: "{{ item.file }}"
+
+    - name: A log whose format has drifted from the program's
+      ansible.builtin.copy:
+        dest: /var/log/nginx/junk.test-access.log
+        content: "{{ 'GET / 200 from somewhere in a format nobody declared\n' * 25 }}"
+        owner: www-data
+        group: adm
+        mode: "0640"
+
+    # gzip replaces the file with <file>.gz, as logrotate's compress does.
+    - name: Compress the older rotations
+      ansible.builtin.command:
+        argv: [gzip, -f, "/var/log/nginx/{{ item.file }}"]
+      loop: "{{ collecting_logs | selectattr('gz', 'defined') | list }}"
+      loop_control:
+        label: "{{ item.file }}"
+      changed_when: true
+
+    # Cut short, as a rotation caught mid-write leaves it: the trailer is gone.
+    - name: Truncate the broken archive
+      ansible.builtin.command:
+        argv: [truncate, -s, "-12", /var/log/nginx/broken.test-access.log.2.gz]
+      changed_when: true
+
+    - name: Services already on the machine
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item.unit }}.service"
+        content: |
+          {{ item.marker }}
+          [Unit]
+          Description=Planted by the scenario
+          [Service]
+          Type=oneshot
+          ExecStart=/bin/true
+        mode: "0644"
+      loop: "{{ collecting_planted }}"
+      loop_control:
+        label: "{{ item.unit }}"
+
+    - name: And their timers
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ item.unit }}.timer"
+        content: |
+          [Timer]
+          OnCalendar=daily
+          [Install]
+          WantedBy=timers.target
+        mode: "0644"
+      loop: "{{ collecting_planted }}"
+      loop_control:
+        label: "{{ item.unit }}"
+
+    - name: The config directory a dropped project left
+      ansible.builtin.file:
+        path: /etc/krot-collect
+        state: directory
+        mode: "0755"
+
+    - name: The dropped project's config and another project's
+      ansible.builtin.copy:
+        dest: "/etc/krot-collect/{{ item }}"
+        content: "{}\n"
+        mode: "0644"
+      loop: [gone.json, other.json]
+
+    - name: Let systemd see the planted units
+      ansible.builtin.systemd_service:
+        daemon_reload: true

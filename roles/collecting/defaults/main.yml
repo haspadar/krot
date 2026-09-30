@@ -1,0 +1,66 @@
+---
+# The projects whose sites' crawler visits are collected every night, declared by
+# the inventory: the machine owns the program, the project owns the list. Empty by
+# default, so applying the role to a machine with nothing to collect is a no-op.
+#
+# Each key is a project name, [a-z0-9]+ — it goes into unit names as
+# krot-collect-<project>-<job>, and a dash in it would make that name ambiguous
+# to read back. Each value:
+#
+#   database: required. The project's database on this machine's cluster; the
+#             role creates the `krot_collect` schema in it.
+#   reader:   required. The project's application role: gets USAGE and SELECT on
+#             the schema, and on the tables of later versions.
+#   timers:   optional, true by default. false installs the schema, the config
+#             and the units and leaves the timers off — for moving history in
+#             before the first night writes over it.
+#   logs:     optional dict:
+#               directory: /var/log/nginx by default.
+#               pattern:   "{domain}-access.log*" by default; rotations included.
+#               format:    a format the program knows by name — time_first.
+#   crawl:    optional dict:
+#               media_prefix:  where the project serves photographs; absent, no
+#                              `media` section and no `-media` families.
+#               ai_paths:      true keeps the pages AI readers took
+#                              (crawler_path); false by default.
+#               extra_agents:  [{mark, family, ai: read|train}] — the project's
+#                              own crawler marks, looked for BEFORE the shared
+#                              ones: its uptime monitor, for one.
+#               extra_range_sources: [{name, url, shape: json|lines|markup,
+#                              families, browser_agent}] — published ranges for
+#                              a family the shared list does not cover.
+#               sections:      the project's one rule set:
+#                 rules:         [{section, prefixes, bare: self|other}], in order
+#                 bare_segment:  the section of a lone unknown segment at the
+#                                root, or absent for `other`
+#                 service_words: lone segments that are not places (lower case)
+#                 slice:         {segments, last, section} — a regex on the last
+#                                of exactly that many segments
+#   schedules: optional dict job -> OnCalendar, over collecting_schedules.
+#   sites:    required list of {domain}. ⚠️ EVERY site whose log the project
+#             wants read, closed ones included: a site left out is a log never
+#             read, and nothing turns red over it.
+collecting_projects: {}
+
+# Projects to take off this machine: their units and config go. ⚠️ Only by this
+# list, never by absence from collecting_projects — every project applies this
+# role from its own inventory, and a project missing from this run is as likely
+# another project's as a dropped one. The schema and its rows stay in the
+# project's database: they are its history.
+collecting_retired_projects: []
+
+# ranges BEFORE crawl, and by hours: the crawl reads what ranges left. Missing
+# ranges leave a family unconfirmed, never accused — so the order costs accuracy
+# for a night at worst.
+collecting_schedules:
+  ranges: "*-*-* 22:00:00"
+  crawl: "*-*-* 00:05:00"
+
+collecting_timeouts:
+  # Eighteen sources at thirty seconds each, with room.
+  ranges: 30m
+  # A first run reads a fortnight of archives for every site.
+  crawl: 2h
+
+# Projects on one machine collect at different minutes rather than all at once.
+collecting_randomized_delay: 15m

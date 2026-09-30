@@ -1,0 +1,26 @@
+{
+  "_": "Which published list speaks for which crawler family. The operator's own list first; an aggregator only where the operator publishes no file (Meta) or publishes it as a page inside an application (Amazon). A family named nowhere is neither confirmed nor accused. One source per FILE the operator publishes, naming every family the operator says it speaks for. shape: json = {creationTime, prefixes: [{ipv4Prefix|ipv6Prefix}]}; lines = one range per line; markup = ranges dug out of a page. A project adds its own (extra_range_sources) — its uptime monitor, for one. The name is what bot_range.source holds: renaming one drops its rows after the next run.",
+  "sources": [
+    {"name": "google:common-crawlers", "url": "https://developers.google.com/static/crawling/ipranges/common-crawlers.json", "shape": "json",
+     "families": ["googlebot", "googlebot-image", "googleother", "google-extended", "google-cloudvertexbot"]},
+    {"name": "google:special-crawlers", "url": "https://developers.google.com/static/crawling/ipranges/special-crawlers.json", "shape": "json", "families": []},
+    {"name": "google:user-triggered-agents", "url": "https://developers.google.com/static/crawling/ipranges/user-triggered-agents.json", "shape": "json", "families": []},
+    {"name": "google:user-triggered-fetchers-google", "url": "https://developers.google.com/static/crawling/ipranges/user-triggered-fetchers-google.json", "shape": "json", "families": []},
+    {"name": "google:user-triggered-fetchers", "url": "https://developers.google.com/static/crawling/ipranges/user-triggered-fetchers.json", "shape": "json", "families": []},
+    {"name": "anthropic", "url": "https://claude.com/crawling/bots.json", "shape": "json",
+     "families": ["claudebot", "claude-user", "claude-searchbot"]},
+    {"name": "openai:gptbot", "url": "https://openai.com/gptbot.json", "shape": "json", "families": ["gptbot"]},
+    {"name": "openai:searchbot", "url": "https://openai.com/searchbot.json", "shape": "json", "families": ["oai-searchbot"]},
+    {"name": "openai:chatgpt-user", "url": "https://openai.com/chatgpt-user.json", "shape": "json", "families": ["chatgpt-user"]},
+    {"name": "perplexity", "url": "https://www.perplexity.com/perplexitybot.json", "shape": "json", "families": ["perplexitybot"]},
+    {"name": "perplexity:user", "url": "https://www.perplexity.com/perplexity-user.json", "shape": "json", "families": ["perplexity-user"]},
+    {"name": "bing", "url": "https://www.bing.com/toolbox/bingbot.json", "shape": "json", "families": ["bingbot"]},
+    {"name": "apple", "url": "https://search.developer.apple.com/applebot.json", "shape": "json", "families": ["applebot"]},
+    {"name": "duckduckgo", "url": "https://duckduckgo.com/duckduckbot.json", "shape": "json", "families": ["duckduckbot"]},
+    {"name": "duckduckgo:duckassistbot", "url": "https://duckduckgo.com/duckassistbot.json", "shape": "json", "families": ["duckassistbot"]},
+    {"name": "yandex", "url": "https://yandex.com/ips", "shape": "markup", "families": ["yandexbot"], "browser_agent": true},
+    {"name": "aggregator:meta", "url": "https://cloud-ip-ranges.com/download/meta.txt", "shape": "lines",
+     "families": ["meta-externalagent", "facebookexternalhit"]},
+    {"name": "aggregator:amazonbot", "url": "https://cloud-ip-ranges.com/download/amazonbot.txt", "shape": "lines", "families": ["amazonbot"]}
+  ]
+}

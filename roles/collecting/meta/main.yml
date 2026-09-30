@@ -1,0 +1,18 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    Nightly collection of each project's crawler visits from nginx's logs: the
+    krot-collect program, a ranges and a crawl timer per project, and the
+    krot_collect schema in the project's own database.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - seo
+    - crawlers
+
+dependencies: []
