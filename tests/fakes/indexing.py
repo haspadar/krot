@@ -14,7 +14,7 @@ HOLD = datetime.timedelta(days=14)
 
 
 class FakeStore:
-    """krot.page_index and krot.index_run, in memory, with a clock the test moves."""
+    """krot_index.page_index and krot_index.index_run, in memory, with a clock the test moves."""
 
     def __init__(self):
         self.now = datetime.datetime(2026, 9, 29, 12, 0)

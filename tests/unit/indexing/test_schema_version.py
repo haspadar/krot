@@ -23,5 +23,5 @@ def test_role_applies_the_version_the_program_expects():
 
 def test_schema_file_writes_the_version_the_program_expects():
     with open(os.path.join(ROLE, "files", "schema.sql")) as source:
-        written = re.findall(r"INSERT INTO krot\.schema_version \(version\) VALUES \((\d+)\)", source.read())
+        written = re.findall(r"INSERT INTO krot_index\.schema_version \(version\) VALUES \((\d+)\)", source.read())
     assert written == [str(store.SCHEMA_VERSION)]

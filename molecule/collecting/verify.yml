@@ -190,7 +190,7 @@
       community.postgresql.postgresql_query:
         login_db: molecule_site
         query: >-
-          SELECT (SELECT array_agg(version) FROM krot.schema_version) AS indexing,
+          SELECT (SELECT array_agg(version) FROM krot_index.schema_version) AS indexing,
                  (SELECT array_agg(version) FROM krot_collect.schema_version) AS collecting
       become: true
       become_user: postgres

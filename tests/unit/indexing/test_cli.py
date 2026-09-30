@@ -14,7 +14,7 @@ class Unreachable:
 
 
 class Schemaless:
-    """A database that answers, without the krot schema in it."""
+    """A database that answers, without the krot_index schema in it."""
 
     autocommit = False
 
@@ -31,7 +31,7 @@ class Schemaless:
         return False
 
     def execute(self, sql, args=()):
-        raise RuntimeError('relation "krot.schema_version" does not exist')
+        raise RuntimeError('relation "krot_index.schema_version" does not exist')
 
 
 @pytest.fixture

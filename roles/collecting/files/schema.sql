@@ -4,9 +4,9 @@
 -- its own schema on a recreated database would start the history over, green.
 -- The program only checks that this is here and at the version it was written for.
 --
--- Its own schema rather than `krot`: the indexing role's program demands exactly
--- one row in krot.schema_version, and its role refuses a `krot` schema owned by
--- anybody else. Two programs sharing one schema would break each other.
+-- Its own schema rather than the indexing one: that program demands exactly one
+-- row in krot_index.schema_version, and its role refuses a krot_index schema owned
+-- by anybody else. Two programs sharing one schema would break each other.
 --
 -- Columns, types and keys repeat an earlier PHP implementation's tables exactly
 -- (site_crawler_day and the rest, without the site_ prefix), so moving its history

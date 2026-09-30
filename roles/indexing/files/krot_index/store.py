@@ -1,4 +1,4 @@
-"""The krot schema of a project's database: what each engine said and what was sent.
+"""The krot_index schema of a project's database: what each engine said and what was sent.
 
 A port of an earlier PHP implementation's stores. The one departure is what a
 failed write does: the earlier one swallowed only the night's summary, and so does this one —
@@ -59,18 +59,18 @@ class PostgresStore:
     def check(self):
         """Raises Missing unless the schema is here and at this program's version."""
         try:
-            rows = self._rows("SELECT version FROM krot.schema_version")
+            rows = self._rows("SELECT version FROM krot_index.schema_version")
         except Exception as failure:
-            raise Missing("no krot schema in database %s (%s) — run the indexing role"
+            raise Missing("no krot_index schema in database %s (%s) — run the indexing role"
                           % (self.database, first_line(failure)))
         versions = [row[0] for row in rows]
         if versions != [SCHEMA_VERSION]:
-            raise Missing("krot schema in database %s is at version %s, this program expects %d — run the indexing role"
+            raise Missing("krot_index schema in database %s is at version %s, this program expects %d — run the indexing role"
                           % (self.database, versions or "none", SCHEMA_VERSION))
 
     def remember(self, site, engine, url, state):
         self._run(
-            "INSERT INTO krot.page_index (site, engine, url, state, asked_at) VALUES (%s, %s, %s, %s, now())"
+            "INSERT INTO krot_index.page_index (site, engine, url, state, asked_at) VALUES (%s, %s, %s, %s, now())"
             " ON CONFLICT (site, engine, url) DO UPDATE SET state = EXCLUDED.state, asked_at = now()",
             (site, engine, url, state))
 
@@ -79,25 +79,25 @@ class PostgresStore:
         # until this one, and an UPDATE alone would forget every page it sent.
         # An existing row keeps its state — that is what the engine SAID.
         self._run(
-            "INSERT INTO krot.page_index (site, engine, url, state, submitted_at) VALUES (%s, %s, %s, 'unknown', now())"
+            "INSERT INTO krot_index.page_index (site, engine, url, state, submitted_at) VALUES (%s, %s, %s, 'unknown', now())"
             " ON CONFLICT (site, engine, url) DO UPDATE SET submitted_at = now()",
             (site, engine, url))
 
     def offered_recently(self, site, engine):
         return [row[0] for row in self._rows(
-            "SELECT url FROM krot.page_index WHERE site = %s AND engine = %s"
+            "SELECT url FROM krot_index.page_index WHERE site = %s AND engine = %s"
             " AND submitted_at > now() - %s * interval '1 day'",
             (site, engine, OFFER_HOLDS_DAYS))]
 
     def asked(self, site, engine):
         """The site's pages this engine answered about, longest ago first."""
         return [row[0] for row in self._rows(
-            "SELECT url FROM krot.page_index WHERE site = %s AND engine = %s ORDER BY asked_at, url",
+            "SELECT url FROM krot_index.page_index WHERE site = %s AND engine = %s ORDER BY asked_at, url",
             (site, engine))]
 
     def ever_offered(self, site, engine):
         return self._rows(
-            "SELECT count(*) FROM krot.page_index WHERE site = %s AND engine = %s AND submitted_at IS NOT NULL",
+            "SELECT count(*) FROM krot_index.page_index WHERE site = %s AND engine = %s AND submitted_at IS NOT NULL",
             (site, engine))[0][0]
 
     def forget_gone(self, site, serving):
@@ -107,7 +107,7 @@ class PostgresStore:
             # and never gets here, so empty can only be a mistake — and deleting
             # on it would empty the site's history.
             return 0
-        return self._run("DELETE FROM krot.page_index WHERE site = %s AND NOT (url = ANY(%s))",
+        return self._run("DELETE FROM krot_index.page_index WHERE site = %s AND NOT (url = ANY(%s))",
                          (site, list(serving)))
 
     def record(self, spending):
@@ -118,7 +118,7 @@ class PostgresStore:
         """
         try:
             self._run(
-                "INSERT INTO krot.index_run (site, engine, day, allowance, floor, attempted, accepted, held, waiting,"
+                "INSERT INTO krot_index.index_run (site, engine, day, allowance, floor, attempted, accepted, held, waiting,"
                 " refusal, ran_at) VALUES (%s, %s, current_date, %s, %s, %s, %s, %s, %s, %s, now())"
                 " ON CONFLICT (site, engine, day) DO UPDATE SET allowance = EXCLUDED.allowance,"
                 " floor = EXCLUDED.floor, attempted = EXCLUDED.attempted, accepted = EXCLUDED.accepted,"

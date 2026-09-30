@@ -3,6 +3,17 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 7.0.0
+
+### Changed
+
+- **`indexing` role: the schema is `krot_index`, named after its program as `krot_collect` is.**
+  The first 7.x run renames the program's own `krot` schema in place, so its rows, the reader's
+  grants and the default privileges on later tables move with it. A project's screens querying
+  `krot.page_index` or `krot.index_run` must switch to `krot_index.` with this upgrade. A
+  database where the program's account owns both names is refused before anything changes; a
+  `krot` schema of anybody else's is left alone.
+
 ## 6.1.0
 
 ### Added
@@ -15,8 +26,8 @@ changing a default that affects production) bump major.
   it on the same inputs; tables and keys match it, so its history moves over with
   `INSERT … SELECT`.
 - **A log that cannot be read is red, not a quiet day**: a file the account cannot open, a
-  truncated archive, and — new — a file of twenty lines or more none of which is in the declared
-  format. Days read before a failing file are kept; that file's own days are not marked read.
+  truncated archive, and — new — a file where twenty lines or more, and over 1% of it, are not
+  in the declared format. Days read before a failing file are kept; that file's own days are not marked read.
 - **Its own schema**, apart from the indexing role's: the two programs each demand their own
   version row. A consumer whose Doctrine filters `krot.` has to widen the filter to
   `'~^(?!krot(_\w+)?\.)~'` before the first run.

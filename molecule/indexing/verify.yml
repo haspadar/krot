@@ -149,7 +149,7 @@
         login_db: molecule_site
         query: >-
           SELECT count(*) AS tables, count(*) FILTER (WHERE tableowner <> 'krot_index') AS foreign
-          FROM pg_tables WHERE schemaname = 'krot'
+          FROM pg_tables WHERE schemaname = 'krot_index'
       become: true
       become_user: postgres
       register: indexing_owners
@@ -184,7 +184,7 @@
     - name: The night's row was written as the program's account
       community.postgresql.postgresql_query:
         login_db: molecule_site
-        query: SELECT refusal FROM krot.index_run WHERE site = 'molecule.test' AND engine = 'indexnow'
+        query: SELECT refusal FROM krot_index.index_run WHERE site = 'molecule.test' AND engine = 'indexnow'
       become: true
       become_user: postgres
       register: indexing_row
@@ -194,7 +194,7 @@
       community.postgresql.postgresql_query:
         login_db: molecule_site
         session_role: molecule_app
-        query: SELECT count(*) AS rows FROM krot.index_run
+        query: SELECT count(*) AS rows FROM krot_index.index_run
       become: true
       become_user: postgres
       register: indexing_read
@@ -204,7 +204,7 @@
       community.postgresql.postgresql_query:
         login_db: molecule_site
         session_role: molecule_app
-        query: DELETE FROM krot.index_run
+        query: DELETE FROM krot_index.index_run
       become: true
       become_user: postgres
       register: indexing_write
@@ -224,7 +224,7 @@
           - -d
           - molecule_site
           - -c
-          - CREATE TABLE IF NOT EXISTS krot.later (id int)
+          - CREATE TABLE IF NOT EXISTS krot_index.later (id int)
       become: true
       become_user: krot_index
       changed_when: true
@@ -233,6 +233,78 @@
       community.postgresql.postgresql_query:
         login_db: molecule_site
         session_role: molecule_app
-        query: SELECT count(*) AS rows FROM krot.later
+        query: SELECT count(*) AS rows FROM krot_index.later
       become: true
       become_user: postgres
+
+# A machine as 6.x left it: the same schema, rows, grants and default privileges,
+# under the name it had then. The role's next run is the upgrade.
+- name: Verify the upgrade from the schema's name before 7.0.0
+  hosts: krot-indexing
+  tasks:
+    - name: Give the schema its old name back
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: ALTER SCHEMA krot_index RENAME TO krot
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Run the role over it
+      ansible.builtin.include_role:
+        name: indexing
+
+    - name: Read where the program's schema is now
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: >-
+          SELECT (SELECT array_agg(nspname::text ORDER BY nspname) FROM pg_namespace
+                  WHERE nspname IN ('krot', 'krot_index')) AS schemas,
+                 (SELECT count(*) FROM krot_index.index_run) AS runs
+      become: true
+      become_user: postgres
+      register: indexing_moved
+
+    # The night's row came along: renamed, not recreated empty.
+    - name: Renamed with its rows, not made anew
+      ansible.builtin.assert:
+        that:
+          - >-
+            indexing_moved.query_result[0] == {'schemas': ['krot_index'], 'runs': 1}
+        fail_msg: "{{ indexing_moved.query_result | to_json }}"
+        quiet: true
+
+    # Granted through default privileges on a table made after the schema — the
+    # grant a schema recreated instead of renamed would lose.
+    - name: The application still reads the later table
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        session_role: molecule_app
+        query: SELECT count(*) AS rows FROM krot_index.later
+      become: true
+      become_user: postgres
+
+    - name: A second schema of the program's under the old name, made by hand
+      community.postgresql.postgresql_schema:
+        login_db: molecule_site
+        name: krot
+        owner: krot_index
+      become: true
+      become_user: postgres
+
+    - name: Is refused rather than renamed over
+      block:
+        - name: Run the role with both names there
+          ansible.builtin.include_role:
+            name: indexing
+
+        - name: The role must not have got this far
+          ansible.builtin.fail:
+            msg: the role accepted the program's schema under both names
+      rescue:
+        - name: It named both
+          ansible.builtin.assert:
+            that:
+              - "'owns both' in ansible_failed_result.msg"
+            fail_msg: "{{ ansible_failed_result.msg }}"
+            quiet: true

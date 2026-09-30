@@ -27,29 +27,39 @@
       this role only adds its schema.
     quiet: true
 
-# ⚠️ A krot schema somebody else made is not adopted: handing it to the
-# program's role would take a namespace this role cannot vouch for, and
-# schema.sql would then run against tables it did not write.
-- name: Look for a krot schema already in the database
+# ⚠️ A schema somebody else made is not adopted: handing it to the program's
+# role would take a namespace this role cannot vouch for, and schema.sql would
+# then run against tables it did not write. The name before 7.0.0 is read too:
+# the program's own is renamed by project.yml, somebody else's is left alone.
+- name: Look for the program's schema under its name and the one before 7.0.0
   community.postgresql.postgresql_query:
     login_db: "{{ indexing_plan.database }}"
     query: >-
-      SELECT pg_get_userbyid(nspowner) AS owner FROM pg_namespace WHERE nspname = 'krot'
+      SELECT nspname AS name, pg_get_userbyid(nspowner) AS owner FROM pg_namespace
+      WHERE nspname IN (%(schema)s, %(legacy)s)
+    named_args:
+      schema: "{{ indexing_schema }}"
+      legacy: "{{ indexing_legacy_schema }}"
   become: true
   become_user: postgres
   check_mode: false
   changed_when: false
-  register: indexing_schema_owner
+  register: indexing_schemas
 
-- name: Refuse a krot schema this role did not make
+# Both of the program's own at once: somebody made the second by hand, and which
+# holds the history is for a person to say, not for a rename to overwrite.
+- name: Refuse a schema this role did not make, or the program's under both names
   ansible.builtin.assert:
     that:
-      - indexing_schema_owner.query_result | length == 0
-        or indexing_schema_owner.query_result[0].owner == indexing_user
+      - indexing_schemas.query_result | selectattr('name', 'equalto', indexing_schema)
+        | rejectattr('owner', 'equalto', indexing_user) | list | length == 0
+      - indexing_schemas.query_result | selectattr('owner', 'equalto', indexing_user) | list | length < 2
     fail_msg: >-
-      {{ indexing_plan.database }} already has a krot schema owned by
-      {{ indexing_schema_owner.query_result[0].owner | default('') }}, not {{ indexing_user }}.
-      This role does not adopt it — find out whose it is first.
+      {{ indexing_plan.database }}: {{ indexing_schemas.query_result | to_json }}.
+      Either {{ indexing_schema }} belongs to somebody other than {{ indexing_user }}
+      — this role does not adopt it, find out whose it is first — or {{ indexing_user }}
+      owns both {{ indexing_legacy_schema }} and {{ indexing_schema }}, and one of
+      them has to go by hand once it is clear which holds the history.
     quiet: true
 
 # Checked, not assumed: peer is what maps the program's account to its Postgres
