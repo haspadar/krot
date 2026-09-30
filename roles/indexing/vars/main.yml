@@ -23,6 +23,11 @@ indexing_schema_version: 1
 indexing_schema: krot_index
 indexing_legacy_schema: krot
 
+# Polls 30 s apart before the rename: a little over the longest night in
+# indexing_timeouts (Yandex, 3h), past which systemd has stopped the unit itself.
+# Still running after that, the run fails with the unit named, schema untouched.
+indexing_rename_wait_retries: 370
+
 indexing_engines: [google, bing, yandex, indexnow]
 
 # Where each engine's key sits in a project's entry.

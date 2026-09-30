@@ -34,6 +34,31 @@
   changed_when: false
   register: indexing_legacy
 
+# ⚠️ A night 6.x started writes krot.* by name, one statement at a time: renamed
+# under it, its next write fails after the page went to the engine, and the page
+# is offered again tomorrow. Waited for, not stopped — a night cut short loses
+# more. Only nights already running matter: one started later is 7.x, installed
+# before this loop, and reads through search_path across the rename. A oneshot
+# is `activating` while it runs, hence the states.
+- name: Wait for the project's running nights before the rename
+  ansible.builtin.command:
+    argv:
+      - systemctl
+      - list-units
+      - --type=service
+      - --state=activating,active,deactivating
+      - --no-legend
+      - --plain
+      - "krot-index-{{ indexing_plan.name }}-*.service"
+  register: indexing_running
+  changed_when: false
+  check_mode: false
+  until: indexing_running.stdout | trim | length == 0
+  retries: "{{ indexing_rename_wait_retries }}"
+  delay: 30
+  # Under --check the rename is rolled back, so there is nothing to wait for.
+  when: not ansible_check_mode and indexing_legacy.query_result[0].due
+
 # Renamed rather than created anew and copied: the rows, the application's grants
 # and the default privileges on later tables all hang on the schema, not on its
 # name, and move with it. Identifiers cannot be bound, hence the names from vars.
