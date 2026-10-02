@@ -168,7 +168,7 @@ class Client:
         except Exception:
             raise GscError(0, "invalid_service_account") from None
         answer = self._request(TOKEN_URI, form={"grant_type": GRANT_TYPE, "assertion": assertion})
-        token = answer.get("access_token")
+        token = answer.get("access_token")  # secret-lint: allow — runtime API field, no literal credential
         expires = answer.get("expires_in", 3600)
         if (not isinstance(token, str) or not token or any(c.isspace() for c in token)
                 or not finite_number(expires) or expires <= 0):

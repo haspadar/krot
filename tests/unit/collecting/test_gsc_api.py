@@ -331,7 +331,12 @@ def test_invalid_property_fails_before_http(property):
     assert http.requests == []
 
 
-@pytest.mark.parametrize("page", ["not a URL", "ftp://files.example/document", "https://secret:password@portal.example/", "https://[broken/"])
+@pytest.mark.parametrize("page", [
+    "not a URL",
+    "ftp://files.example/document",
+    "https://secret:password@portal.example/",  # secret-lint: allow — fabricated URL rejected by the test
+    "https://[broken/",
+])
 def test_invalid_page_key_fails(page):
     client, _, _ = setup(ok({"rows": [row(["2026-09-30", page])]}))
     with pytest.raises(GscError, match="invalid_page"):
