@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 # The version of schema.sql this program was written against. The role writes it;
 # the program only reads it.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # How long crawler figures are kept. Nothing here is personal — a crawler is a
 # machine — so the limit is only what a screen can compare: a year answers "is
@@ -76,7 +76,7 @@ class PostgresStore:
             raise Missing("no krot_collect schema in database %s (%s) — run the collecting role"
                           % (self.database, first_line(failure)))
         versions = [row[0] for row in rows]
-        if versions != [SCHEMA_VERSION]:
+        if versions not in ([1], [SCHEMA_VERSION]):
             raise Missing("krot_collect schema in database %s is at version %s, this program expects %d — run the "
                           "collecting role" % (self.database, versions or "none", SCHEMA_VERSION))
 

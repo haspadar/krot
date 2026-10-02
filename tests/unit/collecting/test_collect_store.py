@@ -136,3 +136,10 @@ def test_stored_ranges_are_read_back(store):
 
 def test_months_before_clamps_to_the_months_end():
     assert months_before(date(2027, 4, 30), 14) == date(2026, 2, 28)
+
+
+def test_crawler_reads_version_one_until_that_projects_role_is_applied(store, admin):
+    rows(admin, "UPDATE krot_collect.schema_version SET version=1 RETURNING version")
+    store.check()
+    store.store(SITE, reading([line()]))
+    assert rows(admin, "SELECT requests FROM krot_collect.crawler_day") == [(1,)]

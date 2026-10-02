@@ -35,6 +35,7 @@ Krot держит машины проектов-потребителей: про
 | [Docker на хосте проекта](operations/docker.md) | что ставит роль и где кончается её зона |
 | [Счётчик посещаемости](operations/analytics-counter.md) | почему свой, а не арендованный; сборка на машине, петля, `APP_SECRET` |
 | [Отправка страниц поисковикам](operations/search-engine-indexing.md) | юнит на проект и движок, схема `krot_index` в базе проекта, что красит ночь |
+| [Дневная статистика поиска](operations/search-performance.md) | GSC final, история, ошибки и перенос читателей |
 | [Сбор обходов краулеров](operations/crawler-collection.md) | логи nginx и диапазоны краулеров по проекту, схема `krot_collect`, что красит ночь |
 | [Резервные копии баз](operations/database-backups.md) | список баз спрашивается у кластера; свой ключ; проверка восстановления судит по данным |
 | [Секреты](operations/secrets.md) | Bitwarden в рантайме, `BW_SESSION`, почему роль падает |

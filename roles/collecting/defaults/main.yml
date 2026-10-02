@@ -14,6 +14,16 @@
 #   timers:   optional, true by default. false installs the schema, the config
 #             and the units and leaves the timers off — for moving history in
 #             before the first night writes over it.
+#   jobs:     optional list [ranges, crawl, gsc], default [ranges, crawl].
+#   disabled_timers: optional selected jobs whose timers stay off, e.g. [gsc]
+#                    during history migration while crawlers keep running.
+#   extra_readers: optional existing Postgres roles granted read-only access.
+#   gsc:      required for a declared gsc job:
+#               service_account: service-account JSON/string, secret; separate 0600 file.
+#               backfill_days: initial history, at least 28 (default 28).
+#               overlap_days: finalized recent days re-read nightly (default 7).
+#               retention_months: 1..16, default 16; rows and attempts expire together.
+#               freshness_days: latest successful final day may trail PT today by 5.
 #   logs:     optional dict:
 #               directory: /var/log/nginx by default.
 #               pattern:   "{domain}-access.log*" by default; rotations included.
@@ -37,7 +47,8 @@
 #                 slice:         {segments, last, section} — a regex on the last
 #                                of exactly that many segments
 #   schedules: optional dict job -> OnCalendar, over collecting_schedules.
-#   sites:    required list of {domain}. ⚠️ EVERY site whose log the project
+#   sites:    required list of {domain, property?}; default property sc-domain:<domain>.
+#             EVERY site whose log the project
 #             wants read, closed ones included: a site left out is a log never
 #             read, and nothing turns red over it.
 collecting_projects: {}
@@ -55,12 +66,14 @@ collecting_retired_projects: []
 collecting_schedules:
   ranges: "*-*-* 22:00:00"
   crawl: "*-*-* 00:05:00"
+  gsc: "*-*-* 04:00:00"
 
 collecting_timeouts:
   # Eighteen sources at thirty seconds each, with room.
   ranges: 30m
   # A first run reads a fortnight of archives for every site.
   crawl: 2h
+  gsc: 2h
 
 # Projects on one machine collect at different minutes rather than all at once.
 collecting_randomized_delay: 15m

@@ -27,6 +27,29 @@
       this role only adds its schema.
     quiet: true
 
+- name: Look for every additional reader role
+  community.postgresql.postgresql_query:
+    login_db: postgres
+    query: SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = %(reader)s) AS present
+    named_args:
+      reader: "{{ item }}"
+  loop: "{{ collecting_plan.extra_readers }}"
+  become: true
+  become_user: postgres
+  check_mode: false
+  changed_when: false
+  register: collecting_extra_readers
+
+- name: Refuse additional readers missing from the cluster
+  ansible.builtin.assert:
+    that:
+      - item.query_result[0].present
+    fail_msg: "{{ collecting_plan.name }}: additional reader {{ item.item }} does not exist."
+    quiet: true
+  loop: "{{ collecting_extra_readers.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+
 # ⚠️ A krot_collect schema somebody else made is not adopted: schema.sql would
 # then run against tables this role did not write.
 - name: Look for a krot_collect schema already in the database

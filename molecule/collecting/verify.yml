@@ -8,7 +8,7 @@
   vars:
     collecting_whole_days: 3
   tasks:
-    - name: Both jobs of the project are enabled
+    - name: Both crawler jobs of the project are enabled
       ansible.builtin.command: systemctl is-enabled krot-collect-molecule-{{ item }}.timer
       loop: [ranges, crawl]
       register: collecting_enabled
@@ -17,10 +17,82 @@
 
     - name: A project that asked for no timers has none running
       ansible.builtin.command: systemctl is-enabled krot-collect-quiet-{{ item }}.timer
-      loop: [ranges, crawl]
+      loop: [gsc]
       register: collecting_quiet
       changed_when: false
       failed_when: collecting_quiet.stdout != "disabled"
+
+    - name: GSC import leaves crawler timers running
+      ansible.builtin.command: systemctl is-enabled krot-collect-molecule-gsc.timer
+      register: collecting_gsc_disabled
+      changed_when: false
+      failed_when: collecting_gsc_disabled.stdout != "disabled"
+
+    - name: A GSC-only project has no crawler units
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/krot-collect-quiet-{{ item }}.service"
+      loop: [ranges, crawl]
+      register: collecting_unselected
+
+    - name: Unselected jobs were never installed
+      ansible.builtin.assert:
+        that:
+          - collecting_unselected.results | map(attribute='stat.exists') | list == [false, false]
+        quiet: true
+
+    - name: Read GSC credential permissions
+      ansible.builtin.stat:
+        path: /etc/krot-collect/molecule.google.json
+      register: collecting_credential
+
+    - name: Only the collector owns and reads its credential
+      ansible.builtin.assert:
+        that:
+          - collecting_credential.stat.exists
+          - collecting_credential.stat.mode == '0600'
+          - collecting_credential.stat.pw_name == 'krot_collect'
+          - collecting_credential.stat.gr_name == 'krot_collect'
+        quiet: true
+
+    - name: Read the public configuration
+      ansible.builtin.slurp:
+        src: /etc/krot-collect/molecule.json
+      register: collecting_public
+
+    - name: The public configuration contains settings and properties without keys
+      ansible.builtin.assert:
+        that:
+          - >-
+            collecting_public_json.gsc == {'backfill_days': 28, 'overlap_days': 7,
+            'retention_months': 16, 'freshness_days': 5}
+          - collecting_public_json.jobs == ['ranges', 'crawl', 'gsc']
+          - collecting_public_json.disabled_timers == ['gsc']
+          - collecting_public_json.sites[0].property == 'sc-domain:whole.test'
+          - "'private_key' not in (collecting_public.content | b64decode)"
+          - "'service_account' not in (collecting_public.content | b64decode)"
+        quiet: true
+      vars:
+        collecting_public_json: "{{ collecting_public.content | b64decode | from_json }}"
+
+    - name: Check the additional reader's current and future grants
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: >-
+          SELECT has_database_privilege('molecule_analyst', current_database(), 'CONNECT') AS connect,
+            has_schema_privilege('molecule_analyst', 'krot_collect', 'USAGE') AS usage,
+            has_table_privilege('molecule_analyst', 'krot_collect.search_day', 'SELECT') AS read,
+            has_table_privilege('molecule_analyst', 'krot_collect.search_day', 'INSERT') AS write,
+            EXISTS (SELECT 1 FROM pg_default_acl d, LATERAL aclexplode(d.defaclacl) a
+                    WHERE d.defaclrole = 'krot_collect'::regrole
+                      AND d.defaclnamespace = 'krot_collect'::regnamespace
+                      AND a.grantee = 'molecule_analyst'::regrole
+                      AND a.privilege_type = 'SELECT') AS future_read
+      become: true
+      become_user: postgres
+      register: collecting_extra_grants
+      failed_when: >-
+        collecting_extra_grants.query_result != [{'connect': true, 'usage': true,
+        'read': true, 'write': false, 'future_read': true}]
 
     - name: The program's account is in the log group
       ansible.builtin.command: id -nG krot_collect
@@ -39,7 +111,7 @@
       register: collecting_owners
       # The count too: on an empty schema "none foreign" would hold vacuously.
       failed_when: >-
-        collecting_owners.query_result[0].tables != 7
+        collecting_owners.query_result[0].tables != 12
         or collecting_owners.query_result[0].foreign != 0
 
     # Red on purpose: three of five sites cannot be read. It reaches that after
@@ -196,7 +268,7 @@
       become_user: postgres
       register: collecting_versions
       failed_when: >-
-        collecting_versions.query_result[0] != {'indexing': [1], 'collecting': [1]}
+        collecting_versions.query_result[0] != {'indexing': [1], 'collecting': [2]}
 
     - name: Look for the planted units
       ansible.builtin.stat:
@@ -222,11 +294,11 @@
     - name: Look for the dropped project's config and another project's
       ansible.builtin.stat:
         path: "/etc/krot-collect/{{ item }}"
-      loop: [gone.json, other.json]
+      loop: [gone.json, other.json, gone.google.json, other.google.json]
       register: collecting_configs
 
     - name: The dropped project's config went, the other stayed
       ansible.builtin.assert:
         that:
-          - collecting_configs.results | map(attribute='stat.exists') | list == [false, true]
+          - collecting_configs.results | map(attribute='stat.exists') | list == [false, true, false, true]
         quiet: true
