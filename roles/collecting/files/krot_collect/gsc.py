@@ -7,7 +7,7 @@ from krot_collect.gsc_store import DATASETS
 from krot_collect.store import months_before
 
 
-def planned_days(markers, today, settings, start=None, end=None):
+def planned_days(markers, today, settings, start=None, end=None, horizon=None):
     cutoff = months_before(today, settings.get("retention_months", 16))
     if (start is None) != (end is None):
         raise ValueError("GSC backfill needs both --from and --to")
@@ -16,6 +16,8 @@ def planned_days(markers, today, settings, start=None, end=None):
             raise ValueError("GSC dates must be ordered, within retention, and before today in PT")
         return [(day, list(DATASETS)) for day in days(start, end)]
     eligible = {day for day, _ in markers if cutoff <= day < today}
+    if horizon is not None and horizon < today:
+        eligible.add(horizon)
     first = min(eligible) if eligible else today - timedelta(days=settings.get("backfill_days", 28))
     first = max(cutoff, min(first, today - timedelta(days=settings.get("backfill_days", 28))))
     overlap = today - timedelta(days=settings.get("overlap_days", 7))
@@ -56,7 +58,8 @@ class Collection:
             for site in config["sites"]:
                 domain = site["domain"]
                 property = site.get("property", "sc-domain:" + domain)
-                plan = planned_days(self.store.markers(domain, property), self.today, settings, start, end)
+                plan = planned_days(self.store.markers(domain, property), self.today, settings, start, end,
+                                    horizon=self.store.horizon(domain, property))
                 for day, datasets in plan:
                     # Probe each day: a day omitted from final data is unavailable, not a zero.
                     attempts = {dataset: self.store.start(domain, property, day, dataset) for dataset in datasets}

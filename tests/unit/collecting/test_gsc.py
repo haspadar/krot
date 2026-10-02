@@ -21,6 +21,11 @@ class MemoryStore:
     def markers(self, site, property):
         return {(day, dataset) for (domain, day, dataset) in self.saved if domain == site}
 
+    def horizon(self, site, property):
+        known = [day for domain, day, _ in self.saved if domain == site]
+        known += [attempt["day"] for attempt in self.attempts if attempt["site"] == site]
+        return min(known, default=None)
+
     def start(self, site, property, day, dataset):
         self.attempts.append({'site': site, 'day': day, 'dataset': dataset, 'status': 'running'})
         return len(self.attempts) - 1
@@ -114,3 +119,10 @@ def test_a_site_without_finalized_history_reports_staleness():
 def test_unsafe_explicit_ranges_are_refused(start, end):
     with pytest.raises(ValueError):
         planned_days(set(), date(2026, 10, 2), {}, start, end)
+
+
+def test_the_failed_first_backfill_day_remains_scheduled_after_the_window_moves():
+    today = date(2026, 10, 3)
+    markers = {(date(2026, 9, 5) + timedelta(days=i), dataset) for i in range(27) for dataset in DATASETS}
+    plan = planned_days(markers, today, {}, horizon=date(2026, 9, 4))
+    assert (date(2026, 9, 4), list(DATASETS)) in plan

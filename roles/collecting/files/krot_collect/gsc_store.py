@@ -35,6 +35,18 @@ class SearchStore(PostgresStore):
             "SELECT day, dataset FROM krot_collect.search_day WHERE site = %s AND property = %s"
             " AND search_type = 'web' AND finalized AND pagination_complete IS TRUE", (site, property))}
 
+    def horizon(self, site, property):
+        # A failed first day must not disappear when the initial window rolls forward.
+        # Imported rows without a calendar are also history the new collector can repair.
+        queries = ["SELECT day FROM krot_collect.search_%s WHERE site=%%s AND search_type='web'" % dataset
+                   for dataset in DATASETS]
+        args = [site] * len(queries)
+        for table in ("day", "attempt"):
+            queries.append("SELECT day FROM krot_collect.search_%s WHERE site=%%s AND property=%%s"
+                           " AND search_type='web'" % table)
+            args.extend((site, property))
+        return self._rows("SELECT min(day) FROM (" + " UNION ALL ".join(queries) + ") history", tuple(args))[0][0]
+
     def start(self, site, property, day, dataset):
         if dataset not in DATASETS:
             raise ValueError("unknown GSC dataset")
@@ -88,24 +100,26 @@ class SearchStore(PostgresStore):
         self.transaction(statements)
 
     def export(self, sites, start, end, out):
-        # A coherent snapshot, allowed to read but never to modify a table.
-        self._run("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY")
+        # Named server cursors bound client memory; all datasets share one read-only snapshot.
+        self.connection.set_session(readonly=True, isolation_level="REPEATABLE READ", autocommit=False)
         try:
-            with self.connection.cursor() as cursor:
-                for dataset in (*DATASETS, "day", "attempt"):
+            for dataset in (*DATASETS, "day", "attempt"):
+                with self.connection.cursor(name="krot_export_" + dataset) as cursor:
                     table = "krot_collect.search_" + dataset
                     cursor.execute("SELECT * FROM %s WHERE site=ANY(%%s) AND day BETWEEN %%s AND %%s ORDER BY site,day" % table,
                                    (list(sites), start, end))
-                    columns = [one[0] for one in cursor.description]
                     while True:
                         rows = cursor.fetchmany(1000)
                         if not rows:
                             break
+                        columns = [one[0] for one in cursor.description]
                         for values in rows:
                             record = {"contract_version": 1, "dataset": dataset, "row": dict(zip(columns, values))}
                             print(json.dumps(record, default=lambda value: value.isoformat()
                                              if isinstance(value, date) else str(value)), file=out)
-            self._run("COMMIT")
+            self.connection.commit()
         except BaseException:
-            self._run("ROLLBACK")
+            self.connection.rollback()
             raise
+        finally:
+            self.connection.set_session(readonly=False, isolation_level="READ COMMITTED", autocommit=True)

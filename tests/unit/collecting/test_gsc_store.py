@@ -38,7 +38,7 @@ def store(db):
 def rows(db, sql):
     with db.cursor() as cursor:
         cursor.execute(sql)
-        return cursor.fetchall()
+        return cursor.fetchall() if cursor.description else []
 
 
 def replace(store, figures, dataset='page'):
@@ -135,3 +135,26 @@ def test_version_one_upgrade_preserves_old_history_and_adds_search_tables(db):
         cursor.execute(SCHEMA.read_text())
     assert rows(db, "SELECT site,version,to_regclass('krot_collect.search_page') IS NOT NULL"
                 ' FROM krot_collect.crawler_read CROSS JOIN krot_collect.schema_version') == [('nest.test', 2, True)]
+
+
+def test_attempts_keep_the_oldest_failed_day_in_the_repair_horizon(store):
+    store.start('seed.test', 'sc-domain:seed.test', date(2026, 8, 1), 'query')
+    assert store.horizon('seed.test', 'sc-domain:seed.test') == date(2026, 8, 1)
+
+
+def test_imported_uncertified_rows_keep_the_old_history_horizon(store, db):
+    rows(db, "INSERT INTO krot_collect.search_page_query(site,day,url,query,impressions,clicks,position)"
+         " VALUES('grove.test','2026-01-01','/shade','tree',4,0,6) RETURNING site")
+    assert store.horizon('grove.test', 'sc-domain:grove.test') == date(2026, 1, 1)
+
+
+def test_export_does_not_require_writer_privileges(store, db):
+    replace(store, [page('/harvest')])
+    rows(db, "DO $$ BEGIN IF NOT EXISTS(SELECT FROM pg_roles WHERE rolname='gsc_export_reader')"
+         " THEN CREATE ROLE gsc_export_reader; END IF; END $$")
+    rows(db, 'GRANT USAGE ON SCHEMA krot_collect TO gsc_export_reader')
+    rows(db, 'GRANT SELECT ON ALL TABLES IN SCHEMA krot_collect TO gsc_export_reader')
+    store._run('SET ROLE gsc_export_reader')
+    out = io.StringIO()
+    store.export(['orchard.test'], date(2026, 9, 1), date(2026, 9, 30), out)
+    assert len(out.getvalue().splitlines()) == 3
