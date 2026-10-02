@@ -47,7 +47,8 @@
 #                 slice:         {segments, last, section} — a regex on the last
 #                                of exactly that many segments
 #   schedules: optional dict job -> OnCalendar, over collecting_schedules.
-#   sites:    required list of {domain, property?}; default property sc-domain:<domain>. ⚠️ EVERY site whose log the project
+#   sites:    required list of {domain, property?}; default property sc-domain:<domain>.
+#             EVERY site whose log the project
 #             wants read, closed ones included: a site left out is a log never
 #             read, and nothing turns red over it.
 collecting_projects: {}
