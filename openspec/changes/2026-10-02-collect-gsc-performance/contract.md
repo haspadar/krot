@@ -11,7 +11,8 @@ collecting_projects:
     reader: atlas
     extra_readers: [analyst]
     jobs: [gsc]  # omitted: [ranges, crawl]; opt-in GSC
-    timers: false  # initial import; true enables declared jobs
+    timers: true
+    disabled_timers: [gsc]  # prepare/import while existing jobs keep running
     gsc:
       service_account: "{{ google_service_account_json }}"
       backfill_days: 28
@@ -38,10 +39,12 @@ All data tables have `site`, `day`, `search_type` (web), impressions, clicks, po
 Query reports cannot reconstruct page totals or all anonymous queries. Full strings are retained;
 wide text keys use generated hashes rather than truncation.
 `search_day`: site, day, search_type, dataset (query/page/page_query), property,
-row_count, collected_at, pagination_complete, coverage_limited, provenance.
+row_count, collected_at, pagination_complete (nullable), coverage_limited, finalized, provenance.
 `search_attempt`: attempt id, site, day, search_type, dataset, property, started_at, finished_at,
 status (running/success/failed/unavailable), row_count, error. No secrets in error/export.
 
+A separate final date report confirms availability. Missing dates produce unavailable attempts,
+not success/zero markers. An empty report on an available final date has row_count=0.
 Each report/day replaces its own data and successful marker in one transaction. Failure leaves its
 previous data/marker untouched; attempts record the failure. All three reports may complete
 independently; consumers must require the reports/days needed by their analysis. `pagination_complete`

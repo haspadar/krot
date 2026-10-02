@@ -3,6 +3,20 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 7.1.0
+
+### Added
+
+- **Finalized GSC Performance in `collecting`**, selected with `jobs: [gsc]` or alongside
+  `ranges`/`crawl`: independent query/country/device, page and page/query daily reports,
+  at least 28 days of initial history, recent-day refresh and missing-day repair
+- **Version 2 adds search history without removing crawler data**: each report/day and its
+  successful marker commit atomically, attempts record failures/unavailable final dates,
+  and stale finalized data fails the job; API coverage limitations remain explicit
+- **Private service-account files and read-only SQL/JSONL access**: existing application readers
+  and optional extra reader roles can read current/future tables; `disabled_timers: [gsc]`
+  permits importing history while existing crawler timers keep running
+
 ## 7.0.1
 
 ### Fixed
