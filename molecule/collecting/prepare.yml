@@ -62,7 +62,8 @@
 
     - name: The project's application role
       community.postgresql.postgresql_user:
-        name: molecule_app
+        name: "{{ item }}"
+      loop: [molecule_app, molecule_analyst]
       become: true
       become_user: postgres
 
@@ -173,7 +174,7 @@
         dest: "/etc/krot-collect/{{ item }}"
         content: "{}\n"
         mode: "0644"
-      loop: [gone.json, other.json]
+      loop: [gone.json, other.json, gone.google.json, other.google.json]
 
     - name: Let systemd see the planted units
       ansible.builtin.systemd_service:

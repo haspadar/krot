@@ -2,7 +2,7 @@
 {% set project = item.0.name %}
 {% set job = item.1 %}
 [Unit]
-Description=Collect {{ project }}'s crawler visits: {{ job }} (timer)
+Description=Collect {{ project }}'s statistics: {{ job }} (timer)
 
 [Timer]
 OnCalendar={{ item.0.schedules[job] | default(collecting_schedules[job]) }}

@@ -40,6 +40,14 @@ provisioner:
           molecule:
             database: molecule_site
             reader: molecule_app
+            extra_readers: [molecule_analyst]
+            jobs: [ranges, crawl, gsc]
+            disabled_timers: [gsc]
+            gsc:
+              service_account:
+                type: service_account
+                client_email: collecting@scenario.invalid
+                private_key: "scenario-key-never-used"  # secret-lint: allow
             crawl:
               media_prefix: /media/
               ai_paths: true
@@ -70,6 +78,12 @@ provisioner:
           quiet:
             database: molecule_quiet
             reader: molecule_app
+            jobs: [gsc]
+            gsc:
+              service_account:
+                type: service_account
+                client_email: quiet@scenario.invalid
+                private_key: "quiet-key-never-used"  # secret-lint: allow
             timers: false
             sites:
               - domain: whole.test
