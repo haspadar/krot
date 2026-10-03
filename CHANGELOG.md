@@ -3,6 +3,15 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 8.1.0
+
+### Added
+
+- **`common_root_discard`** (undefined by default — the role leaves `/etc/fstab` alone):
+  `false` drops online `discard` from an ext4 root and remounts `/` with `nodiscard`, refused
+  unless `fstrim.timer` is enabled; `true` puts it back. Only the root line's options change,
+  and the new fstab is checked for parse errors before it replaces the old one
+
 ## 8.0.0
 
 ### Changed (breaking)

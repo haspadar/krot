@@ -124,3 +124,93 @@
       register: failed_units
       changed_when: false
       failed_when: failed_units.stdout | trim | length > 0
+
+    # Online discard is off by default (the scenario never sets it), so these passes
+    # drive the role's discard tasks against a planted copy: a container's / is an
+    # overlay with no fstab line. The image's own root line, tabs and a stray space
+    # included, beside a second mount that must come through untouched.
+    - name: Plant the cloud image's fstab
+      ansible.builtin.copy:
+        src: fstab-image
+        dest: /tmp/fstab
+        mode: "0644"
+
+    - name: The weekly trim the false setting requires
+      ansible.builtin.systemd_service:
+        name: fstrim.timer
+        enabled: true
+
+    - name: Keep discard where the image already has it
+      ansible.builtin.include_role:
+        name: common
+        tasks_from: root-discard
+      vars:
+        common_fstab_path: /tmp/fstab
+        common_root_discard: true
+
+    - name: Read the fstab after keeping
+      ansible.builtin.slurp:
+        src: /tmp/fstab
+      register: fstab_kept
+
+    - name: Drop discard
+      ansible.builtin.include_role:
+        name: common
+        tasks_from: root-discard
+      vars:
+        common_fstab_path: /tmp/fstab
+        common_root_discard: false
+
+    - name: Read the fstab after dropping
+      ansible.builtin.slurp:
+        src: /tmp/fstab
+      register: fstab_dropped
+
+    - name: Drop discard again
+      ansible.builtin.include_role:
+        name: common
+        tasks_from: root-discard
+      vars:
+        common_fstab_path: /tmp/fstab
+        common_root_discard: false
+
+    - name: Read the fstab after dropping twice
+      ansible.builtin.slurp:
+        src: /tmp/fstab
+      register: fstab_dropped_twice
+
+    - name: Only the root line's options changed, and only once
+      ansible.builtin.assert:
+        that:
+          # lookup('file') drops the final newline; the planted files end in one.
+          - (fstab_kept.content | b64decode) == lookup('file', 'fstab-image') ~ '\n'
+          - (fstab_dropped.content | b64decode) == lookup('file', 'fstab-image-nodiscard') ~ '\n'
+          - fstab_dropped_twice.content == fstab_dropped.content
+        quiet: true
+
+    # A line whose only option is discard: removing it must leave `defaults`, not an
+    # empty field that shifts the dump and pass numbers into the options column.
+    - name: Plant a root line with discard as its only option
+      ansible.builtin.copy:
+        dest: /tmp/fstab
+        mode: "0644"
+        content: "UUID=0a1b2c3d / ext4 discard 0 1\n"
+
+    - name: Drop the only option
+      ansible.builtin.include_role:
+        name: common
+        tasks_from: root-discard
+      vars:
+        common_fstab_path: /tmp/fstab
+        common_root_discard: false
+
+    - name: Read the single-option fstab
+      ansible.builtin.slurp:
+        src: /tmp/fstab
+      register: fstab_single
+
+    - name: The options field became defaults
+      ansible.builtin.assert:
+        that:
+          - (fstab_single.content | b64decode) == "UUID=0a1b2c3d / ext4 defaults 0 1\n"
+        quiet: true

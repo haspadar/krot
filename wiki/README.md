@@ -31,6 +31,7 @@ Krot держит машины проектов-потребителей: про
 | [Периодические задачи](operations/cron-jobs.md) | systemd-таймеры вместо crontab, как смотреть, что объявлять явно |
 | [Логи и ротация](operations/logging.md) | где что лежит, почему один лог — одна запись logrotate |
 | [PostgreSQL](operations/postgresql.md) | мажорная версия, `pg_stat_statements`, рестарт против reload |
+| [Диск — онлайн-discard корня](operations/disk.md) | ручка `common_root_discard`, почему не разовая правка, замер |
 | [Cloudflare-замок](operations/cloudflare.md) | 80/443 только с CF, real-IP, закрытые сайты |
 | [Docker на хосте проекта](operations/docker.md) | что ставит роль и где кончается её зона |
 | [Счётчик посещаемости](operations/analytics-counter.md) | почему свой, а не арендованный; сборка на машине, петля, `APP_SECRET` |
