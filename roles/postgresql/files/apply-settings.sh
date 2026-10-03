@@ -36,7 +36,8 @@ datadir=/var/lib/postgresql/$version/main
 # failure the role answers by putting the previous file back. psql and sed exit 2
 # on their own failures (no connection, no file), and set -e passes that through,
 # so 2 cannot mean refusal: a valid file would be rolled back for an unreachable
-# server. 3 is anything else this script detects.
+# server. 4 is a setting of this file overridden by a later source; 3 is anything
+# else this script detects. Neither rolls the file back.
 if [ ! -x "$postgres" ]; then
     echo "no PostgreSQL $version server binary at $postgres" >&2
     exit 3
@@ -75,6 +76,21 @@ if [ "$is_stale" = t ]; then
         exit 3
     fi
     echo reloaded
+fi
+
+# A line of this file with applied = false and no error is overridden: a source read
+# later wins — postgresql.auto.conf, written by ALTER SYSTEM, comes after conf.d. The
+# run would otherwise report a setting it never put in effect (measured: a manual
+# ALTER SYSTEM kept connection logging on through a run that turned it off). Lines
+# with an error are refusals or pending restarts, handled above and below; lines of
+# other files this one overrides — the packaged postgresql.conf — are the design.
+overridden=$(q "SELECT coalesce(string_agg(DISTINCT o.name || ' by ' || w.sourcefile || ':' || w.sourceline, '; '), '')
+                  FROM pg_file_settings o
+                  JOIN pg_file_settings w ON w.name = o.name AND w.applied AND w.sourcefile <> o.sourcefile
+                 WHERE o.sourcefile = '$file' AND NOT o.applied AND o.error IS NULL")
+if [ -n "$overridden" ]; then
+    printf 'settings of %s are overridden and not in effect: %s\n' "$file" "$overridden" >&2
+    exit 4
 fi
 
 pending=$(q "SELECT coalesce(string_agg(name, ', ' ORDER BY name), '') FROM pg_settings WHERE pending_restart")

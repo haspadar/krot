@@ -367,3 +367,40 @@
           - started_after_unload.stdout.split('|')[1] == ''
           - started_after_unload.stdout.split('|')[0] != started_before.stdout
         quiet: true
+
+    # postgresql.auto.conf is read after conf.d, so an ALTER SYSTEM wins over the
+    # role's file. Measured on a production machine: a month-old manual ALTER SYSTEM
+    # kept connection logging on through a run that reported turning it off.
+    - name: Override one of the role's settings the way ALTER SYSTEM does
+      ansible.builtin.command: psql -XtAc "ALTER SYSTEM SET work_mem = '5MB'"
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Run the role under the override
+      block:
+        - name: The overridden pass
+          ansible.builtin.include_role:
+            name: postgresql
+        - name: Note that the overridden pass got through
+          ansible.builtin.set_fact:
+            overridden_accepted: true
+      rescue:
+        - name: Note that the role named the override
+          ansible.builtin.set_fact:
+            overridden_reported: >-
+              {{ 'overridden and not in effect: work_mem by' in ansible_failed_result.msg
+                 and 'postgresql.auto.conf' in ansible_failed_result.msg }}
+
+    - name: Remove the override
+      ansible.builtin.command: psql -XtAc "ALTER SYSTEM RESET work_mem"
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: The run failed and named the file that wins
+      ansible.builtin.assert:
+        that:
+          - overridden_reported | default(false)
+          - not (overridden_accepted | default(false))
+        quiet: true
