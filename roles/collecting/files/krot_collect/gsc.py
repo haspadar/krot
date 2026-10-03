@@ -108,7 +108,11 @@ class Collection:
                         for attempt in attempts.values():
                             self.store.finish(attempt, "unavailable", reason)
                         continue
+                    refused = None
                     for dataset, attempt in attempts.items():
+                        if refused is not None:
+                            self.store.finish(attempt, "failed", error_label(refused))
+                            continue
                         try:
                             figures = self.client.fetch(property, day, dataset)
                             self.store.replace(domain, property, day, dataset, figures, attempt)
@@ -117,6 +121,11 @@ class Collection:
                             self.store.finish(attempt, "failed", error_label(error))
                             print("%s %s %s: %s" % (domain, day, dataset, error_label(error)), file=self.err)
                             failed += 1
+                            # With a known boundary no day probe runs, so a refusal stops the site here.
+                            if getattr(error, "status", None) in (401, 403):
+                                refused = error
+                    if refused is not None:
+                        break
                 # Explicit old-date backfills need not certify current freshness.
                 if start is None:
                     for dataset in DATASETS:

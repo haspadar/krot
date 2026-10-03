@@ -45,9 +45,10 @@ class MemoryStore:
 
 
 class Engine:
-    def __init__(self, unavailable=(), refused=None, boundaries=None):
+    def __init__(self, unavailable=(), refused=None, boundaries=None, refusal=None):
         self.unavailable = set(unavailable)
         self.refused = refused
+        self.refusal = refusal or GscError(403, 'forbidden')
         self.boundaries = boundaries or {}
         self.asked = []
         self.probed = []
@@ -64,8 +65,8 @@ class Engine:
 
     def fetch(self, property, day, dataset):
         self.asked.append((property, day, dataset))
-        if dataset == self.refused:
-            raise GscError(403, 'forbidden')
+        if dataset == self.refused or self.refused == 'all':
+            raise self.refusal
         return []
 
 
@@ -107,8 +108,8 @@ def test_a_failed_report_preserves_previous_figures():
     assert store.saved[('gardens.test', date(2026, 8, 8), 'page')] == ['old measurement']
 
 
-def test_other_reports_continue_after_one_is_refused():
-    engine = Engine(refused='query')
+def test_other_reports_continue_after_one_fails():
+    engine = Engine(refused='query', refusal=GscError(500, 'backendError'))
     Collection(engine, MemoryStore(), io.StringIO(), io.StringIO(), date(2026, 6, 20)).collect(
         config(), date(2026, 6, 15), date(2026, 6, 15))
     assert [dataset for _, _, dataset in engine.asked] == ['query', 'page', 'page_query']
@@ -170,6 +171,21 @@ def test_a_refused_boundary_falls_back_to_the_day_probe():
     Collection(engine, MemoryStore(), io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
         sites, date(2026, 9, 20), date(2026, 9, 20))
     assert engine.probed == [('sc-domain:gardens.test', date(2026, 9, 20))]
+
+
+def test_a_refusal_after_a_known_boundary_stops_the_site():
+    engine = Engine(refused='all', boundaries={'sc-domain:gardens.test': date(2026, 9, 30)})
+    Collection(engine, MemoryStore(), io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
+        config(), date(2026, 9, 1), date(2026, 9, 29))
+    assert len(engine.asked) == 1
+
+
+def test_a_refusal_closes_the_rest_of_its_day():
+    store = MemoryStore()
+    engine = Engine(refused='all', boundaries={'sc-domain:gardens.test': date(2026, 9, 30)})
+    Collection(engine, store, io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
+        config(), date(2026, 9, 1), date(2026, 9, 29))
+    assert [attempt['status'] for attempt in store.attempts] == ['failed'] * 3
 
 
 def test_the_failed_first_backfill_day_remains_scheduled_after_the_window_moves():
