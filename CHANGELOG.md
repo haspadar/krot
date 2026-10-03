@@ -3,6 +3,14 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 9.0.1
+
+### Fixed
+
+- **`common` reloads systemd when its mount units are older than `/etc/fstab`**: after a root
+  discard edit, `-.mount` kept the old options until a reboot. The role now asks systemd
+  (`NeedDaemonReload`) every run, so a run that failed after the edit is repaired by the next run
+
 ## 9.0.0
 
 ### Changed (breaking)
