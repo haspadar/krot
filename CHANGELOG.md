@@ -3,6 +3,15 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 8.1.1
+
+### Fixed
+
+- **`postgresql` fails a run whose own settings are overridden.** A value set by
+  `ALTER SYSTEM` (`postgresql.auto.conf`, read after `conf.d`) won over the role's file while the
+  run reported success. A role line with `applied = false` and no error now fails the run,
+  naming the source that wins; the role's file is not rolled back
+
 ## 8.1.0
 
 ### Added

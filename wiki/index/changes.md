@@ -11,9 +11,9 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **32**.
+В работе — **1**, заархивировано — **32**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **10** из 32: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **11** из 33: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
@@ -21,6 +21,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
+| [`2026-10-03-refuse-overridden-settings`](../../openspec/changes/2026-10-03-refuse-overridden-settings/proposal.md) | **в работе** | — | A role setting overridden by a later config source fails the run |
 | [`bound-postgres-log-rotation`](../../openspec/changes/archive/2026-10-03-bound-postgres-log-rotation/proposal.md) | 2026-10-03 | [#80](https://github.com/haspadar/krot/pull/80) | The PostgreSQL log recycles within a month, and connection logging is a setting |
 | [`prove-zero-search-days`](../../openspec/changes/archive/2026-10-03-prove-zero-search-days/proposal.md) | 2026-10-03 | [#78](https://github.com/haspadar/krot/pull/78) | A finalized day without impressions is a measured zero |
 | [`root-discard-setting`](../../openspec/changes/archive/2026-10-03-root-discard-setting/proposal.md) | 2026-10-03 | — | Online discard on the root filesystem is an inventory setting |
