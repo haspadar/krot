@@ -3,6 +3,23 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 7.2.0
+
+### Added
+
+- **`postgresql_log_connections`** (default `true`, unchanged behaviour): turns connection and
+  disconnection logging off on a machine whose application connects per request
+
+### Fixed
+
+- **`postgresql` log recycles within a month.** The dated filename carried the year, never
+  repeated and so never truncated — the set grew without bound despite the template's promise.
+  Files are now named by day of month; files under the old names are left for the operator
+- **`postgresql` reloads instead of restarting for settings a reload applies.** The server's
+  `pg_file_settings` decides; a restart happens only for a postmaster-level change, and any
+  other config error fails the run before touching the server
+- **Removed `postgresql_log_retention_days`**, which nothing ever read
+
 ## 7.1.1
 
 ### Fixed
