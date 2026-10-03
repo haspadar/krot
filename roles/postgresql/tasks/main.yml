@@ -134,6 +134,10 @@
     owner: postgres
     group: postgres
     mode: "0640"
+    # Kept until the server has accepted the new file; a refused one is put back.
+    # The copy's name does not end in .conf, so conf.d never includes it.
+    backup: true
+  register: postgresql_conf
 
 - name: Enable PostgreSQL
   ansible.builtin.service:
@@ -141,40 +145,77 @@
     state: started
     enabled: true
 
-# Applying is decided by the server's state, not by whether this run changed the
-# file: a run that stopped after writing it leaves the next one to finish, and a
-# run that changed nothing finds nothing to do. A postmaster-level setting
-# (shared_buffers, max_connections, shared_preload_libraries, logging_collector)
-# is accepted by a reload silently and not applied, so it alone restarts; every
-# other one is applied by reload, without dropping a single connection — on a
-# machine serving its sites live a restart is a 5xx on all of them.
-- name: Find the settings the running server does not have yet
-  ansible.builtin.script:
-    cmd: >-
-      settings-drift.sh {{ postgresql_version }} {{ postgresql_port }}
-      /etc/postgresql/{{ postgresql_version }}/main/conf.d/99-krot.conf
-  become: true
-  become_user: postgres
-  register: postgresql_drift
-  changed_when: false
+# Applying is decided by the server, not by whether this run changed the file: a
+# run that stopped after writing it is finished by the next one. A reload applies
+# everything it can without dropping a connection — on a machine serving its sites
+# live a restart is a 5xx on all of them — and the server then names the
+# postmaster-level settings (shared_buffers, max_connections,
+# shared_preload_libraries, port) it accepted but can only apply by restart. See
+# files/apply-settings.sh for why neither value comparison nor error messages can
+# make that call.
+- name: Apply the new settings
   when: not ansible_check_mode
+  block:
+    - name: Reload and ask the server what still needs a restart
+      ansible.builtin.script:
+        cmd: >-
+          apply-settings.sh {{ postgresql_version }}
+          /etc/postgresql/{{ postgresql_version }}/main/conf.d/99-krot.conf
+      become: true
+      become_user: postgres
+      register: postgresql_applied
+      changed_when: "'reloaded' in postgresql_applied.stdout_lines"
 
-- name: Restart PostgreSQL for settings only a restart applies
-  ansible.builtin.service:
-    name: "postgresql@{{ postgresql_version }}-main"
-    state: restarted
-  when:
-    - not ansible_check_mode
-    - postgresql_drift.stdout_lines | select('match', '^postmaster ') | list | length > 0
+    - name: Restart PostgreSQL for the settings only a restart applies
+      ansible.builtin.service:
+        name: "postgresql@{{ postgresql_version }}-main"
+        state: restarted
+      when: "postgresql_applied.stdout_lines | select('match', '^restart: ') | list | length > 0"
+  rescue:
+    # A refused value left on disk would wait for the next restart that does not
+    # go through this role — a reboot, a package upgrade — and keep the server down.
+    - name: Put back the file the server last accepted
+      ansible.builtin.copy:
+        src: "{{ postgresql_conf.backup_file }}"
+        dest: "/etc/postgresql/{{ postgresql_version }}/main/conf.d/99-krot.conf"
+        remote_src: true
+        owner: postgres
+        group: postgres
+        mode: "0640"
+      when: postgresql_conf.backup_file is defined
 
-- name: Reload PostgreSQL for the rest
-  ansible.builtin.service:
-    name: "postgresql@{{ postgresql_version }}-main"
-    state: reloaded
-  when:
-    - not ansible_check_mode
-    - postgresql_drift.stdout_lines | length > 0
-    - postgresql_drift.stdout_lines | select('match', '^postmaster ') | list | length == 0
+    - name: Remove a first file the server refused
+      ansible.builtin.file:
+        path: "/etc/postgresql/{{ postgresql_version }}/main/conf.d/99-krot.conf"
+        state: absent
+      when: postgresql_conf.backup_file is not defined
+
+    - name: Remember what the server refused
+      ansible.builtin.set_fact:
+        postgresql_refusal: "{{ ansible_failed_result.stderr | default(ansible_failed_result.msg) | trim }}"
+
+    # The refused reload still applied the new file's valid lines; reading the
+    # restored file takes the server back to what is on disk.
+    - name: Reload the file put back
+      ansible.builtin.script:
+        cmd: >-
+          apply-settings.sh {{ postgresql_version }}
+          /etc/postgresql/{{ postgresql_version }}/main/conf.d/99-krot.conf
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Refuse the run, naming what the server refused
+      ansible.builtin.fail:
+        msg: >-
+          PostgreSQL refused the new configuration and is running with the previous
+          one, which is back on disk: {{ postgresql_refusal }}
+  always:
+    - name: Drop the copy of the previous file
+      ansible.builtin.file:
+        path: "{{ postgresql_conf.backup_file }}"
+        state: absent
+      when: postgresql_conf.backup_file is defined
 
 # The extension can only be created once the library is actually in memory, which
 # the restart above has already seen to.

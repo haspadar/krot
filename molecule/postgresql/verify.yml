@@ -44,9 +44,12 @@
     # The other eight do not, and it is worth being exact about why, because the
     # list reads as if they all did. work_mem is context `user` and
     # log_min_duration_statement `superuser` — both apply on SIGHUP, so they
-    # pass on a reload. log_destination likewise. listen_addresses and port are
-    # postmaster-level but prepare already set them to these values, so there is
-    # nothing for a restart to change. They check that the template rendered,
+    # pass on a reload. log_destination, log_filename and log_disconnections
+    # likewise — the last two are the only check that the day-of-month name and
+    # the scenario's connection logging reached the server. listen_addresses and
+    # port are postmaster-level but prepare already set them to these values, so
+    # there is nothing for a restart to change. pg_stat_statements.max proves the
+    # library loaded. They check that the template rendered and was applied,
     # which is a different thing worth checking.
     #
     # So: dropping postgresql_max_connections and postgresql_shared_buffers from
@@ -245,9 +248,22 @@
           ansible.builtin.set_fact:
             invalid_accepted: true
       rescue:
-        - name: Note that the invalid pass was refused
+        # The server's refusal, not any failure: a mirror or the network failing
+        # inside the role would pass a bare "it failed".
+        - name: Note that the server refused the invalid pass
           ansible.builtin.set_fact:
-            invalid_refused: true
+            invalid_refused: "{{ 'the server refused: work_mem' in ansible_failed_result.msg }}"
+
+    - name: Read the config file after the refused pass
+      ansible.builtin.slurp:
+        src: /etc/postgresql/18/main/conf.d/99-krot.conf
+      register: conf_after_invalid
+
+    - name: The file the server refused is not left on disk
+      ansible.builtin.assert:
+        that:
+          - "'work_mem = 7MB' in (conf_after_invalid.content | b64decode)"
+        quiet: true
 
     - name: Read the start time after the refused pass
       ansible.builtin.command: psql -XtAc "select pg_postmaster_start_time() || ' ' || current_setting('work_mem')"
