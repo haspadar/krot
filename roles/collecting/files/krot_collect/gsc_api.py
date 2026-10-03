@@ -176,7 +176,7 @@ class Client:
         self.token, self.token_until = token, now + min(3000, expires)
         return token
 
-    def _rows(self, property, start, end, dimensions):
+    def _url(self, property):
         if not isinstance(property, str) or not property or any(c.isspace() or ord(c) < 32 for c in property):
             raise GscError(0, "invalid_property")
         if property.startswith("sc-domain:"):
@@ -190,7 +190,10 @@ class Client:
                 valid = False
             if not valid:
                 raise GscError(0, "invalid_property")
-        url = "https://www.googleapis.com/webmasters/v3/sites/%s/searchAnalytics/query" % quote(property, safe="")
+        return "https://www.googleapis.com/webmasters/v3/sites/%s/searchAnalytics/query" % quote(property, safe="")
+
+    def _rows(self, property, start, end, dimensions):
+        url = self._url(property)
         results, seen = [], set()
         for page in range(self.max_pages):
             body = {"startDate": start, "endDate": end, "dimensions": ["date"] + dimensions,
@@ -248,6 +251,30 @@ class Client:
             raise GscError(0, "invalid_dataset")
         return [{k: v for k, v in row.items() if k != "day"}
                 for row in self._rows(property, day, day, DIMENSIONS[dataset])]
+
+    def first_incomplete(self, property, start, end):
+        """The first day Google may still change; every earlier day is final, rows or not.
+
+        Google names it only for fresh data grouped by date, and only when the range has rows:
+        a property without impressions answers without it, and so does this — None.
+        """
+        start, end = iso_day(start), iso_day(end)
+        if start > end:
+            raise GscError(0, "invalid_date_range")
+        body = {"startDate": start, "endDate": end, "dimensions": ["date"], "type": "web", "dataState": "all"}
+        answer = self._request(self._url(property), headers={"Authorization": "Bearer " + self._token()}, body=body)
+        metadata = answer.get("metadata")
+        if metadata is None:
+            return None
+        if not isinstance(metadata, dict):
+            raise GscError(200, "invalid_metadata")
+        named = metadata.get("firstIncompleteDate")
+        if named is None:
+            return None
+        try:
+            return date.fromisoformat(iso_day(named))
+        except GscError:
+            raise GscError(200, "invalid_metadata") from None
 
     def finalized_days(self, property, start, end):
         start, end = iso_day(start), iso_day(end)

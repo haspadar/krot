@@ -355,3 +355,28 @@ def test_reversed_final_range_fails_before_http():
     with pytest.raises(GscError, match="invalid_date_range"):
         client.finalized_days("sc-domain:reports.example", "2026-09-30", "2026-09-29")
     assert http.requests == []
+
+
+def test_first_incomplete_date_is_read_from_fresh_metadata():
+    client, _, _ = setup(ok({"rows": [], "metadata": {"firstIncompleteDate": "2026-09-30"}}))
+    assert client.first_incomplete("sc-domain:harbour.example", "2026-09-03", "2026-10-03") == date(2026, 9, 30)
+
+
+def test_boundary_question_asks_fresh_data_grouped_by_date():
+    client, http, _ = setup(ok({}))
+    client.first_incomplete("sc-domain:harbour.example", "2026-09-03", "2026-10-03")
+    assert http.requests[1]["body"] == {"startDate": "2026-09-03", "endDate": "2026-10-03", "dimensions": ["date"],
+                                         "type": "web", "dataState": "all"}
+
+
+def test_an_answer_without_rows_names_no_boundary():
+    client, _, _ = setup(ok({"responseAggregationType": "byProperty"}))
+    assert client.first_incomplete("sc-domain:quiet.example", "2026-09-03", "2026-10-03") is None
+
+
+@pytest.mark.parametrize("metadata", [["2026-09-30"], {"firstIncompleteDate": "30.09.2026"},
+                                      {"firstIncompleteDate": 20260930}])
+def test_a_malformed_boundary_is_a_controlled_failure(metadata):
+    client, _, _ = setup(ok({"metadata": metadata}))
+    with pytest.raises(GscError, match="invalid_metadata"):
+        client.first_incomplete("sc-domain:harbour.example", "2026-09-03", "2026-10-03")
