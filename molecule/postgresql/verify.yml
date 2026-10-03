@@ -282,6 +282,30 @@
           - started_after_invalid.stdout == started_before.stdout ~ ' 7MB'
         quiet: true
 
+    # An extension's setting is the one value `postgres -C` cannot check — its
+    # library is not loaded there — so the role refuses it before touching anything.
+    - name: Run the role with a pg_stat_statements.max the extension refuses
+      block:
+        - name: The out-of-range pass
+          ansible.builtin.include_role:
+            name: postgresql
+          vars:
+            postgresql_stat_statements_max: 0
+        - name: Note that the out-of-range pass got through
+          ansible.builtin.set_fact:
+            out_of_range_accepted: true
+      rescue:
+        - name: Note that the role refused it up front
+          ansible.builtin.set_fact:
+            out_of_range_refused: "{{ ansible_failed_task.name == 'Assert the query statistics settings' }}"
+
+    - name: The out-of-range value was refused before anything ran
+      ansible.builtin.assert:
+        that:
+          - out_of_range_refused | default(false)
+          - not (out_of_range_accepted | default(false))
+        quiet: true
+
     # A value valid for its setting that still stops the server starting: the check
     # passes it, the restart fails, and the role has to bring the server back on the
     # previous file rather than leave every site down. A preload library that is not
@@ -302,7 +326,8 @@
         - name: Note that the restart failed and was rolled back
           ansible.builtin.set_fact:
             unstartable_rolled_back: >-
-              {{ 'did not restart with the new configuration' in ansible_failed_result.msg }}
+              {{ 'did not start with the new configuration' in ansible_failed_result.msg
+                 and 'server was started on it' in ansible_failed_result.msg }}
 
     - name: Read the running preload list after the unstartable pass
       ansible.builtin.command: psql -XtAc "select current_setting('shared_preload_libraries')"

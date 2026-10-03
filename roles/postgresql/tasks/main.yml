@@ -1,4 +1,23 @@
 ---
+# The extension's settings are the one part of the config `postgres -C` cannot
+# check (files/apply-settings.sh): its library is not loaded there, so a value the
+# live server would refuse on reload passes, the reload keeps the old value, and
+# the run reports success. The ranges are pg_stat_statements' own.
+- name: Assert the query statistics settings
+  ansible.builtin.assert:
+    that:
+      - postgresql_stat_statements_max | int == postgresql_stat_statements_max | float
+      - postgresql_stat_statements_max | int >= 100
+      - postgresql_stat_statements_max | int <= 1073741823
+      - postgresql_stat_statements_track in ['none', 'top', 'all']
+    fail_msg: >-
+      postgresql_stat_statements_max must be a whole number from 100 and
+      postgresql_stat_statements_track one of none, top, all; PostgreSQL would
+      refuse "{{ postgresql_stat_statements_max }}" / "{{ postgresql_stat_statements_track }}"
+      on reload and keep running the old value.
+    quiet: true
+  when: postgresql_stat_statements
+
 # Ubuntu's own PostgreSQL trails the pgdg release, and the major version is
 # pinned per host, so take packages from upstream.
 - name: Add the PostgreSQL signing key
@@ -139,11 +158,14 @@
     backup: true
   register: postgresql_conf
 
+# Check mode only: a real run starts the server inside the block below, where a
+# file it cannot start on is rolled back.
 - name: Enable PostgreSQL
   ansible.builtin.service:
     name: "postgresql@{{ postgresql_version }}-main"
     state: started
     enabled: true
+  when: ansible_check_mode
 
 # Applying is decided by the server, not by whether this run changed the file: a
 # run that stopped after writing it is finished by the next one. A reload applies
@@ -156,6 +178,12 @@
 - name: Apply the new settings
   when: not ansible_check_mode
   block:
+    - name: Start PostgreSQL if it is down
+      ansible.builtin.service:
+        name: "postgresql@{{ postgresql_version }}-main"
+        state: started
+        enabled: true
+
     - name: Check, reload and ask the server what still needs a restart
       ansible.builtin.script:
         cmd: >-
@@ -178,17 +206,27 @@
         state: absent
       when: postgresql_conf.backup_file is defined
   rescue:
-    # Only two failures roll the file back: a value the check refused (the server
-    # untouched), and a restart that did not come back (the server down). Anything
-    # else — psql unreachable, a reload that never landed — fails as it is: the new
-    # file may be fine, and rolling it back would discard it for an unrelated cause.
+    # Only two failures roll the file back: a value the check refused (exit 64,
+    # the server untouched) and a start or restart that did not come up (the
+    # server down). Anything else — psql unreachable, a reload that never landed —
+    # fails as it is: the new file may be fine, and rolling it back would discard
+    # it for an unrelated cause.
     - name: Name the failure
       ansible.builtin.set_fact:
         postgresql_refused: >-
           {{ ansible_failed_task.name is search('^Check, reload')
-             and ansible_failed_result.rc | default(0) == 2 }}
-        postgresql_restart_failed: "{{ ansible_failed_task.name is search('^Restart PostgreSQL') }}"
-        postgresql_failure: "{{ ansible_failed_result.stderr | default(ansible_failed_result.msg) | trim }}"
+             and ansible_failed_result.rc | default(0) == 64 }}
+        postgresql_start_failed: "{{ ansible_failed_task.name is search('^(Start|Restart) PostgreSQL') }}"
+        postgresql_failure: "{{ ansible_failed_result.stderr | default(ansible_failed_result.msg, true) | trim }}"
+
+    # Rolled back only when there is something to return to: the copy this run
+    # made, or nothing at all for a file this run created. An unchanged file,
+    # written by an earlier interrupted run, has neither and is left as it is.
+    - name: Decide whether the file can be rolled back
+      ansible.builtin.set_fact:
+        postgresql_rolled_back: >-
+          {{ (postgresql_refused or postgresql_start_failed)
+             and (postgresql_conf.backup_file is defined or postgresql_conf.changed) }}
 
     # A refused value left on disk would wait for the next restart that does not
     # go through this role — a reboot, a package upgrade — and keep the server down.
@@ -201,25 +239,24 @@
         group: postgres
         mode: "0640"
       when:
-        - postgresql_refused or postgresql_restart_failed
+        - postgresql_rolled_back
         - postgresql_conf.backup_file is defined
 
-    # Only a file this very run created: an unchanged one, written by an earlier
-    # interrupted run, has no copy to return to and is left for the operator.
     - name: Remove a file this run created and the server could not take
       ansible.builtin.file:
         path: "/etc/postgresql/{{ postgresql_version }}/main/conf.d/99-krot.conf"
         state: absent
       when:
-        - postgresql_refused or postgresql_restart_failed
-        - postgresql_conf.changed
+        - postgresql_rolled_back
         - postgresql_conf.backup_file is not defined
 
     - name: Start PostgreSQL again on the previous file
       ansible.builtin.service:
         name: "postgresql@{{ postgresql_version }}-main"
         state: started
-      when: postgresql_restart_failed
+      when:
+        - postgresql_start_failed
+        - postgresql_rolled_back
 
     # Dropped only after the previous file is back: a failed restore keeps it.
     - name: Drop the copy of the previous file, now restored
@@ -227,18 +264,20 @@
         path: "{{ postgresql_conf.backup_file }}"
         state: absent
       when:
-        - postgresql_refused or postgresql_restart_failed
+        - postgresql_rolled_back
         - postgresql_conf.backup_file is defined
 
     - name: Fail the run, naming what happened
       ansible.builtin.fail:
         msg: >-
           {% if postgresql_refused %}PostgreSQL refused the new configuration; the server was
-          not touched and the previous file is back on disk: {{ postgresql_failure }}{% elif
-          postgresql_restart_failed %}PostgreSQL did not restart with the new configuration; the
-          previous file is back on disk and the server was started on it: {{ postgresql_failure
-          }}{% else %}Applying the configuration failed; nothing was rolled back:
-          {{ postgresql_failure }}{% endif %}
+          not touched{% elif postgresql_start_failed %}PostgreSQL did not start with the new
+          configuration{% else %}Applying the configuration failed{% endif %}{% if
+          postgresql_rolled_back %}; the previous file is back on disk{% if
+          postgresql_start_failed %} and the server was started on it{% endif %}{% elif
+          postgresql_refused or postgresql_start_failed %}; this run did not write the file, so
+          there was nothing to return to and it is still on disk{% else %}; nothing was rolled
+          back{% endif %}: {{ postgresql_failure }}
 
 # The extension can only be created once the library is actually in memory, which
 # the restart above has already seen to.

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Bring the running server up to the config files, asking the server rather than
-# guessing. Exits 2, touching nothing, when the files hold a value a starting
+# guessing. Exits 64, touching nothing, when the files hold a value a starting
 # server would refuse; prints "reloaded" when it reloaded and "restart: <names>"
 # when only a restart applies what the files now say.
 #
@@ -17,6 +17,9 @@
 # - pending_restart is then the server's list of changed postmaster-level settings
 #   it accepted but cannot apply live, a setting dropped from the file included.
 #
+# Nor does -C check an extension's settings: the library is not loaded in it, so
+# they stay raw text. The role asserts pg_stat_statements' own values instead.
+#
 # Not caught: a value valid for its setting that still stops the server starting
 # (max_connections below the reserved connections, a preload library that is not
 # installed) — -C exits before those checks. The role restores the previous file
@@ -29,9 +32,18 @@ postgres=/usr/lib/postgresql/$version/bin/postgres
 confdir=/etc/postgresql/$version/main
 datadir=/var/lib/postgresql/$version/main
 
+# Exit codes: 64 only for "the files hold a value the server refuses" — the one
+# failure the role answers by putting the previous file back. psql and sed exit 2
+# on their own failures (no connection, no file), and set -e passes that through,
+# so 2 cannot mean refusal: a valid file would be rolled back for an unreachable
+# server. 3 is anything else this script detects.
+if [ ! -x "$postgres" ]; then
+    echo "no PostgreSQL $version server binary at $postgres" >&2
+    exit 3
+fi
 if ! refusal=$("$postgres" -D "$confdir" -C max_connections 2>&1 >/dev/null); then
     printf 'the server refused the configuration: %s\n' "$refusal" >&2
-    exit 2
+    exit 64
 fi
 
 # The port the running postmaster listens on, not the one the new file asks for:
