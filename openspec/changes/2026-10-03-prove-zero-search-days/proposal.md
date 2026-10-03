@@ -29,5 +29,7 @@ their last final date was `2026-09-29`. A range without any rows returns no meta
 
 ## Boundaries
 
-No schema change, no new setting, no change to Bing/Yandex (they stay in the consumer). A zero
-written against a boundary that later proves early is re-read within `overlap_days`.
+No schema change, no new setting, no change to Bing/Yandex (they stay in the consumer). A
+borrowed boundary later than the site's own true one could turn its last unfinished days into
+zeros; those days lie inside `overlap_days`, which is re-read every night. A boundary outside
+the asked range is refused as `invalid_metadata`, and a refused boundary is logged.

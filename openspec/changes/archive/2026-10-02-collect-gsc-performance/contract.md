@@ -43,8 +43,11 @@ row_count, collected_at, pagination_complete (nullable), coverage_limited, final
 `search_attempt`: attempt id, site, day, search_type, dataset, property, started_at, finished_at,
 status (running/success/failed/unavailable), row_count, error. No secrets in error/export.
 
-A separate final date report confirms availability. Missing dates produce unavailable attempts,
-not success/zero markers. An empty report on an available final date has row_count=0.
+Availability (since 7.1.1): a day before Google's first incomplete date (`dataState: all`
+metadata) is final, and an empty report there is a successful marker with row_count=0 — Google
+omits dates without impressions from final data, so silence is a measured zero. A day from that
+date on produces unavailable attempts. A site whose answer names no date borrows the run's
+earliest; without any, a separate final date report decides and missing dates stay unavailable.
 Each report/day replaces its own data and successful marker in one transaction. Failure leaves its
 previous data/marker untouched; attempts record the failure. All three reports may complete
 independently; consumers must require the reports/days needed by their analysis. `pagination_complete`
