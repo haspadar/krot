@@ -2,7 +2,7 @@
 kind: index
 title: Changes
 owner: generated
-verified: 2026-10-02
+verified: 2026-10-03
 roles: []
 ---
 
@@ -11,9 +11,9 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **29**.
+В работе — **1**, заархивировано — **29**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **9** из 29: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **10** из 30: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
@@ -21,6 +21,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
+| [`2026-10-03-prove-zero-search-days`](../../openspec/changes/2026-10-03-prove-zero-search-days/proposal.md) | **в работе** | — | A finalized day without impressions is a measured zero |
 | [`collect-gsc-performance`](../../openspec/changes/archive/2026-10-02-collect-gsc-performance/proposal.md) | 2026-10-02 | [#76](https://github.com/haspadar/krot/pull/76) | Collect finalized Search Console performance in the shared collector |
 | [`collect-crawler-visits`](../../openspec/changes/archive/2026-09-30-collect-crawler-visits/proposal.md) | 2026-09-30 | [#73](https://github.com/haspadar/krot/pull/73) | Сбор обходов краулеров из логов nginx — роль `collecting` |
 | [`rename-index-schema`](../../openspec/changes/archive/2026-09-30-rename-index-schema/proposal.md) | 2026-09-30 | [#74](https://github.com/haspadar/krot/pull/74) | Схема `indexing` называется `krot_index`, а не `krot` |

@@ -45,18 +45,28 @@ class MemoryStore:
 
 
 class Engine:
-    def __init__(self, unavailable=(), refused=None):
+    def __init__(self, unavailable=(), refused=None, boundaries=None, refusal=None):
         self.unavailable = set(unavailable)
         self.refused = refused
+        self.refusal = refusal or GscError(403, 'forbidden')
+        self.boundaries = boundaries or {}
         self.asked = []
+        self.probed = []
+
+    def first_incomplete(self, property, start, end):
+        boundary = self.boundaries.get(property)
+        if isinstance(boundary, Exception):
+            raise boundary
+        return boundary
 
     def finalized_days(self, property, start, end):
+        self.probed.append((property, start))
         return set() if start in self.unavailable else {start.isoformat()}
 
     def fetch(self, property, day, dataset):
         self.asked.append((property, day, dataset))
-        if dataset == self.refused:
-            raise GscError(403, 'forbidden')
+        if dataset == self.refused or self.refused == 'all':
+            raise self.refusal
         return []
 
 
@@ -98,8 +108,8 @@ def test_a_failed_report_preserves_previous_figures():
     assert store.saved[('gardens.test', date(2026, 8, 8), 'page')] == ['old measurement']
 
 
-def test_other_reports_continue_after_one_is_refused():
-    engine = Engine(refused='query')
+def test_other_reports_continue_after_one_fails():
+    engine = Engine(refused='query', refusal=GscError(500, 'backendError'))
     Collection(engine, MemoryStore(), io.StringIO(), io.StringIO(), date(2026, 6, 20)).collect(
         config(), date(2026, 6, 15), date(2026, 6, 15))
     assert [dataset for _, _, dataset in engine.asked] == ['query', 'page', 'page_query']
@@ -119,6 +129,80 @@ def test_a_site_without_finalized_history_reports_staleness():
 def test_unsafe_explicit_ranges_are_refused(start, end):
     with pytest.raises(ValueError):
         planned_days(set(), date(2026, 10, 2), {}, start, end)
+
+
+def test_a_quiet_day_before_the_boundary_is_a_measured_zero():
+    store = MemoryStore()
+    engine = Engine(unavailable=[date(2026, 9, 10)], boundaries={'sc-domain:gardens.test': date(2026, 9, 30)})
+    Collection(engine, store, io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
+        config(), date(2026, 9, 10), date(2026, 9, 10))
+    assert store.saved == {('gardens.test', date(2026, 9, 10), dataset): [] for dataset in DATASETS}
+
+
+def test_a_borrowed_boundary_makes_an_earlier_quiet_day_a_zero():
+    store = MemoryStore()
+    engine = Engine(boundaries={'sc-domain:harbour.test': date(2026, 9, 30)})
+    sites = {'sites': [{'domain': 'harbour.test'}, {'domain': 'pond.test'}], 'gsc': {}}
+    Collection(engine, store, io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
+        sites, date(2026, 9, 20), date(2026, 9, 20))
+    assert ('pond.test', date(2026, 9, 20), 'page') in store.saved
+
+
+def test_a_refused_boundary_is_reported():
+    err = io.StringIO()
+    engine = Engine(boundaries={'sc-domain:gardens.test': GscError(403, 'forbidden')})
+    Collection(engine, MemoryStore(), io.StringIO(), err, date(2026, 10, 3)).collect(
+        config(), date(2026, 9, 20), date(2026, 9, 20))
+    assert 'gardens.test boundary: GscError HTTP 403 forbidden' in err.getvalue()
+
+
+def test_a_day_from_the_boundary_on_is_unavailable_without_asking_reports():
+    store = MemoryStore()
+    engine = Engine(boundaries={'sc-domain:gardens.test': date(2026, 9, 30)})
+    Collection(engine, store, io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
+        config(), date(2026, 9, 30), date(2026, 9, 30))
+    assert ([attempt['status'] for attempt in store.attempts], engine.asked) == (['unavailable'] * 3, [])
+
+
+def test_a_site_without_a_boundary_borrows_the_earliest_of_the_run():
+    store = MemoryStore()
+    engine = Engine(boundaries={'sc-domain:harbour.test': date(2026, 9, 30), 'sc-domain:meadow.test': date(2026, 9, 29)})
+    sites = {'sites': [{'domain': 'harbour.test'}, {'domain': 'meadow.test'}, {'domain': 'pond.test'}], 'gsc': {}}
+    Collection(engine, store, io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
+        sites, date(2026, 9, 29), date(2026, 9, 29))
+    assert [attempt['status'] for attempt in store.attempts if attempt['site'] == 'pond.test'] == ['unavailable'] * 3
+
+
+def test_a_borrowed_boundary_replaces_the_day_probe():
+    engine = Engine(boundaries={'sc-domain:harbour.test': date(2026, 9, 30)})
+    sites = {'sites': [{'domain': 'harbour.test'}, {'domain': 'pond.test'}], 'gsc': {}}
+    Collection(engine, MemoryStore(), io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
+        sites, date(2026, 9, 20), date(2026, 9, 20))
+    assert engine.probed == []
+
+
+def test_a_refused_boundary_falls_back_to_the_day_probe():
+    engine = Engine(boundaries={'sc-domain:gardens.test': GscError(403, 'forbidden'),
+                                'sc-domain:harbour.test': date(2026, 9, 30)})
+    sites = {'sites': [{'domain': 'gardens.test'}, {'domain': 'harbour.test'}], 'gsc': {}}
+    Collection(engine, MemoryStore(), io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
+        sites, date(2026, 9, 20), date(2026, 9, 20))
+    assert engine.probed == [('sc-domain:gardens.test', date(2026, 9, 20))]
+
+
+def test_a_refusal_after_a_known_boundary_stops_the_site():
+    engine = Engine(refused='all', boundaries={'sc-domain:gardens.test': date(2026, 9, 30)})
+    Collection(engine, MemoryStore(), io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
+        config(), date(2026, 9, 1), date(2026, 9, 29))
+    assert len(engine.asked) == 1
+
+
+def test_a_refusal_closes_the_rest_of_its_day():
+    store = MemoryStore()
+    engine = Engine(refused='all', boundaries={'sc-domain:gardens.test': date(2026, 9, 30)})
+    Collection(engine, store, io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
+        config(), date(2026, 9, 1), date(2026, 9, 29))
+    assert [attempt['status'] for attempt in store.attempts] == ['failed'] * 3
 
 
 def test_the_failed_first_backfill_day_remains_scheduled_after_the_window_moves():

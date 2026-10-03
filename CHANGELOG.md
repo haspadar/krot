@@ -3,6 +3,15 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 7.1.1
+
+### Fixed
+
+- **`collecting` gsc: a final day without impressions is a measured zero.** Google omits such
+  dates from final data, so they were recorded as `unavailable`, never got a marker and were
+  asked again every night. Days before Google's first incomplete date are now final; an
+  empty report there stores `row_count = 0`, and later days are `unavailable` without a request
+
 ## 7.1.0
 
 ### Added
