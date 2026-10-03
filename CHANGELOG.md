@@ -3,7 +3,16 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
-## 7.2.0
+## 8.0.0
+
+### Changed (breaking)
+
+- **`postgresql` log files are named by day of month** (`postgresql-DD`), so the set recycles
+  within a month. The dated name carried the year, never repeated and so never truncated — the
+  set grew without bound despite the template's promise. Anything matching the old
+  `postgresql-YYYY-MM-DD` names stops finding new files; files under the old names are left for
+  the operator
+- **Removed `postgresql_log_retention_days`**, which nothing ever read
 
 ### Added
 
@@ -12,13 +21,10 @@ changing a default that affects production) bump major.
 
 ### Fixed
 
-- **`postgresql` log recycles within a month.** The dated filename carried the year, never
-  repeated and so never truncated — the set grew without bound despite the template's promise.
-  Files are now named by day of month; files under the old names are left for the operator
-- **`postgresql` reloads instead of restarting for settings a reload applies.** The server's
-  `pg_file_settings` decides; a restart happens only for a postmaster-level change, and any
-  other config error fails the run before touching the server
-- **Removed `postgresql_log_retention_days`**, which nothing ever read
+- **`postgresql` reloads instead of restarting for settings a reload applies.** Each setting as
+  the files give it (`postgres -C`) is compared with the running value: a differing
+  postmaster-level setting restarts, any other difference reloads. An invalid value fails the run
+  before the server is touched, and an interrupted run is finished by the next one
 
 ## 7.1.1
 
