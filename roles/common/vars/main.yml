@@ -1,0 +1,4 @@
+---
+# A variable rather than a literal only so a test can point the discard tasks at a
+# planted copy: a container's / is an overlay with no fstab line of its own.
+common_fstab_path: /etc/fstab

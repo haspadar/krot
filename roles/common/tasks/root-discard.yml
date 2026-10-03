@@ -1,0 +1,98 @@
+---
+# Online discard on /, only when the inventory names it. Rewrites the options field
+# of the root line alone — whitespace, the device and the other options stay as the
+# image left them, since an fstab the machine cannot boot from is not repaired from
+# here.
+- name: Assert the online discard setting
+  ansible.builtin.assert:
+    that:
+      - common_root_discard is boolean
+    fail_msg: common_root_discard is true, false, or left undefined for the role to keep away.
+    quiet: true
+
+# Without discard, freed blocks reach the disk only through the periodic trim;
+# with the timer off as well they never would.
+- name: Look at the periodic trim
+  ansible.builtin.command:
+    argv: [systemctl, is-enabled, fstrim.timer]
+  register: common_fstrim
+  changed_when: false
+  failed_when: false
+  check_mode: false
+
+- name: Refuse to drop online discard without the weekly trim
+  ansible.builtin.assert:
+    that:
+      - common_root_discard or common_fstrim.stdout == 'enabled'
+    fail_msg: >-
+      fstrim.timer is "{{ common_fstrim.stdout | default('absent') }}": without it and
+      without online discard, freed blocks would never be trimmed. Enable the timer first.
+    quiet: true
+
+- name: Read the fstab
+  ansible.builtin.slurp:
+    src: "{{ common_fstab_path }}"
+  register: common_fstab
+
+- name: Find the root line and its rewritten options
+  ansible.builtin.set_fact:
+    common_fstab_root: "{{ common_fstab_root_lines | first | default('') }}"
+    common_fstab_root_count: "{{ common_fstab_root_lines | length }}"
+  vars:
+    common_fstab_root_lines: >-
+      {{ (common_fstab.content | b64decode).splitlines()
+         | select('match', '^\s*[^#\s]\S*\s+/\s') | list }}
+
+- name: Refuse an fstab without exactly one root line
+  ansible.builtin.assert:
+    that:
+      - common_fstab_root_count | int == 1
+    fail_msg: >-
+      {{ common_fstab_path }} has {{ common_fstab_root_count }} lines mounting /; the role rewrites
+      exactly one and will not guess.
+    quiet: true
+
+- name: Set online discard on the root line
+  ansible.builtin.lineinfile:
+    path: "{{ common_fstab_path }}"
+    regexp: "^{{ common_fstab_root | regex_escape }}$"
+    line: >-
+      {{ common_fstab_root | regex_replace('^(\s*\S+\s+/\s+\S+\s+)\S+',
+         '\g<1>' ~ (common_fstab_options | join(','))) }}
+    owner: root
+    group: root
+    mode: "0644"
+    backup: true
+  vars:
+    # The options as they stand unless they disagree with the setting: rebuilding
+    # them anyway reorders the list and rewrites a line that was already right.
+    common_fstab_current: "{{ common_fstab_root.split()[3].split(',') }}"
+    common_fstab_options: >-
+      {{ (common_fstab_current + ['discard']) if common_root_discard and 'discard' not in common_fstab_current
+         else (common_fstab_current | reject('equalto', 'discard') | list) if not common_root_discard
+         else common_fstab_current }}
+
+# Syntax only: an edit of one field can break parsing, and parsing is what boot
+# needs first. findmnt --verify also reports sources and targets it cannot reach
+# right now — a label of a detached disk, a stale line — which would fail the role
+# on a machine whose fstab this run did not break.
+- name: Check that the fstab still parses
+  ansible.builtin.command:
+    argv: [findmnt, --verify, --tab-file, "{{ common_fstab_path }}"]
+  register: common_fstab_verify
+  changed_when: false
+  failed_when: common_fstab_verify.stderr is not search('(^|\n)0 parse errors')
+  check_mode: false
+
+- name: Read the options / is mounted with
+  ansible.builtin.command: findmnt --noheadings --output OPTIONS /
+  register: common_root_mount
+  changed_when: false
+  check_mode: false
+
+- name: Remount / to match
+  ansible.builtin.command:
+    argv: [mount, -o, "remount,{{ common_root_discard | ternary('discard', 'nodiscard') }}", /]
+  changed_when: true
+  when: >-
+    ('discard' in common_root_mount.stdout.split(',')) != common_root_discard
