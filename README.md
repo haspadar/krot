@@ -424,13 +424,16 @@ one line per library. A second consumer (`auto_explain`, `pg_cron`) is added to
 `postgresql_shared_preload_libraries` rather than in a second config — otherwise it would silently
 evict `pg_stat_statements`.
 
-**About restarts.** The role restarts PostgreSQL on any change to its `99-krot.conf`, not just to
-this line: some of the parameters in that file (`shared_preload_libraries`, `shared_buffers`,
-`max_connections`, `logging_collector`) are postmaster-level, and `reload` accepts them silently
-without applying them. The role does not try to separate reload from restart by parameter type: the
-cost of getting it wrong is a setting that is applied on paper but not in fact. A restart takes a
-couple of seconds, but it is downtime for every site on the machine, so a run with no config changes
-does not touch the database at all.
+**About restarts.** Some parameters in `99-krot.conf` (`shared_preload_libraries`,
+`shared_buffers`, `max_connections`, `logging_collector`) are postmaster-level, and `reload`
+accepts them silently without applying them; a restart, though, is downtime for every site on the
+machine. So the role first has `postgres -C` read every file as a starting server would, failing
+the run on an invalid value before touching the server; then reloads whenever its file is newer
+than the server's last config load; then restarts only if the server reports a setting
+`pending_restart`. A refused file, or a restart that does not come back, puts the previous file
+back on disk (and starts the server on it), so the next reboot does not trip over it.
+The decision comes from the server's state rather than from whether this run changed the file, so
+an interrupted run is finished by the next one.
 
 ## Secrets
 
