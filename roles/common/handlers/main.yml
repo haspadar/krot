@@ -13,3 +13,11 @@
   ansible.builtin.service:
     name: systemd-journald
     state: restarted
+
+# systemd turns /etc/fstab into mount units at boot and on daemon-reload only. Without
+# it the generated -.mount keeps the old options until the next reboot, and findmnt
+# --verify warns that systemd still uses the old fstab. Measured on the first real
+# remount of the root discard setting, 2026-10-03.
+- name: Reload systemd units
+  ansible.builtin.systemd_service:
+    daemon_reload: true
