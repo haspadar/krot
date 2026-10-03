@@ -39,7 +39,7 @@ provisioner:
         #
         # The first two are load-bearing beyond that: they are the only settings
         # in this scenario that are postmaster-level AND differ from what prepare
-        # left running, which is what makes a reloading handler fail verify.
+        # left running, which is what makes a role that only reloads fail verify.
         # Remove them, or set them to the value already in effect, and the
         # scenario goes green against the bug it exists to catch. The reasoning
         # is spelled out in verify.yml.

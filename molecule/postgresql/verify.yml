@@ -36,7 +36,7 @@
     # What the server is actually running with. `SHOW` reports the value in
     # effect, so a setting that was written but silently not applied fails here.
     #
-    # Of the ten, only two carry the restart handler: max_connections and
+    # Of the ten, only two need the restart: max_connections and
     # shared_buffers are postmaster-level AND prepare gave them a different
     # value first, so a reload leaves 111 and 16384 in effect while the file
     # says 123 and 24576. Measured both ways.
@@ -51,7 +51,7 @@
     #
     # So: dropping postgresql_max_connections and postgresql_shared_buffers from
     # molecule.yml, or setting them to what the server already runs, would make
-    # this scenario green against a reloading handler. Those two entries are
+    # this scenario green against a role that only reloads. Those two entries are
     # load-bearing — the note is there too.
     - name: Read the settings the server is actually running with
       become: true
@@ -89,9 +89,9 @@
         - log_filename=postgresql-%d.log
         - log_disconnections=off
 
-    # A library only reaches shared memory at postmaster start. The role flushes
-    # its restart handler mid-play for exactly this, so checking that the
-    # extension is usable also checks that the flush did its job.
+    # A library only reaches shared memory at postmaster start. The role restarts
+    # before creating the extension for exactly this, so checking that the
+    # extension is usable also checks that the restart came first.
     - name: The extension is installed in the maintenance database
       become: true
       become_user: postgres
@@ -190,7 +190,7 @@
         | select('search', '\S')
         | list | length > 0
 
-    # The other half of the handler: a change PostgreSQL applies on reload must
+    # The other half of the decision: a change PostgreSQL applies on reload must
     # not restart it. Converge above always restarts (prepare left a different
     # max_connections running), so only a second pass changing nothing but a
     # sighup-level setting tells reload from restart: a restart moves the
@@ -229,4 +229,61 @@
           Before "{{ started_before.stdout }}", after "{{ started_after.stdout }}".
           A moved start time is a restart for a change a reload applies — a
           5xx on every site of the machine for nothing.
+        quiet: true
+
+    # pg_file_settings says "setting could not be applied" for an invalid value as
+    # well as for a restart-only change, so a role reading it would restart into a
+    # config the server refuses. The run has to stop before the server is touched.
+    - name: Run the role with a work_mem PostgreSQL refuses
+      block:
+        - name: The invalid pass
+          ansible.builtin.include_role:
+            name: postgresql
+          vars:
+            postgresql_work_mem: 0
+        - name: Note that the invalid pass got through
+          ansible.builtin.set_fact:
+            invalid_accepted: true
+      rescue:
+        - name: Note that the invalid pass was refused
+          ansible.builtin.set_fact:
+            invalid_refused: true
+
+    - name: Read the start time after the refused pass
+      ansible.builtin.command: psql -XtAc "select pg_postmaster_start_time() || ' ' || current_setting('work_mem')"
+      become: true
+      become_user: postgres
+      register: started_after_invalid
+      changed_when: false
+
+    - name: The invalid pass was refused and the server kept running untouched
+      ansible.builtin.assert:
+        that:
+          - invalid_refused | default(false)
+          - not (invalid_accepted | default(false))
+          - started_after_invalid.stdout == started_before.stdout ~ ' 7MB'
+        quiet: true
+
+    # Dropping a preload library removes its line from the file, so there is no new
+    # value to compare — only the server still holding the old one. It needs the
+    # restart all the same.
+    - name: Run the role with query statistics turned off
+      ansible.builtin.include_role:
+        name: postgresql
+      vars:
+        postgresql_stat_statements: false
+
+    - name: Read the start time and preload list after that pass
+      ansible.builtin.command: >-
+        psql -XtAc "select pg_postmaster_start_time() || '|' || current_setting('shared_preload_libraries')"
+      become: true
+      become_user: postgres
+      register: started_after_unload
+      changed_when: false
+
+    - name: The library is gone because the server was restarted
+      ansible.builtin.assert:
+        that:
+          - started_after_unload.stdout.split('|')[1] == ''
+          - started_after_unload.stdout.split('|')[0] != started_before.stdout
         quiet: true

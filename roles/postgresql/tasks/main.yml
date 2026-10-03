@@ -134,7 +134,6 @@
     owner: postgres
     group: postgres
     mode: "0640"
-  notify: Apply postgresql settings
 
 - name: Enable PostgreSQL
   ansible.builtin.service:
@@ -142,11 +141,43 @@
     state: started
     enabled: true
 
-# The extension can only be created once the library is actually in memory, and
-# that happens at restart. Flushing here rather than at the end of the play keeps
-# the two steps in one run instead of needing a second one to catch up.
-- name: Apply the pending restart before using the extension
-  ansible.builtin.meta: flush_handlers
+# Applying is decided by the server's state, not by whether this run changed the
+# file: a run that stopped after writing it leaves the next one to finish, and a
+# run that changed nothing finds nothing to do. A postmaster-level setting
+# (shared_buffers, max_connections, shared_preload_libraries, logging_collector)
+# is accepted by a reload silently and not applied, so it alone restarts; every
+# other one is applied by reload, without dropping a single connection — on a
+# machine serving its sites live a restart is a 5xx on all of them.
+- name: Find the settings the running server does not have yet
+  ansible.builtin.script:
+    cmd: >-
+      settings-drift.sh {{ postgresql_version }} {{ postgresql_port }}
+      /etc/postgresql/{{ postgresql_version }}/main/conf.d/99-krot.conf
+  become: true
+  become_user: postgres
+  register: postgresql_drift
+  changed_when: false
+  when: not ansible_check_mode
+
+- name: Restart PostgreSQL for settings only a restart applies
+  ansible.builtin.service:
+    name: "postgresql@{{ postgresql_version }}-main"
+    state: restarted
+  when:
+    - not ansible_check_mode
+    - postgresql_drift.stdout_lines | select('match', '^postmaster ') | list | length > 0
+
+- name: Reload PostgreSQL for the rest
+  ansible.builtin.service:
+    name: "postgresql@{{ postgresql_version }}-main"
+    state: reloaded
+  when:
+    - not ansible_check_mode
+    - postgresql_drift.stdout_lines | length > 0
+    - postgresql_drift.stdout_lines | select('match', '^postmaster ') | list | length == 0
+
+# The extension can only be created once the library is actually in memory, which
+# the restart above has already seen to.
 
 # Into `postgres`, the cluster's own maintenance database. The view reports every
 # database in the cluster no matter which one it is read from, so installing it
