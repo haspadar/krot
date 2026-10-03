@@ -252,7 +252,9 @@
         # inside the role would pass a bare "it failed".
         - name: Note that the server refused the invalid pass
           ansible.builtin.set_fact:
-            invalid_refused: "{{ 'the server refused: work_mem' in ansible_failed_result.msg }}"
+            invalid_refused: >-
+              {{ 'PostgreSQL refused the new configuration' in ansible_failed_result.msg
+                 and 'work_mem' in ansible_failed_result.msg }}
 
     - name: Read the config file after the refused pass
       ansible.builtin.slurp:
@@ -278,6 +280,43 @@
           - invalid_refused | default(false)
           - not (invalid_accepted | default(false))
           - started_after_invalid.stdout == started_before.stdout ~ ' 7MB'
+        quiet: true
+
+    # A value valid for its setting that still stops the server starting: the check
+    # passes it, the restart fails, and the role has to bring the server back on the
+    # previous file rather than leave every site down. A preload library that is not
+    # installed: -C does not load libraries, the postmaster does at start. (An
+    # oversized shared_buffers was tried first and started anyway — the container
+    # overcommits memory.)
+    - name: Run the role with a preload library that is not installed
+      block:
+        - name: The unstartable pass
+          ansible.builtin.include_role:
+            name: postgresql
+          vars:
+            postgresql_shared_preload_libraries: [krot_absent_library]
+        - name: Note that the unstartable pass got through
+          ansible.builtin.set_fact:
+            unstartable_accepted: true
+      rescue:
+        - name: Note that the restart failed and was rolled back
+          ansible.builtin.set_fact:
+            unstartable_rolled_back: >-
+              {{ 'did not restart with the new configuration' in ansible_failed_result.msg }}
+
+    - name: Read the running preload list after the unstartable pass
+      ansible.builtin.command: psql -XtAc "select current_setting('shared_preload_libraries')"
+      become: true
+      become_user: postgres
+      register: preload_after_unstartable
+      changed_when: false
+
+    - name: The server is back up on the previous file
+      ansible.builtin.assert:
+        that:
+          - unstartable_rolled_back | default(false)
+          - not (unstartable_accepted | default(false))
+          - preload_after_unstartable.stdout == 'pg_stat_statements'
         quiet: true
 
     # Dropping a preload library removes its line from the file, so there is no new

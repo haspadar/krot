@@ -156,7 +156,7 @@
 - name: Apply the new settings
   when: not ansible_check_mode
   block:
-    - name: Reload and ask the server what still needs a restart
+    - name: Check, reload and ask the server what still needs a restart
       ansible.builtin.script:
         cmd: >-
           apply-settings.sh {{ postgresql_version }}
@@ -171,7 +171,25 @@
         name: "postgresql@{{ postgresql_version }}-main"
         state: restarted
       when: "postgresql_applied.stdout_lines | select('match', '^restart: ') | list | length > 0"
+
+    - name: Drop the copy of the previous file, the new one being in effect
+      ansible.builtin.file:
+        path: "{{ postgresql_conf.backup_file }}"
+        state: absent
+      when: postgresql_conf.backup_file is defined
   rescue:
+    # Only two failures roll the file back: a value the check refused (the server
+    # untouched), and a restart that did not come back (the server down). Anything
+    # else — psql unreachable, a reload that never landed — fails as it is: the new
+    # file may be fine, and rolling it back would discard it for an unrelated cause.
+    - name: Name the failure
+      ansible.builtin.set_fact:
+        postgresql_refused: >-
+          {{ ansible_failed_task.name is search('^Check, reload')
+             and ansible_failed_result.rc | default(0) == 2 }}
+        postgresql_restart_failed: "{{ ansible_failed_task.name is search('^Restart PostgreSQL') }}"
+        postgresql_failure: "{{ ansible_failed_result.stderr | default(ansible_failed_result.msg) | trim }}"
+
     # A refused value left on disk would wait for the next restart that does not
     # go through this role — a reboot, a package upgrade — and keep the server down.
     - name: Put back the file the server last accepted
@@ -182,40 +200,45 @@
         owner: postgres
         group: postgres
         mode: "0640"
-      when: postgresql_conf.backup_file is defined
+      when:
+        - postgresql_refused or postgresql_restart_failed
+        - postgresql_conf.backup_file is defined
 
-    - name: Remove a first file the server refused
+    # Only a file this very run created: an unchanged one, written by an earlier
+    # interrupted run, has no copy to return to and is left for the operator.
+    - name: Remove a file this run created and the server could not take
       ansible.builtin.file:
         path: "/etc/postgresql/{{ postgresql_version }}/main/conf.d/99-krot.conf"
         state: absent
-      when: postgresql_conf.backup_file is not defined
+      when:
+        - postgresql_refused or postgresql_restart_failed
+        - postgresql_conf.changed
+        - postgresql_conf.backup_file is not defined
 
-    - name: Remember what the server refused
-      ansible.builtin.set_fact:
-        postgresql_refusal: "{{ ansible_failed_result.stderr | default(ansible_failed_result.msg) | trim }}"
+    - name: Start PostgreSQL again on the previous file
+      ansible.builtin.service:
+        name: "postgresql@{{ postgresql_version }}-main"
+        state: started
+      when: postgresql_restart_failed
 
-    # The refused reload still applied the new file's valid lines; reading the
-    # restored file takes the server back to what is on disk.
-    - name: Reload the file put back
-      ansible.builtin.script:
-        cmd: >-
-          apply-settings.sh {{ postgresql_version }}
-          /etc/postgresql/{{ postgresql_version }}/main/conf.d/99-krot.conf
-      become: true
-      become_user: postgres
-      changed_when: true
-
-    - name: Refuse the run, naming what the server refused
-      ansible.builtin.fail:
-        msg: >-
-          PostgreSQL refused the new configuration and is running with the previous
-          one, which is back on disk: {{ postgresql_refusal }}
-  always:
-    - name: Drop the copy of the previous file
+    # Dropped only after the previous file is back: a failed restore keeps it.
+    - name: Drop the copy of the previous file, now restored
       ansible.builtin.file:
         path: "{{ postgresql_conf.backup_file }}"
         state: absent
-      when: postgresql_conf.backup_file is defined
+      when:
+        - postgresql_refused or postgresql_restart_failed
+        - postgresql_conf.backup_file is defined
+
+    - name: Fail the run, naming what happened
+      ansible.builtin.fail:
+        msg: >-
+          {% if postgresql_refused %}PostgreSQL refused the new configuration; the server was
+          not touched and the previous file is back on disk: {{ postgresql_failure }}{% elif
+          postgresql_restart_failed %}PostgreSQL did not restart with the new configuration; the
+          previous file is back on disk and the server was started on it: {{ postgresql_failure
+          }}{% else %}Applying the configuration failed; nothing was rolled back:
+          {{ postgresql_failure }}{% endif %}
 
 # The extension can only be created once the library is actually in memory, which
 # the restart above has already seen to.

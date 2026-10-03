@@ -427,9 +427,11 @@ evict `pg_stat_statements`.
 **About restarts.** Some parameters in `99-krot.conf` (`shared_preload_libraries`,
 `shared_buffers`, `max_connections`, `logging_collector`) are postmaster-level, and `reload`
 accepts them silently without applying them; a restart, though, is downtime for every site on the
-machine. So the role reloads whenever its file is newer than the server's last config load, and
-then restarts only if the server reports a setting `pending_restart`. A value the server refuses
-fails the run, and the previous file goes back on disk, so the next reboot does not trip over it.
+machine. So the role first has `postgres -C` read every file as a starting server would, failing
+the run on an invalid value before touching the server; then reloads whenever its file is newer
+than the server's last config load; then restarts only if the server reports a setting
+`pending_restart`. A refused file, or a restart that does not come back, puts the previous file
+back on disk (and starts the server on it), so the next reboot does not trip over it.
 The decision comes from the server's state rather than from whether this run changed the file, so
 an interrupted run is finished by the next one.
 
