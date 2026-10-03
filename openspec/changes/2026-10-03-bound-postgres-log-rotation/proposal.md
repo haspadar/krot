@@ -20,9 +20,10 @@ record is what located that machine's disk stalls.
   disconnection logging; a machine without a connection pool turns it off in its inventory
 - The unused `postgresql_log_retention_days` is removed
 - Slow queries, checkpoints, lock waits, temp files and autovacuum stay logged
-- Applying the config asks the server: reload when the file is newer than its last config load,
-  then restart only for settings it reports `pending_restart`; a refused value fails the run
-  and puts the previous file back. Until now every change restarted, so rolling out this very
+- Applying the config asks the server: `postgres -C` checks the files first (a refused value
+  fails the run, the previous file goes back, the server untouched), reload when the file is
+  newer than its last config load, then restart only for settings it reports
+  `pending_restart`; a restart that fails puts the previous file back and starts the server. Until now every change restarted, so rolling out this very
   log setting would have dropped every connection of a machine serving its sites live. Neither
   `pg_file_settings` messages (an invalid value and a restart-only change read alike) nor
   comparing `postgres -C` with `pg_settings` (one value printed two ways) can decide it

@@ -21,10 +21,11 @@ changing a default that affects production) bump major.
 
 ### Fixed
 
-- **`postgresql` reloads instead of restarting for settings a reload applies.** The role reloads
-  when its file is newer than the server's last config load and restarts only for settings the
-  server then reports `pending_restart`. A value the server refuses fails the run and the previous
-  file goes back on disk; an interrupted run is finished by the next one
+- **`postgresql` reloads instead of restarting for settings a reload applies.** `postgres -C`
+  checks the files first; the role then reloads when its file is newer than the server's last
+  config load and restarts only for settings the server reports `pending_restart`. A refused file
+  goes back to the previous one without touching the server; a restart that fails puts the
+  previous file back and starts the server on it; an interrupted run is finished by the next one
 
 ## 7.1.1
 
