@@ -2,7 +2,8 @@
 # Settings are read from the running server with SHOW, never from the config
 # file. PostgreSQL accepts a reload for a postmaster-level setting and carries
 # on with the old value — the file then says one thing and the server does
-# another, which is precisely why the role restarts rather than reloads.
+# another, which is precisely why the role restarts when PostgreSQL reports such
+# a setting pending, and only then.
 - name: Verify
   hosts: all
   vars:
@@ -35,12 +36,12 @@
     # What the server is actually running with. `SHOW` reports the value in
     # effect, so a setting that was written but silently not applied fails here.
     #
-    # Of the eight, only two carry the restart handler: max_connections and
+    # Of the ten, only two carry the restart handler: max_connections and
     # shared_buffers are postmaster-level AND prepare gave them a different
     # value first, so a reload leaves 111 and 16384 in effect while the file
     # says 123 and 24576. Measured both ways.
     #
-    # The other six do not, and it is worth being exact about why, because the
+    # The other eight do not, and it is worth being exact about why, because the
     # list reads as if they all did. work_mem is context `user` and
     # log_min_duration_statement `superuser` — both apply on SIGHUP, so they
     # pass on a reload. log_destination likewise. listen_addresses and port are
@@ -59,7 +60,7 @@
         psql -tAc "select name || '=' || setting from pg_settings
         where name in ('max_connections','shared_buffers','work_mem',
         'log_min_duration_statement','log_destination','listen_addresses',
-        'port','pg_stat_statements.max')"
+        'port','pg_stat_statements.max','log_filename','log_disconnections')"
       register: settings
       changed_when: false
 
@@ -82,6 +83,11 @@
         - listen_addresses=localhost
         - port=5432
         - pg_stat_statements.max=4000
+        # A name that repeats, so truncate-on-rotation recycles the set; and the
+        # scenario's connection logging off (log_connections is a list in 18,
+        # its sibling still a boolean, and one setting drives both).
+        - log_filename=postgresql-%d.log
+        - log_disconnections=off
 
     # A library only reaches shared memory at postmaster start. The role flushes
     # its restart handler mid-play for exactly this, so checking that the
@@ -183,3 +189,44 @@
         | reject('search', 'user-runtime-dir@\d+\.service')
         | select('search', '\S')
         | list | length > 0
+
+    # The other half of the handler: a change PostgreSQL applies on reload must
+    # not restart it. Converge above always restarts (prepare left a different
+    # max_connections running), so only a second pass changing nothing but a
+    # sighup-level setting tells reload from restart: a restart moves the
+    # postmaster's start time, a reload does not.
+    - name: Remember when the postmaster started
+      ansible.builtin.command: psql -XtAc "select pg_postmaster_start_time()"
+      become: true
+      become_user: postgres
+      register: started_before
+      changed_when: false
+
+    - name: Run the role again with only work_mem changed
+      ansible.builtin.include_role:
+        name: postgresql
+      vars:
+        postgresql_work_mem: 7MB
+
+    - name: Read the start time and work_mem after that pass
+      ansible.builtin.command: >-
+        psql -XtAc "select pg_postmaster_start_time() || ' ' || current_setting('work_mem')"
+      become: true
+      become_user: postgres
+      register: started_after
+      changed_when: false
+      # A reload is a signal: the command returns before the postmaster has
+      # re-read the file, and a backend forked in between still sees 6MB.
+      until: started_after.stdout.endswith(' 7MB')
+      retries: 10
+      delay: 1
+
+    - name: The new work_mem is in effect and the server was not restarted
+      ansible.builtin.assert:
+        that:
+          - started_after.stdout == started_before.stdout ~ ' 7MB'
+        fail_msg: >-
+          Before "{{ started_before.stdout }}", after "{{ started_after.stdout }}".
+          A moved start time is a restart for a change a reload applies — a
+          5xx on every site of the machine for nothing.
+        quiet: true

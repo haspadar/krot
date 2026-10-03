@@ -1,7 +1,44 @@
 ---
-# Restart, not reload: logging_collector, shared_buffers and max_connections are
-# postmaster-level settings that a reload accepts silently without applying.
+# A changed config is applied by reload unless PostgreSQL itself says a setting
+# needs the postmaster restarted: logging_collector, shared_buffers,
+# max_connections and shared_preload_libraries are accepted silently by a
+# reload without taking effect. Restarting on every change instead dropped every
+# connection for an edit as small as a log filename — on a machine serving its
+# sites live, a restart is a 5xx on all of them.
+#
+# pg_file_settings re-reads the files at query time, so it answers for the file
+# just written rather than for whatever the server last loaded, and marks each
+# postmaster-level change "setting could not be applied". Any other error is a
+# config the server would refuse: neither reload nor restart, since a restart
+# with it would not come back.
+- name: Read what the new settings need
+  ansible.builtin.command: >-
+    psql -XtAc "select coalesce(string_agg(distinct coalesce(name, '?') || ': ' || error, '; '), '')
+    from pg_file_settings where error is not null"
+  become: true
+  become_user: postgres
+  register: postgresql_file_errors
+  changed_when: false
+  failed_when: >-
+    postgresql_file_errors.rc != 0
+    or (postgresql_file_errors.stdout | length > 0
+        and postgresql_file_errors.stdout.split('; ')
+            | reject('search', ': setting could not be applied$') | list | length > 0)
+  when: not ansible_check_mode
+  listen: Apply postgresql settings
+
+- name: Reload postgresql
+  ansible.builtin.service:
+    name: "postgresql@{{ postgresql_version }}-main"
+    state: reloaded
+  when:
+    - not ansible_check_mode
+    - postgresql_file_errors.stdout | length == 0
+  listen: Apply postgresql settings
+
 - name: Restart postgresql
   ansible.builtin.service:
     name: "postgresql@{{ postgresql_version }}-main"
     state: restarted
+  when: ansible_check_mode or postgresql_file_errors.stdout | length > 0
+  listen: Apply postgresql settings

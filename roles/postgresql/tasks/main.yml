@@ -134,7 +134,7 @@
     owner: postgres
     group: postgres
     mode: "0640"
-  notify: Restart postgresql
+  notify: Apply postgresql settings
 
 - name: Enable PostgreSQL
   ansible.builtin.service:

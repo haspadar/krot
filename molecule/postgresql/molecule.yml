@@ -47,6 +47,7 @@ provisioner:
         postgresql_shared_buffers: 192MB
         postgresql_work_mem: 6MB
         postgresql_log_min_duration_ms: 400
+        postgresql_log_connections: false
         postgresql_stat_statements: true
         postgresql_stat_statements_max: 4000
 
