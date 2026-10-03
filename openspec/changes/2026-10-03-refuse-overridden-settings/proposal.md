@@ -17,4 +17,4 @@ set there wins over the role's file. 2026-10-03, the first 8.0.0 run on a produc
 - Lines of other files overridden by the role's (the packaged `postgresql.conf`) stay normal
 - The reload watches every config source, `postgresql.auto.conf` included, so the
   `ALTER SYSTEM RESET` that removes an override is picked up by the next run
-- Released as 8.2.0: a run that was green can turn red
+- Released as 9.0.0: a run that was green can turn red
