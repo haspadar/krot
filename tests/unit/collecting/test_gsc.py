@@ -136,7 +136,24 @@ def test_a_quiet_day_before_the_boundary_is_a_measured_zero():
     engine = Engine(unavailable=[date(2026, 9, 10)], boundaries={'sc-domain:gardens.test': date(2026, 9, 30)})
     Collection(engine, store, io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
         config(), date(2026, 9, 10), date(2026, 9, 10))
-    assert [attempt['status'] for attempt in store.attempts] == ['success'] * 3
+    assert store.saved == {('gardens.test', date(2026, 9, 10), dataset): [] for dataset in DATASETS}
+
+
+def test_a_borrowed_boundary_makes_an_earlier_quiet_day_a_zero():
+    store = MemoryStore()
+    engine = Engine(boundaries={'sc-domain:harbour.test': date(2026, 9, 30)})
+    sites = {'sites': [{'domain': 'harbour.test'}, {'domain': 'pond.test'}], 'gsc': {}}
+    Collection(engine, store, io.StringIO(), io.StringIO(), date(2026, 10, 3)).collect(
+        sites, date(2026, 9, 20), date(2026, 9, 20))
+    assert ('pond.test', date(2026, 9, 20), 'page') in store.saved
+
+
+def test_a_refused_boundary_is_reported():
+    err = io.StringIO()
+    engine = Engine(boundaries={'sc-domain:gardens.test': GscError(403, 'forbidden')})
+    Collection(engine, MemoryStore(), io.StringIO(), err, date(2026, 10, 3)).collect(
+        config(), date(2026, 9, 20), date(2026, 9, 20))
+    assert 'gardens.test boundary: GscError HTTP 403 forbidden' in err.getvalue()
 
 
 def test_a_day_from_the_boundary_on_is_unavailable_without_asking_reports():

@@ -4,7 +4,7 @@ import json
 import math
 import re
 import time
-from datetime import date
+from datetime import date, timedelta
 from email.utils import parsedate_to_datetime
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlencode, urlsplit
@@ -272,9 +272,13 @@ class Client:
         if named is None:
             return None
         try:
-            return date.fromisoformat(iso_day(named))
+            boundary = date.fromisoformat(iso_day(named))
         except GscError:
             raise GscError(200, "invalid_metadata") from None
+        # A date outside the asked range would certify fresh days as final, or none at all.
+        if not date.fromisoformat(start) <= boundary <= date.fromisoformat(end) + timedelta(days=1):
+            raise GscError(200, "invalid_metadata")
+        return boundary
 
     def finalized_days(self, property, start, end):
         start, end = iso_day(start), iso_day(end)

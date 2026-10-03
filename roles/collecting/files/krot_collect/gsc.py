@@ -64,9 +64,10 @@ class Collection:
                 named[site["domain"]] = self.client.first_incomplete(
                     site.get("property", "sc-domain:" + site["domain"]),
                     self.today - timedelta(days=BOUNDARY_DAYS), self.today)
-            except Exception:
+            except Exception as error:
                 # No borrowed boundary: the per-day probe records the refusal as an attempt
                 # and stops a refused property before every report of every day is asked.
+                print("%s boundary: %s" % (site["domain"], error_label(error)), file=self.err)
                 named[site["domain"]] = None
                 refused.add(site["domain"])
         known = [day for day in named.values() if day is not None]

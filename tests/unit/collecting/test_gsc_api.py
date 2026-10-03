@@ -375,7 +375,8 @@ def test_an_answer_without_rows_names_no_boundary():
 
 
 @pytest.mark.parametrize("metadata", [["2026-09-30"], {"firstIncompleteDate": "30.09.2026"},
-                                      {"firstIncompleteDate": 20260930}])
+                                      {"firstIncompleteDate": 20260930}, {"firstIncompleteDate": "2099-01-01"},
+                                      {"firstIncompleteDate": "2026-09-02"}])
 def test_a_malformed_boundary_is_a_controlled_failure(metadata):
     client, _, _ = setup(ok({"metadata": metadata}))
     with pytest.raises(GscError, match="invalid_metadata"):
