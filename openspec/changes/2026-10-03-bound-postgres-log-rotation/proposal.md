@@ -20,12 +20,12 @@ record is what located that machine's disk stalls.
   disconnection logging; a machine without a connection pool turns it off in its inventory
 - The unused `postgresql_log_retention_days` is removed
 - Slow queries, checkpoints, lock waits, temp files and autovacuum stay logged
-- Applying the config compares each of the role's settings as the files give it
-  (`postgres -C`) with the running value: a differing postmaster-level setting restarts, any
-  other difference reloads, an invalid value fails the run before the server is touched. Until
-  now every change restarted, so rolling out this very log setting would have dropped every
-  connection of a machine serving its sites live. `pg_file_settings` errors cannot decide it:
-  PostgreSQL 18 reports an invalid value and a restart-only change with the same message
+- Applying the config asks the server: reload when the file is newer than its last config load,
+  then restart only for settings it reports `pending_restart`; a refused value fails the run
+  and puts the previous file back. Until now every change restarted, so rolling out this very
+  log setting would have dropped every connection of a machine serving its sites live. Neither
+  `pg_file_settings` messages (an invalid value and a restart-only change read alike) nor
+  comparing `postgres -C` with `pg_settings` (one value printed two ways) can decide it
 - Version 8.0.0: the log file names change and a variable is removed
 
 ## Boundaries

@@ -8,7 +8,7 @@ changing a default that affects production) bump major.
 ### Changed (breaking)
 
 - **`postgresql` log files are named by day of month** (`postgresql-DD`), so the set recycles
-  within a month. The dated name carried the year, never repeated and so never truncated — the
+  within a month (a 31st-day file waits for the next 31-day month). The dated name carried the year, never repeated and so never truncated — the
   set grew without bound despite the template's promise. Anything matching the old
   `postgresql-YYYY-MM-DD` names stops finding new files; files under the old names are left for
   the operator
@@ -21,10 +21,10 @@ changing a default that affects production) bump major.
 
 ### Fixed
 
-- **`postgresql` reloads instead of restarting for settings a reload applies.** Each setting as
-  the files give it (`postgres -C`) is compared with the running value: a differing
-  postmaster-level setting restarts, any other difference reloads. An invalid value fails the run
-  before the server is touched, and an interrupted run is finished by the next one
+- **`postgresql` reloads instead of restarting for settings a reload applies.** The role reloads
+  when its file is newer than the server's last config load and restarts only for settings the
+  server then reports `pending_restart`. A value the server refuses fails the run and the previous
+  file goes back on disk; an interrupted run is finished by the next one
 
 ## 7.1.1
 
