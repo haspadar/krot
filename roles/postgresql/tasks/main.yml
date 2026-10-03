@@ -206,11 +206,12 @@
         state: absent
       when: postgresql_conf.backup_file is defined
   rescue:
-    # Only two failures roll the file back: a value the check refused (exit 64,
-    # the server untouched) and a start or restart that did not come up (the
-    # server down). Anything else — psql unreachable, a reload that never landed —
-    # fails as it is: the new file may be fine, and rolling it back would discard
-    # it for an unrelated cause.
+    # Until the server has taken the new file, any failure puts the previous one
+    # back: a refused value (exit 64, the server untouched), a start or restart that
+    # did not come up (the server down), and anything else — psql unreachable, a
+    # reload that never landed. A new file proven by nothing must not be the only
+    # copy left: the next restart outside this role would start on it. Putting back
+    # a file that was fine costs nothing; the next run writes it again.
     - name: Name the failure
       ansible.builtin.set_fact:
         postgresql_refused: >-
@@ -224,12 +225,8 @@
     # written by an earlier interrupted run, has neither and is left as it is.
     - name: Decide whether the file can be rolled back
       ansible.builtin.set_fact:
-        postgresql_rolled_back: >-
-          {{ (postgresql_refused or postgresql_start_failed)
-             and (postgresql_conf.backup_file is defined or postgresql_conf.changed) }}
+        postgresql_rolled_back: "{{ postgresql_conf.backup_file is defined or postgresql_conf.changed }}"
 
-    # A refused value left on disk would wait for the next restart that does not
-    # go through this role — a reboot, a package upgrade — and keep the server down.
     - name: Put back the file the server last accepted
       ansible.builtin.copy:
         src: "{{ postgresql_conf.backup_file }}"
@@ -238,11 +235,9 @@
         owner: postgres
         group: postgres
         mode: "0640"
-      when:
-        - postgresql_rolled_back
-        - postgresql_conf.backup_file is defined
+      when: postgresql_conf.backup_file is defined
 
-    - name: Remove a file this run created and the server could not take
+    - name: Remove a file this run created and could not apply
       ansible.builtin.file:
         path: "/etc/postgresql/{{ postgresql_version }}/main/conf.d/99-krot.conf"
         state: absent
@@ -258,10 +253,8 @@
         - postgresql_start_failed
         - postgresql_rolled_back
 
-    # Dropped only after the previous file is back: a failed restore keeps it.
-    # Reached only once a restore, if any, succeeded — a failed one stops the rescue
-    # above and keeps the copy. Without a rollback the new file stays and the copy
-    # has nothing left to do; left behind it would never be removed.
+    # Reached only once the restore succeeded — a failed one stops the rescue above
+    # and keeps the copy.
     - name: Drop the copy of the previous file
       ansible.builtin.file:
         path: "{{ postgresql_conf.backup_file }}"
@@ -271,29 +264,13 @@
     - name: Fail the run, naming what happened
       ansible.builtin.fail:
         msg: >-
-          {% if postgresql_refused %}PostgreSQL refused the new configuration; the server was
-          not touched{% elif postgresql_start_failed %}PostgreSQL did not start with the new
-          configuration{% else %}Applying the configuration failed{% endif %}{% if
-          postgresql_rolled_back %}; the previous file is back on disk{% if
-          postgresql_start_failed %} and the server was started on it{% endif %}{% elif
-          postgresql_refused or postgresql_start_failed %}; this run did not write the file, so
-          there was nothing to return to and it is still on disk{% else %}; nothing was rolled
-          back{% endif %}: {{ postgresql_failure }}
-
-# After the restart, not before: a restart that fails is rolled back above, and
-# refusing first would skip that protection. The file is not rolled back — it is
-# right; the override is what to remove (ALTER SYSTEM RESET <name>), and the next
-# run reloads once postgresql.auto.conf changes.
-- name: Refuse settings of this role that a later config source overrides
-  ansible.builtin.fail:
-    msg: >-
-      These settings of 99-krot.conf are not in effect, a later source wins:
-      {{ postgresql_overridden | first | regex_replace('^overridden: ', '') }}
-  vars:
-    postgresql_overridden: "{{ postgresql_applied.stdout_lines | select('match', '^overridden: ') | list }}"
-  when:
-    - not ansible_check_mode
-    - postgresql_overridden | length > 0
+          {% if postgresql_refused %}PostgreSQL refused the configuration as a starting server
+          reads it — every file, not only this role's; the server was not touched{% elif
+          postgresql_start_failed %}PostgreSQL did not start with the new configuration{% else
+          %}Applying the configuration failed{% endif %}{% if postgresql_rolled_back %}; the
+          previous file is back on disk{% if postgresql_start_failed %} and the server was started
+          on it{% endif %}{% else %}; this run did not write the file, so there was nothing to
+          return to and it is still on disk{% endif %}: {{ postgresql_failure }}
 
 # The extension can only be created once the library is actually in memory, which
 # the restart above has already seen to.
@@ -315,3 +292,20 @@
   # Reads and writes the catalogue directly; there is nothing for check mode to
   # predict without a live connection.
   check_mode: false
+
+# Last, after the restart and everything else the role does: a restart that fails
+# is rolled back above, and refusing earlier would skip that protection and the
+# steps before this one. The file is not rolled back — it is right; the override
+# is what to remove (ALTER SYSTEM RESET <name>, or the later conf.d file), and the
+# next run reloads once that source changes.
+- name: Refuse settings of this role that a later config source overrides
+  ansible.builtin.fail:
+    msg: >-
+      These settings of 99-krot.conf are overridden by a later config source, whose
+      value is the one in effect:
+      {{ postgresql_overridden | first | regex_replace('^overridden: ', '') }}
+  vars:
+    postgresql_overridden: "{{ postgresql_applied.stdout_lines | select('match', '^overridden: ') | list }}"
+  when:
+    - not ansible_check_mode
+    - postgresql_overridden | length > 0

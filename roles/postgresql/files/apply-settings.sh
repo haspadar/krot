@@ -73,10 +73,28 @@ fi
 # counts as older: the file may have been written just after it. Assigned, never
 # tested inline: a failing psql inside `[ "$(...)" = t ]` escapes set -e and reads
 # as "not stale", skipping the reload without a word.
-stale="SELECT date_trunc('second', pg_conf_load_time()) <= max((pg_stat_file(f, true)).modification)
-         FROM (SELECT DISTINCT sourcefile FROM pg_file_settings
-               UNION SELECT current_setting('data_directory') || '/postgresql.auto.conf'
-               UNION SELECT '$file') AS sources(f)"
+#
+# Times alone miss a source that is gone: an overriding conf.d file deleted or
+# emptied without a reload leaves pg_file_settings, so there is no newer time to
+# see, while the server still runs its value. Hence the second half: a role line
+# no later file overrides, whose running value the server takes from anywhere
+# but this file and is not waiting on a restart for, is stale whatever the times.
+# Postmaster-level settings stay out: a reload that finds one unchanged keeps the
+# source it had at start (port, listen_addresses from postgresql.conf), so it would
+# read as stale forever — and a changed one is pending_restart, handled below.
+stale="SELECT date_trunc('second', pg_conf_load_time()) <= (
+           SELECT max((pg_stat_file(f, true)).modification)
+             FROM (SELECT DISTINCT sourcefile FROM pg_file_settings
+                   UNION SELECT current_setting('data_directory') || '/postgresql.auto.conf'
+                   UNION SELECT '$file') AS sources(f))
+        OR EXISTS (
+           SELECT 1 FROM pg_file_settings o JOIN pg_settings s ON lower(s.name) = lower(o.name)
+            WHERE o.sourcefile = '$file'
+              AND NOT EXISTS (SELECT 1 FROM pg_file_settings w
+                               WHERE lower(w.name) = lower(o.name) AND w.seqno > o.seqno)
+              AND s.sourcefile IS DISTINCT FROM '$file'
+              AND NOT s.pending_restart
+              AND s.context NOT IN ('postmaster', 'internal'))"
 is_stale=$(q "$stale")
 if [ "$is_stale" = t ]; then
     # A reload is a signal; a backend forked after the postmaster re-read the files
