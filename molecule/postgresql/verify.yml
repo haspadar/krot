@@ -370,7 +370,9 @@
 
     # postgresql.auto.conf is read after conf.d, so an ALTER SYSTEM wins over the
     # role's file. Measured on a production machine: a month-old manual ALTER SYSTEM
-    # kept connection logging on through a run that reported turning it off.
+    # kept connection logging on through a run that reported turning it off. Neither
+    # ALTER SYSTEM below is followed by a reload: the role has to notice the changed
+    # postgresql.auto.conf itself, on the way in and again after the RESET.
     - name: Override one of the role's settings the way ALTER SYSTEM does
       ansible.builtin.command: psql -XtAc "ALTER SYSTEM SET work_mem = '5MB'"
       become: true
@@ -389,18 +391,89 @@
         - name: Note that the role named the override
           ansible.builtin.set_fact:
             overridden_reported: >-
-              {{ 'overridden and not in effect: work_mem by' in ansible_failed_result.msg
+              {{ 'a later source wins: work_mem by' in ansible_failed_result.msg
                  and 'postgresql.auto.conf' in ansible_failed_result.msg }}
-
-    - name: Remove the override
-      ansible.builtin.command: psql -XtAc "ALTER SYSTEM RESET work_mem"
-      become: true
-      become_user: postgres
-      changed_when: true
 
     - name: The run failed and named the file that wins
       ansible.builtin.assert:
         that:
           - overridden_reported | default(false)
           - not (overridden_accepted | default(false))
+        quiet: true
+
+    - name: Remove the override, without a reload
+      ansible.builtin.command: psql -XtAc "ALTER SYSTEM RESET work_mem"
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Run the role once the override is gone
+      ansible.builtin.include_role:
+        name: postgresql
+
+    - name: Read work_mem after the override is gone
+      ansible.builtin.command: psql -XtAc "select current_setting('work_mem')"
+      become: true
+      become_user: postgres
+      register: work_mem_after_reset
+      changed_when: false
+
+    # The RESET touched only postgresql.auto.conf; a role watching its own file alone
+    # would skip the reload and report success with 5MB still running.
+    - name: The role's value is back in effect
+      ansible.builtin.assert:
+        that:
+          - work_mem_after_reset.stdout == '6MB'
+        quiet: true
+
+    # The winner may itself wait for a restart, so it is not `applied` either; the
+    # role must still see it as the later assignment, restart (with its rollback),
+    # and only then refuse.
+    - name: Override a restart-only setting the way ALTER SYSTEM does
+      ansible.builtin.command: psql -XtAc "ALTER SYSTEM SET max_connections = 150"
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Run the role under the restart-only override
+      block:
+        - name: The pass under the restart-only override
+          ansible.builtin.include_role:
+            name: postgresql
+        - name: Note that the restart-only override got through
+          ansible.builtin.set_fact:
+            pending_override_accepted: true
+      rescue:
+        - name: Note that the role named the restart-only override
+          ansible.builtin.set_fact:
+            pending_override_reported: "{{ 'a later source wins: max_connections by' in ansible_failed_result.msg }}"
+
+    - name: The run failed on max_connections
+      ansible.builtin.assert:
+        that:
+          - pending_override_reported | default(false)
+          - not (pending_override_accepted | default(false))
+        quiet: true
+
+    - name: Remove the restart-only override
+      ansible.builtin.command: psql -XtAc "ALTER SYSTEM RESET max_connections"
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Run the role once the restart-only override is gone
+      ansible.builtin.include_role:
+        name: postgresql
+
+    - name: Read max_connections after that
+      ansible.builtin.command: psql -XtAc "select current_setting('max_connections')"
+      become: true
+      become_user: postgres
+      register: connections_after_reset
+      changed_when: false
+
+    - name: The role's max_connections is back after a restart
+      ansible.builtin.assert:
+        that:
+          - connections_after_reset.stdout == '123'
         quiet: true

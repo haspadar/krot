@@ -259,13 +259,14 @@
         - postgresql_rolled_back
 
     # Dropped only after the previous file is back: a failed restore keeps it.
-    - name: Drop the copy of the previous file, now restored
+    # Reached only once a restore, if any, succeeded — a failed one stops the rescue
+    # above and keeps the copy. Without a rollback the new file stays and the copy
+    # has nothing left to do; left behind it would never be removed.
+    - name: Drop the copy of the previous file
       ansible.builtin.file:
         path: "{{ postgresql_conf.backup_file }}"
         state: absent
-      when:
-        - postgresql_rolled_back
-        - postgresql_conf.backup_file is defined
+      when: postgresql_conf.backup_file is defined
 
     - name: Fail the run, naming what happened
       ansible.builtin.fail:
@@ -278,6 +279,21 @@
           postgresql_refused or postgresql_start_failed %}; this run did not write the file, so
           there was nothing to return to and it is still on disk{% else %}; nothing was rolled
           back{% endif %}: {{ postgresql_failure }}
+
+# After the restart, not before: a restart that fails is rolled back above, and
+# refusing first would skip that protection. The file is not rolled back — it is
+# right; the override is what to remove (ALTER SYSTEM RESET <name>), and the next
+# run reloads once postgresql.auto.conf changes.
+- name: Refuse settings of this role that a later config source overrides
+  ansible.builtin.fail:
+    msg: >-
+      These settings of 99-krot.conf are not in effect, a later source wins:
+      {{ postgresql_overridden | first | regex_replace('^overridden: ', '') }}
+  vars:
+    postgresql_overridden: "{{ postgresql_applied.stdout_lines | select('match', '^overridden: ') | list }}"
+  when:
+    - not ansible_check_mode
+    - postgresql_overridden | length > 0
 
 # The extension can only be created once the library is actually in memory, which
 # the restart above has already seen to.
