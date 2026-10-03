@@ -3,6 +3,21 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 9.0.0
+
+### Changed (breaking)
+
+- **`postgresql` fails a run whose own settings are overridden** — a run that was green can now
+  turn red. A value set by `ALTER SYSTEM` (`postgresql.auto.conf`, read after `conf.d`) won over
+  the role's file while the run reported success. A later assignment of a role setting in
+  another file now fails the run after any restart, naming the source that wins; the role's
+  file is not rolled back. The refusal comes last in the role, after any restart
+- **`postgresql` reloads when any config source changed** — `postgresql.auto.conf` after an
+  `ALTER SYSTEM RESET` included — **or when a running value comes from elsewhere than the role's
+  file**, as after an overriding `conf.d` file is deleted without a reload
+- **`postgresql` puts the previous file back on any failure before the server took the new one**,
+  not only on a refused value or a failed restart
+
 ## 8.1.0
 
 ### Added
@@ -70,7 +85,7 @@ changing a default that affects production) bump major.
 
 ## 7.0.0
 
-### Changed
+### Changed (breaking)
 
 - **`indexing` role: the schema is `krot_index`, named after its program as `krot_collect` is.**
   The first 7.x run renames the program's own `krot` schema in place, so its rows, the reader's
@@ -105,7 +120,7 @@ changing a default that affects production) bump major.
 
 ## 6.0.0
 
-### Changed
+### Changed (breaking)
 
 - **`cron` role: a run retires, overwrites and rotates only its own project's jobs.** A machine
   is shared by projects, each applying the role from its own inventory; until now a run took
@@ -182,7 +197,7 @@ changing a default that affects production) bump major.
   and file paths too. The change archive (`openspec/changes/`) and the index generated from it
   (`wiki/index/`) are the record of decisions as taken and are not checked.
 
-### Changed
+### Changed (breaking)
 
 - **`site_launch` checks `site_machine` within `--limit`.** The 5.8.0 entry describes this check,
   but the code reached `main` after that release: 5.8.0 checked on localhost, which a `--limit`
@@ -194,7 +209,7 @@ changing a default that affects production) bump major.
 
 ## 5.8.0
 
-### Changed
+### Changed (breaking)
 
 - **`site_launch` stops when `site_machine` names no host, or more than one.** A name that
   matched nothing skipped the whole play and exited 0 — a launch that did nothing read as one
@@ -208,7 +223,7 @@ changing a default that affects production) bump major.
 
 ## 5.7.0
 
-### Changed
+### Changed (breaking)
 
 - **`cloudflare_ruleset` takes a rule another tool made word for word as its own.** A consuming project made
   its cache rule without a ref of ours, so Cloudflare assigned one per zone; matched by ref
@@ -258,7 +273,7 @@ changing a default that affects production) bump major.
   mode, finds before it creates, and reads back what it wrote. A request that could not be asked
   is a failure, never "absent", and a POST is never repeated after a failure.
 
-### Changed
+### Changed (breaking)
 
 - **Two sets of roles instead of "a role knows the host, not the applications on it".** Machine
   roles still know nothing about sites; site roles know one. Cloudflare zones and records and the
