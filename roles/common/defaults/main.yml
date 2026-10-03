@@ -63,3 +63,7 @@ common_journal_max_use: 500M
 # buys nothing. `false` drops it (refused unless fstrim.timer is enabled) and
 # remounts at once; `true` puts it back.
 # common_root_discard: false
+
+# Not a setting to change on a machine: lets the molecule scenario point the discard
+# tasks at a planted copy, since a container's / is an overlay with no fstab line.
+common_fstab_path: /etc/fstab
