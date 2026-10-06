@@ -235,10 +235,10 @@
     # on every run, and the second run of the scenario never goes quiet.
     - name: Monitor
       haspadar.krot.uptimerobot_monitor:
-        url: "{{ site_public_url }}{{ (site_monitor.path | default('/')) if (site_monitor.keyword | default('') | length > 0) else '/' }}"
-        friendly_name: "{{ site_domain }}{{ ' (Profile)' if (site_monitor.keyword | default('') | length > 0) else '' }}"
-        type: "{{ 'keyword' if (site_monitor.keyword | default('') | length > 0) else 'http' }}"
-        keyword: "{{ site_monitor.keyword | default('') }}"
+        url: "{{ site_public_url }}{{ site_monitor.path | default('/') if site_preflight_word else '/' }}"
+        friendly_name: "{{ site_domain }}{{ ' (Profile)' if site_preflight_word else '' }}"
+        type: "{{ 'keyword' if site_preflight_word else 'http' }}"
+        keyword: "{{ site_preflight_word }}"
         page_check: false
         api_key: "{{ site_uptimerobot_key }}"
         api_url: "{{ site_uptimerobot_api_url }}"
@@ -246,6 +246,7 @@
       run_once: true
       become: false
       vars:
+        site_preflight_word: "{{ site_monitor.keyword | default('') }}"
         ansible_python_interpreter: "{{ ansible_playbook_python }}"
       register: site_preflight_monitor
       when: site_monitor.enabled | default(false)
