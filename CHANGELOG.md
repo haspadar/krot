@@ -3,6 +3,16 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## Unreleased
+
+### Changed
+
+- **`site_monitor` makes one monitor, not two**: with `site_monitor.keyword` set, only the keyword
+  monitor `<domain> (Profile)`; without it, only the HTTP monitor `<domain>`. The HTTP monitor
+  on the same page as the keyword one failed whenever the keyword one did, and the free plan
+  counts monitors — two per site ended it at the twenty-fifth site. Monitors an earlier run
+  made under the other name stay where they are: the role never deletes one
+
 ## 9.0.1
 
 ### Fixed
