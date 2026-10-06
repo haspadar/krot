@@ -230,11 +230,15 @@
       register: site_preflight_ga4
       when: site_analytics.ga4 | default(false)
 
+    # Asks about the monitor site_monitor makes: the keyword one when a word is set, the
+    # HTTP one otherwise. Asking about a monitor the role no longer makes reads "pending"
+    # on every run, and the second run of the scenario never goes quiet.
     - name: Monitor
       haspadar.krot.uptimerobot_monitor:
-        url: "{{ site_public_url }}/"
-        friendly_name: "{{ site_domain }}"
-        type: http
+        url: "{{ site_public_url }}{{ (site_monitor.path | default('/')) if (site_monitor.keyword | default('') | length > 0) else '/' }}"
+        friendly_name: "{{ site_domain }}{{ ' (Profile)' if (site_monitor.keyword | default('') | length > 0) else '' }}"
+        type: "{{ 'keyword' if (site_monitor.keyword | default('') | length > 0) else 'http' }}"
+        keyword: "{{ site_monitor.keyword | default('') }}"
         page_check: false
         api_key: "{{ site_uptimerobot_key }}"
         api_url: "{{ site_uptimerobot_api_url }}"
