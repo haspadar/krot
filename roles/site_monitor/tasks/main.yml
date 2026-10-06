@@ -1,8 +1,11 @@
 ---
-# Two monitors per site, named so a person reading the sorted list sees them
-# together: "<domain>" answers at all, "<domain> (Profile)" still carries its
-# word. The second catches what the first cannot — a site answering 200 with
-# nothing left on it.
+# One monitor per site. With a keyword it is "<domain> (Profile)": it fails whenever a
+# plain HTTP monitor on the same page would (5xx, a dead server, a dead database leave the
+# word off the page) and also when the site answers 200 with nothing left on it. Without a
+# keyword it is a plain HTTP monitor named "<domain>".
+#
+# A second monitor on the same page bought nothing and the free plan counts monitors: two
+# per site ended it at the twenty-fifth site.
 #
 # The word is looked for on the watched page before the monitor is made, by the
 # module itself: a keyword that is not there would alert from the first check,
@@ -24,6 +27,7 @@
   become: false
   vars:
     ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  when: site_monitor.keyword | default('') | length == 0
 
 - name: Watch the site keep its word
   haspadar.krot.uptimerobot_monitor:
