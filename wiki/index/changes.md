@@ -2,7 +2,7 @@
 kind: index
 title: Changes
 owner: generated
-verified: 2026-09-30
+verified: 2026-10-07
 roles: []
 ---
 
@@ -11,9 +11,9 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **28**.
+В работе — **1**, заархивировано — **28**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **10** из 28: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **10** из 29: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
@@ -21,9 +21,10 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
+| [`2026-10-07-count-two-segment-paths-as-places`](../../openspec/changes/2026-10-07-count-two-segment-paths-as-places/proposal.md) | **в работе** | — | Двухсегментный путь сайта многих стран считается страницей места |
 | [`collect-crawler-visits`](../../openspec/changes/archive/2026-09-30-collect-crawler-visits/proposal.md) | 2026-09-30 | [#73](https://github.com/haspadar/krot/pull/73) | Сбор обходов краулеров из логов nginx — роль `collecting` |
 | [`rename-index-schema`](../../openspec/changes/archive/2026-09-30-rename-index-schema/proposal.md) | 2026-09-30 | [#74](https://github.com/haspadar/krot/pull/74) | Схема `indexing` называется `krot_index`, а не `krot` |
-| [`wait-for-running-nights`](../../openspec/changes/archive/2026-09-30-wait-for-running-nights/proposal.md) | 2026-09-30 | — | Переименование схемы `indexing` ждёт уже идущую ночь проекта |
+| [`wait-for-running-nights`](../../openspec/changes/archive/2026-09-30-wait-for-running-nights/proposal.md) | 2026-09-30 | [#75](https://github.com/haspadar/krot/pull/75) | Переименование схемы `indexing` ждёт уже идущую ночь проекта |
 | [`check-indexing-on-a-fresh-machine`](../../openspec/changes/archive/2026-09-29-check-indexing-on-a-fresh-machine/proposal.md) | 2026-09-29 | [#70](https://github.com/haspadar/krot/pull/70) | `--check` роли indexing проходит на машине, где её ещё не было |
 | [`hide-consumer-names-in-wiki-index`](../../openspec/changes/archive/2026-09-29-hide-consumer-names-in-wiki-index/proposal.md) | 2026-09-29 | [#72](https://github.com/haspadar/krot/pull/72) | Оглавление вики не называет проекты-потребители |
 | [`keep-projects-out-of-code`](../../openspec/changes/archive/2026-09-29-keep-projects-out-of-code/proposal.md) | 2026-09-29 | [#67](https://github.com/haspadar/krot/pull/67) | Код коллекции не называет проекты, которые её потребляют |

@@ -67,6 +67,25 @@
   loop_control:
     label: "{{ item.name }}"
 
+# A site's pair_places files `/{a}/{b}` as a place. Its section is only a name: it
+# may be a rule's own (`listing`, as intended) but never a built-in, which the sum
+# check could not tell from the real thing.
+- name: Assert each site's pair_places
+  ansible.builtin.assert:
+    that:
+      - item.1.pair_places.section | default('') is match('^[a-z_]{1,16}\Z')
+      - item.1.pair_places.section | default('') not in collecting_built_in_sections
+      - item.1.pair_places.except_first | default([]) is not string
+      - item.1.pair_places.except_first | default([]) | reject('match', '^[a-z0-9_-]+\Z') | list | length == 0
+    fail_msg: >-
+      {{ item.0.name }} {{ item.1.domain }}: pair_places needs a section of
+      [a-z_]{1,16}, none of {{ collecting_built_in_sections | join(', ') }}, and
+      except_first as a list of lower-case segments, if any.
+    quiet: true
+  loop: "{{ collecting_plans | subelements('sites') | selectattr('1.pair_places', 'defined') | list }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1.domain | default('<unnamed>') }}"
+
 - name: Assert each project's own crawler marks and range sources
   ansible.builtin.assert:
     that:

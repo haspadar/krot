@@ -43,6 +43,23 @@ def without_query(path):
     return path[:cut]
 
 
+class Pair:
+    """A site's rule that a path of exactly two segments is a place: `/france/paris`.
+
+    For a site whose places are named by data (a country, then a city), so no prefix
+    can list them. It is the SITE's, not the project's: the other sites of a project
+    keep their two-segment doors (`/go/<id>`) in `other`, and a rule shared by the
+    project would move their rows without a word.
+
+    section:      where such a path is filed
+    except_first: first segments that are not places (`onward`, `exit`), lower case
+    """
+
+    def __init__(self, section, except_first=()):
+        self.section = section
+        self.except_first = frozenset(word.lower() for word in except_first)
+
+
 class Sections:
     """One project's rule set.
 
@@ -62,7 +79,7 @@ class Sections:
             self.slice = (int(slice["segments"]), re.compile(slice["last"], re.ASCII), slice["section"])
         self.media_prefix = media_prefix
 
-    def of(self, path):
+    def of(self, path, pair=None):
         clean = without_query(path)
         if clean in ("", "/"):
             return HOME
@@ -93,6 +110,12 @@ class Sections:
 
         if self.slice and len(segments) == self.slice[0] and self.slice[1].fullmatch(segments[-1]):
             return self.slice[2]
+
+        # After every rule and the slice: a path they claim never gets here. Not a
+        # file, as a lone segment is not.
+        if (pair and len(segments) == 2 and segments[0].lower() not in pair.except_first
+                and not segments[1].endswith(FILE_SUFFIXES)):
+            return pair.section
 
         # Deeper than one segment and nothing above: an outbound door, a beacon, a
         # scanner's traversal. None of them a page the audit counts.

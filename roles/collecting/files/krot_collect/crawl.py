@@ -61,7 +61,7 @@ class Collection:
         # defect: `rotate 14` keeps a bad archive a fortnight, and one truncated
         # file blinded its site for two weeks — the outage the collection exists
         # to notice, made invisible by the collection.
-        reading = self.tally.of(walk.lines(paths)).without(walk.spoiled)
+        reading = self.tally.of(walk.lines(paths), domain).without(walk.spoiled)
         if reading.days:
             self.store.store(domain, reading)
 

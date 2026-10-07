@@ -37,9 +37,14 @@
 #                 slice:         {segments, last, section} — a regex on the last
 #                                of exactly that many segments
 #   schedules: optional dict job -> OnCalendar, over collecting_schedules.
-#   sites:    required list of {domain}. ⚠️ EVERY site whose log the project
+#   sites:    required list of {domain, pair_places}. ⚠️ EVERY site whose log the project
 #             wants read, closed ones included: a site left out is a log never
 #             read, and nothing turns red over it.
+#             pair_places: optional {section, except_first} — on THIS site a path
+#             of exactly two segments (`/france/paris`) that no rule, slice or
+#             file claims is `section`; except_first lists first segments that are
+#             doors, not places (lower case). Per site, not per project: another
+#             site's `/go/<id>` stays `other`.
 collecting_projects: {}
 
 # Projects to take off this machine: their units and config go. ⚠️ Only by this
