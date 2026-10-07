@@ -32,6 +32,11 @@ BUILT_IN = (HOME, ROBOTS, SITEMAP, MEDIA, OTHER)
 # case, as the earlier implementation did: `/FAVICON.ICO` falls through.
 FILE_SUFFIXES = (".css", ".js", ".png", ".ico", ".txt", ".json", ".webmanifest")
 
+# What a Pair refuses as its second segment: anything ending in a short extension. The
+# list above is a guess at a lone segment's files; a place named by data meets any
+# file (`/a/photo.jpg`, `/a/menu.pdf`) and a slug does not end in `.xx`.
+EXTENSION = re.compile(r"\.[A-Za-z0-9]{2,5}\Z")
+
 
 def without_query(path):
     """The path without query or fragment: `/berlin?page=2` is the page `/berlin`."""
@@ -41,6 +46,23 @@ def without_query(path):
         if at != -1:
             cut = min(cut, at)
     return path[:cut]
+
+
+class Pair:
+    """A site's rule that a path of exactly two segments is a place: `/france/paris`.
+
+    For a site whose places are named by data (a country, then a city), so no prefix
+    can list them. It is the SITE's, not the project's: the other sites of a project
+    keep their two-segment doors (`/go/<id>`) in `other`, and a rule shared by the
+    project would move their rows without a word.
+
+    section:      where such a path is filed
+    except_first: first segments that are not places (`onward`, `exit`), lower case
+    """
+
+    def __init__(self, section, except_first=()):
+        self.section = section
+        self.except_first = frozenset(word.lower() for word in except_first)
 
 
 class Sections:
@@ -62,7 +84,7 @@ class Sections:
             self.slice = (int(slice["segments"]), re.compile(slice["last"], re.ASCII), slice["section"])
         self.media_prefix = media_prefix
 
-    def of(self, path):
+    def of(self, path, pair=None):
         clean = without_query(path)
         if clean in ("", "/"):
             return HOME
@@ -93,6 +115,12 @@ class Sections:
 
         if self.slice and len(segments) == self.slice[0] and self.slice[1].fullmatch(segments[-1]):
             return self.slice[2]
+
+        # After every rule and the slice: a path they claim never gets here. Not a
+        # file, as a lone segment is not.
+        if (pair and len(segments) == 2 and segments[0].lower() not in pair.except_first
+                and not EXTENSION.search(segments[1])):
+            return pair.section
 
         # Deeper than one segment and nothing above: an outbound door, a beacon, a
         # scanner's traversal. None of them a page the audit counts.

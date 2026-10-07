@@ -8,7 +8,7 @@ collect-crawler-visits); these are one path per rule, to say which rule broke.
 
 import pytest
 
-from krot_collect.sections import Sections
+from krot_collect.sections import Pair, Sections
 
 CARDS = Sections(
     rules=[{"section": "profile", "prefixes": ["/profil/", "/anketa/"], "bare": "other"},
@@ -74,3 +74,40 @@ def test_a_tailed_prefix_of_a_later_rule_wins_over_a_bare_prefix_of_an_earlier_o
 ])
 def test_numbers_and_codes(path, section):
     assert NUMBERS.of(path) == section
+
+
+WORLD = Pair("listing", ["onward", "exit"])
+
+
+@pytest.mark.parametrize("path, section", [
+    ("/france/paris", "listing"),
+    ("/france/paris/", "listing"),
+    ("/france/paris?page=2", "listing"),
+    ("/France/Paris", "listing"),
+    ("/onward/abc", "other"),
+    ("/EXIT/abc", "other"),
+    ("/france/paris/x", "other"),
+    ("/france/app.js", "other"),
+    ("/france/photo.jpg", "other"),
+    ("/france/menu.PDF", "other"),
+    ("/france/st.-petersburg", "listing"),
+    ("/profil/anna", "profile"),
+    ("/orte/mitte", "listing"),
+    ("/media/a.jpg", "media"),
+    ("/uralsk/parni/25-30", "listing"),
+])
+def test_a_two_segment_path_of_a_site_with_a_pair_is_a_place(path, section):
+    assert CARDS.of(path, WORLD) == section
+
+
+def test_without_a_pair_the_same_path_stays_other():
+    assert CARDS.of("/france/paris") == "other"
+
+
+def test_a_pair_does_not_reach_the_slice_of_three_segments():
+    assert NUMBERS.of("/a/b/25-30", Pair("place")) == "other"
+
+
+def test_a_slice_of_two_segments_is_judged_before_the_pair():
+    both = Sections(slice={"segments": 2, "last": r"\d+", "section": "sliced"})
+    assert both.of("/a/12", Pair("place")) == "sliced"

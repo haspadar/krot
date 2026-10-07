@@ -3,7 +3,7 @@ from datetime import date
 from krot_collect import logline
 from krot_collect.agents import Agents
 from krot_collect.ranges import from_rows
-from krot_collect.sections import Sections
+from krot_collect.sections import Pair, Sections
 from krot_collect.tally import Tally
 
 DAY = date(2026, 8, 22)
@@ -118,3 +118,11 @@ def test_without_drops_a_spoiled_day_whole():
     reading = tally([line(day="21"), line(day="22")]).without({DAY})
     assert (reading.days, set(reading.requests), {day for day, _ in reading.crawlers}) \
         == ({date(2026, 8, 21)}, {date(2026, 8, 21)}, {date(2026, 8, 21)})
+
+
+def test_a_pair_applies_to_the_domain_that_declared_it_and_not_to_another():
+    mine = Tally(Agents(), from_rows(RANGES), Sections(), logline.FORMATS["time_first"],
+                 pairs={"a.example": Pair("listing")})
+    where = {domain: [key[2] for key in mine.of([line(path="/france/paris")], domain).sections]
+             for domain in ("a.example", "b.example")}
+    assert where == {"a.example": ["listing"], "b.example": ["other"]}

@@ -10,7 +10,7 @@ from krot_collect.agents import Agents
 from krot_collect.crawl import GARBAGE_LINES, Collection
 from krot_collect.logfiles import LogFiles, Unreadable
 from krot_collect.ranges import Ranges
-from krot_collect.sections import Sections
+from krot_collect.sections import Pair, Sections
 from krot_collect.tally import Tally
 
 SITE = "a.example"
@@ -183,3 +183,16 @@ def test_an_empty_readable_log_is_green(tmp_path):
     (tmp_path / "a.example-access.log").write_text("")
     ok, _, _ = collect(str(tmp_path), FakeStore())
     assert ok
+
+
+def test_the_pair_of_a_site_reaches_its_own_reading_and_not_another_sites(tmp_path):
+    for domain in (SITE, "b.example"):
+        (tmp_path / (domain + "-access.log")).write_text(
+            '[01/Aug/2026:10:00:00 +0300] 66.249.66.1 - a "GET /france/paris HTTP/1.1" 200 1 "-" '
+            '"Googlebot/2.1" rt=0.1\n')
+    store = FakeStore()
+    tally = Tally(Agents(), Ranges({}), Sections(), PATTERN, pairs={SITE: Pair("listing")})
+    collection = Collection(LogFiles(str(tmp_path)), tally, store, PATTERN, io.StringIO(), io.StringIO())
+    collection.collect([SITE, "b.example"])
+    assert {domain: sorted({key[2] for key in reading.sections}) for domain, reading in store.stored.items()} \
+        == {SITE: ["listing"], "b.example": ["other"]}

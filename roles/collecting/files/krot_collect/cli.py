@@ -22,7 +22,7 @@ from krot_collect import store as stores
 from krot_collect.agents import Agents
 from krot_collect.crawl import Collection
 from krot_collect.logfiles import LogFiles
-from krot_collect.sections import Sections
+from krot_collect.sections import Pair, Sections
 from krot_collect.tally import Tally
 
 OK = 0
@@ -66,8 +66,10 @@ def run_crawl(config, store, out, err):
     rules = crawl.get("sections", {})
     sections = Sections(rules.get("rules", []), rules.get("bare_segment"), rules.get("service_words", []),
                         rules.get("slice"), crawl.get("media_prefix"))
+    pairs = {site["domain"]: Pair(site["pair_places"]["section"], site["pair_places"].get("except_first", []))
+             for site in config["sites"] if site.get("pair_places")}
     tally = Tally(Agents(crawl.get("extra_agents", [])), ranges.from_rows(store.range_rows()), sections, pattern,
-                  ai_paths=crawl.get("ai_paths", False))
+                  ai_paths=crawl.get("ai_paths", False), pairs=pairs)
     files = LogFiles(logs.get("directory", "/var/log/nginx"), logs.get("pattern", "{domain}-access.log*"))
     domains = [site["domain"] for site in config["sites"]]
     failed = Collection(files, tally, store, pattern, out, err).collect(domains)

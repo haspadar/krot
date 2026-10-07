@@ -2,7 +2,7 @@
 kind: guide
 title: Дневная статистика поиска
 owner: haspadar
-verified: 2026-10-03
+verified: 2026-10-07
 roles: [collecting]
 ---
 

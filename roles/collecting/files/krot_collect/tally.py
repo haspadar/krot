@@ -79,16 +79,19 @@ def new_day():
 
 
 class Tally:
-    def __init__(self, agents, ranges, sections, pattern, ai_paths=False):
+    def __init__(self, agents, ranges, sections, pattern, ai_paths=False, pairs=None):
         self.agents = agents
         # confirms(family, address) -> True / False / None
         self.ranges = ranges
         self.sections = sections
         self.pattern = pattern
         self.ai_paths = ai_paths
+        # domain -> Pair, for the sites that declared one
+        self.pairs = pairs or {}
         self.media_prefix = sections.media_prefix
 
-    def of(self, lines):
+    def of(self, lines, domain=None):
+        pair = self.pairs.get(domain)
         crawlers, sections, requests, paths = {}, {}, {}, {}
         days = set()
         for text in lines:
@@ -150,7 +153,7 @@ class Tally:
 
             # Under the SAME family name, suffixes and all: that is what lets the
             # sections be summed against the requests.
-            part = (day, family, self.sections.of(one.path), one.status // 100)
+            part = (day, family, self.sections.of(one.path, pair), one.status // 100)
             sections[part] = sections.get(part, 0) + 1
 
             # Asked after every suffix, so `-media` and `-unverified` fall out here.

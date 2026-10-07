@@ -5,6 +5,14 @@ changing a default that affects production) bump major.
 
 ## Unreleased
 
+### Added
+
+- **`collecting` role: a site's `pair_places` files a two-segment path as a place.** For a site
+  whose places are named by data (`/france/paris`), `sites[].pair_places: {section, except_first}`
+  sends a path of exactly two segments that no rule, slice or file claims to `section`;
+  `except_first` names doors (`onward`, `exit`) that stay `other`. Per site, so another site's
+  `/go/<id>` is not moved
+
 ### Changed
 
 - **`site_monitor` makes one monitor, not two**: with `site_monitor.keyword` set, only the keyword
