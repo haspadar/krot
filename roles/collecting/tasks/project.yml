@@ -9,7 +9,7 @@
     privs: CONNECT
     # The reader too: a database with PUBLIC's CONNECT revoked would take every
     # grant below and still keep the screens out.
-    roles: "{{ collecting_user }},{{ collecting_plan.reader }}"
+    roles: "{{ ([collecting_user, collecting_plan.reader] + collecting_plan.extra_readers) | unique | join(',') }}"
   become: true
   become_user: postgres
   # --check on a machine the role has not been on: see main.yml.
@@ -89,7 +89,7 @@
     type: schema
     objs: krot_collect
     privs: USAGE
-    roles: "{{ collecting_plan.reader }}"
+    roles: "{{ ([collecting_plan.reader] + collecting_plan.extra_readers) | unique | join(',') }}"
   become: true
   become_user: postgres
   when: not ansible_check_mode or collecting_schema_exists.query_result[0].present
@@ -101,7 +101,7 @@
     schema: krot_collect
     objs: ALL_IN_SCHEMA
     privs: SELECT
-    roles: "{{ collecting_plan.reader }}"
+    roles: "{{ ([collecting_plan.reader] + collecting_plan.extra_readers) | unique | join(',') }}"
   become: true
   become_user: postgres
   when: not ansible_check_mode or collecting_schema_exists.query_result[0].present
@@ -116,7 +116,7 @@
     schema: krot_collect
     objs: TABLES
     privs: SELECT
-    roles: "{{ collecting_plan.reader }}"
+    roles: "{{ ([collecting_plan.reader] + collecting_plan.extra_readers) | unique | join(',') }}"
   become: true
   become_user: postgres
   when: not ansible_check_mode or collecting_schema_exists.query_result[0].present
@@ -128,6 +128,9 @@
     content: >-
       {{ {'project': collecting_plan.name,
           'database': collecting_plan.database,
+          'jobs': collecting_plan.jobs,
+          'disabled_timers': collecting_plan.disabled_timers,
+          'gsc': collecting_plan.gsc,
           'logs': collecting_plan.logs,
           'crawl': collecting_plan.crawl,
           'extra_range_sources': collecting_plan.extra_range_sources,
@@ -136,3 +139,21 @@
     owner: root
     group: root
     mode: "0644"
+
+- name: Write the project's GSC service account
+  ansible.builtin.copy:
+    content: "{{ collecting_google if collecting_google is string else collecting_google | to_json }}"
+    dest: "{{ collecting_config_dir }}/{{ collecting_plan.name }}.google.json"
+    owner: "{{ collecting_user }}"
+    group: "{{ collecting_user }}"
+    mode: "0600"
+  vars:
+    collecting_google: "{{ collecting_projects[collecting_plan.name].gsc.service_account }}"
+  no_log: true
+  when: "'gsc' in collecting_plan.jobs"
+
+- name: Remove the project's unused GSC service account
+  ansible.builtin.file:
+    path: "{{ collecting_config_dir }}/{{ collecting_plan.name }}.google.json"
+    state: absent
+  when: "'gsc' not in collecting_plan.jobs"

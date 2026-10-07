@@ -3,7 +3,7 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
-## 7.1.0
+## Unreleased
 
 ### Added
 
@@ -11,7 +11,94 @@ changing a default that affects production) bump major.
   whose places are named by data (`/france/paris`), `sites[].pair_places: {section, except_first}`
   sends a path of exactly two segments that no rule, slice or file claims to `section`;
   `except_first` names doors (`onward`, `exit`) that stay `other`. Per site, so another site's
-  `/go/<id>` is not moved.
+  `/go/<id>` is not moved
+
+### Changed
+
+- **`site_monitor` makes one monitor, not two**: with `site_monitor.keyword` set, only the keyword
+  monitor `<domain> (Profile)`; without it, only the HTTP monitor `<domain>`. The HTTP monitor
+  on the same page as the keyword one failed whenever the keyword one did, and the free plan
+  counts monitors — two per site ended it at the twenty-fifth site. Monitors an earlier run
+  made under the other name stay where they are: the role never deletes one
+
+## 9.0.1
+
+### Fixed
+
+- **`common` reloads systemd when its mount units are older than `/etc/fstab`**: after a root
+  discard edit, `-.mount` kept the old options until a reboot. The role now asks systemd
+  (`NeedDaemonReload`) every run, so a run that failed after the edit is repaired by the next run
+
+## 9.0.0
+
+### Changed (breaking)
+
+- **`postgresql` fails a run whose own settings are overridden** — a run that was green can now
+  turn red. A value set by `ALTER SYSTEM` (`postgresql.auto.conf`, read after `conf.d`) won over
+  the role's file while the run reported success. A later assignment of a role setting in
+  another file now fails the run after any restart, naming the source that wins; the role's
+  file is not rolled back. The refusal comes last in the role, after any restart
+- **`postgresql` reloads when any config source changed** — `postgresql.auto.conf` after an
+  `ALTER SYSTEM RESET` included — **or when a running value comes from elsewhere than the role's
+  file**, as after an overriding `conf.d` file is deleted without a reload
+- **`postgresql` puts the previous file back on any failure before the server took the new one**,
+  not only on a refused value or a failed restart
+
+## 8.1.0
+
+### Added
+
+- **`common_root_discard`** (undefined by default — the role leaves `/etc/fstab` alone):
+  `false` drops online `discard` from an ext4 root and remounts `/` with `nodiscard`, refused
+  unless `fstrim.timer` is enabled; `true` puts it back. Only the root line's options change,
+  and the new fstab is checked for parse errors before it replaces the old one
+
+## 8.0.0
+
+### Changed (breaking)
+
+- **`postgresql` log files are named by day of month** (`postgresql-DD`), so the set recycles
+  within a month (a 31st-day file waits for the next 31-day month). The dated name carried the year, never repeated and so never truncated — the
+  set grew without bound despite the template's promise. Anything matching the old
+  `postgresql-YYYY-MM-DD` names stops finding new files; files under the old names are left for
+  the operator
+- **Removed `postgresql_log_retention_days`**, which nothing ever read
+
+### Added
+
+- **`postgresql_log_connections`** (default `true`, unchanged behaviour): turns connection and
+  disconnection logging off on a machine whose application connects per request
+
+### Fixed
+
+- **`postgresql` reloads instead of restarting for settings a reload applies.** `postgres -C`
+  checks the files first; the role then reloads when its file is newer than the server's last
+  config load and restarts only for settings the server reports `pending_restart`. A refused file
+  goes back to the previous one without touching the server; a restart that fails puts the
+  previous file back and starts the server on it; an interrupted run is finished by the next one
+
+## 7.1.1
+
+### Fixed
+
+- **`collecting` gsc: a final day without impressions is a measured zero.** Google omits such
+  dates from final data, so they were recorded as `unavailable`, never got a marker and were
+  asked again every night. Days before Google's first incomplete date are now final; an
+  empty report there stores `row_count = 0`, and later days are `unavailable` without a request
+
+## 7.1.0
+
+### Added
+
+- **Finalized GSC Performance in `collecting`**, selected with `jobs: [gsc]` or alongside
+  `ranges`/`crawl`: independent query/country/device, page and page/query daily reports,
+  at least 28 days of initial history, recent-day refresh and missing-day repair
+- **Version 2 adds search history without removing crawler data**: each report/day and its
+  successful marker commit atomically, attempts record failures/unavailable final dates,
+  and stale finalized data fails the job; API coverage limitations remain explicit
+- **Private service-account files and read-only SQL/JSONL access**: existing application readers
+  and optional extra reader roles can read current/future tables; `disabled_timers: [gsc]`
+  permits importing history while existing crawler timers keep running
 
 ## 7.0.1
 
@@ -24,7 +111,7 @@ changing a default that affects production) bump major.
 
 ## 7.0.0
 
-### Changed
+### Changed (breaking)
 
 - **`indexing` role: the schema is `krot_index`, named after its program as `krot_collect` is.**
   The first 7.x run renames the program's own `krot` schema in place, so its rows, the reader's
@@ -59,7 +146,7 @@ changing a default that affects production) bump major.
 
 ## 6.0.0
 
-### Changed
+### Changed (breaking)
 
 - **`cron` role: a run retires, overwrites and rotates only its own project's jobs.** A machine
   is shared by projects, each applying the role from its own inventory; until now a run took
@@ -136,7 +223,7 @@ changing a default that affects production) bump major.
   and file paths too. The change archive (`openspec/changes/`) and the index generated from it
   (`wiki/index/`) are the record of decisions as taken and are not checked.
 
-### Changed
+### Changed (breaking)
 
 - **`site_launch` checks `site_machine` within `--limit`.** The 5.8.0 entry describes this check,
   but the code reached `main` after that release: 5.8.0 checked on localhost, which a `--limit`
@@ -148,7 +235,7 @@ changing a default that affects production) bump major.
 
 ## 5.8.0
 
-### Changed
+### Changed (breaking)
 
 - **`site_launch` stops when `site_machine` names no host, or more than one.** A name that
   matched nothing skipped the whole play and exited 0 — a launch that did nothing read as one
@@ -162,7 +249,7 @@ changing a default that affects production) bump major.
 
 ## 5.7.0
 
-### Changed
+### Changed (breaking)
 
 - **`cloudflare_ruleset` takes a rule another tool made word for word as its own.** A consuming project made
   its cache rule without a ref of ours, so Cloudflare assigned one per zone; matched by ref
@@ -212,7 +299,7 @@ changing a default that affects production) bump major.
   mode, finds before it creates, and reads back what it wrote. A request that could not be asked
   is a failure, never "absent", and a POST is never repeated after a failure.
 
-### Changed
+### Changed (breaking)
 
 - **Two sets of roles instead of "a role knows the host, not the applications on it".** Machine
   roles still know nothing about sites; site roles know one. Cloudflare zones and records and the

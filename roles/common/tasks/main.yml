@@ -59,3 +59,7 @@
     group: root
     mode: "0644"
   notify: Restart journald
+
+- name: Set online discard on the root filesystem
+  ansible.builtin.include_tasks: root-discard.yml
+  when: common_root_discard is defined

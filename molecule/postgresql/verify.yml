@@ -2,7 +2,8 @@
 # Settings are read from the running server with SHOW, never from the config
 # file. PostgreSQL accepts a reload for a postmaster-level setting and carries
 # on with the old value — the file then says one thing and the server does
-# another, which is precisely why the role restarts rather than reloads.
+# another, which is precisely why the role restarts when PostgreSQL reports such
+# a setting pending, and only then.
 - name: Verify
   hosts: all
   vars:
@@ -35,22 +36,25 @@
     # What the server is actually running with. `SHOW` reports the value in
     # effect, so a setting that was written but silently not applied fails here.
     #
-    # Of the eight, only two carry the restart handler: max_connections and
+    # Of the ten, only two need the restart: max_connections and
     # shared_buffers are postmaster-level AND prepare gave them a different
     # value first, so a reload leaves 111 and 16384 in effect while the file
     # says 123 and 24576. Measured both ways.
     #
-    # The other six do not, and it is worth being exact about why, because the
+    # The other eight do not, and it is worth being exact about why, because the
     # list reads as if they all did. work_mem is context `user` and
     # log_min_duration_statement `superuser` — both apply on SIGHUP, so they
-    # pass on a reload. log_destination likewise. listen_addresses and port are
-    # postmaster-level but prepare already set them to these values, so there is
-    # nothing for a restart to change. They check that the template rendered,
+    # pass on a reload. log_destination, log_filename and log_disconnections
+    # likewise — the last two are the only check that the day-of-month name and
+    # the scenario's connection logging reached the server. listen_addresses and
+    # port are postmaster-level but prepare already set them to these values, so
+    # there is nothing for a restart to change. pg_stat_statements.max proves the
+    # library loaded. They check that the template rendered and was applied,
     # which is a different thing worth checking.
     #
     # So: dropping postgresql_max_connections and postgresql_shared_buffers from
     # molecule.yml, or setting them to what the server already runs, would make
-    # this scenario green against a reloading handler. Those two entries are
+    # this scenario green against a role that only reloads. Those two entries are
     # load-bearing — the note is there too.
     - name: Read the settings the server is actually running with
       become: true
@@ -59,7 +63,7 @@
         psql -tAc "select name || '=' || setting from pg_settings
         where name in ('max_connections','shared_buffers','work_mem',
         'log_min_duration_statement','log_destination','listen_addresses',
-        'port','pg_stat_statements.max')"
+        'port','pg_stat_statements.max','log_filename','log_disconnections')"
       register: settings
       changed_when: false
 
@@ -82,10 +86,15 @@
         - listen_addresses=localhost
         - port=5432
         - pg_stat_statements.max=4000
+        # A name that repeats, so truncate-on-rotation recycles the set; and the
+        # scenario's connection logging off (log_connections is a list in 18,
+        # its sibling still a boolean, and one setting drives both).
+        - log_filename=postgresql-%d.log
+        - log_disconnections=off
 
-    # A library only reaches shared memory at postmaster start. The role flushes
-    # its restart handler mid-play for exactly this, so checking that the
-    # extension is usable also checks that the flush did its job.
+    # A library only reaches shared memory at postmaster start. The role restarts
+    # before creating the extension for exactly this, so checking that the
+    # extension is usable also checks that the restart came first.
     - name: The extension is installed in the maintenance database
       become: true
       become_user: postgres
@@ -183,3 +192,343 @@
         | reject('search', 'user-runtime-dir@\d+\.service')
         | select('search', '\S')
         | list | length > 0
+
+    # The other half of the decision: a change PostgreSQL applies on reload must
+    # not restart it. Converge above always restarts (prepare left a different
+    # max_connections running), so only a second pass changing nothing but a
+    # sighup-level setting tells reload from restart: a restart moves the
+    # postmaster's start time, a reload does not.
+    - name: Remember when the postmaster started
+      ansible.builtin.command: psql -XtAc "select pg_postmaster_start_time()"
+      become: true
+      become_user: postgres
+      register: started_before
+      changed_when: false
+
+    - name: Run the role again with only work_mem changed
+      ansible.builtin.include_role:
+        name: postgresql
+      vars:
+        postgresql_work_mem: 7MB
+
+    - name: Read the start time and work_mem after that pass
+      ansible.builtin.command: >-
+        psql -XtAc "select pg_postmaster_start_time() || ' ' || current_setting('work_mem')"
+      become: true
+      become_user: postgres
+      register: started_after
+      changed_when: false
+      # A reload is a signal: the command returns before the postmaster has
+      # re-read the file, and a backend forked in between still sees 6MB.
+      until: started_after.stdout.endswith(' 7MB')
+      retries: 10
+      delay: 1
+
+    - name: The new work_mem is in effect and the server was not restarted
+      ansible.builtin.assert:
+        that:
+          - started_after.stdout == started_before.stdout ~ ' 7MB'
+        fail_msg: >-
+          Before "{{ started_before.stdout }}", after "{{ started_after.stdout }}".
+          A moved start time is a restart for a change a reload applies — a
+          5xx on every site of the machine for nothing.
+        quiet: true
+
+    # pg_file_settings says "setting could not be applied" for an invalid value as
+    # well as for a restart-only change, so a role reading it would restart into a
+    # config the server refuses. The run has to stop before the server is touched.
+    - name: Run the role with a work_mem PostgreSQL refuses
+      block:
+        - name: The invalid pass
+          ansible.builtin.include_role:
+            name: postgresql
+          vars:
+            postgresql_work_mem: 0
+        - name: Note that the invalid pass got through
+          ansible.builtin.set_fact:
+            invalid_accepted: true
+      rescue:
+        # The server's refusal, not any failure: a mirror or the network failing
+        # inside the role would pass a bare "it failed".
+        - name: Note that the server refused the invalid pass
+          ansible.builtin.set_fact:
+            invalid_refused: >-
+              {{ 'PostgreSQL refused the configuration' in ansible_failed_result.msg
+                 and 'work_mem' in ansible_failed_result.msg }}
+
+    - name: Read the config file after the refused pass
+      ansible.builtin.slurp:
+        src: /etc/postgresql/18/main/conf.d/99-krot.conf
+      register: conf_after_invalid
+
+    - name: The file the server refused is not left on disk
+      ansible.builtin.assert:
+        that:
+          - "'work_mem = 7MB' in (conf_after_invalid.content | b64decode)"
+        quiet: true
+
+    - name: Read the start time after the refused pass
+      ansible.builtin.command: psql -XtAc "select pg_postmaster_start_time() || ' ' || current_setting('work_mem')"
+      become: true
+      become_user: postgres
+      register: started_after_invalid
+      changed_when: false
+
+    - name: The invalid pass was refused and the server kept running untouched
+      ansible.builtin.assert:
+        that:
+          - invalid_refused | default(false)
+          - not (invalid_accepted | default(false))
+          - started_after_invalid.stdout == started_before.stdout ~ ' 7MB'
+        quiet: true
+
+    # An extension's setting is the one value `postgres -C` cannot check — its
+    # library is not loaded there — so the role refuses it before touching anything.
+    - name: Run the role with a pg_stat_statements.max the extension refuses
+      block:
+        - name: The out-of-range pass
+          ansible.builtin.include_role:
+            name: postgresql
+          vars:
+            postgresql_stat_statements_max: 0
+        - name: Note that the out-of-range pass got through
+          ansible.builtin.set_fact:
+            out_of_range_accepted: true
+      rescue:
+        - name: Note that the role refused it up front
+          ansible.builtin.set_fact:
+            out_of_range_refused: "{{ ansible_failed_task.name == 'Assert the query statistics settings' }}"
+
+    - name: The out-of-range value was refused before anything ran
+      ansible.builtin.assert:
+        that:
+          - out_of_range_refused | default(false)
+          - not (out_of_range_accepted | default(false))
+        quiet: true
+
+    # A value valid for its setting that still stops the server starting: the check
+    # passes it, the restart fails, and the role has to bring the server back on the
+    # previous file rather than leave every site down. A preload library that is not
+    # installed: -C does not load libraries, the postmaster does at start. (An
+    # oversized shared_buffers was tried first and started anyway — the container
+    # overcommits memory.)
+    - name: Run the role with a preload library that is not installed
+      block:
+        - name: The unstartable pass
+          ansible.builtin.include_role:
+            name: postgresql
+          vars:
+            postgresql_shared_preload_libraries: [krot_absent_library]
+        - name: Note that the unstartable pass got through
+          ansible.builtin.set_fact:
+            unstartable_accepted: true
+      rescue:
+        - name: Note that the restart failed and was rolled back
+          ansible.builtin.set_fact:
+            unstartable_rolled_back: >-
+              {{ 'did not start with the new configuration' in ansible_failed_result.msg
+                 and 'server was started on it' in ansible_failed_result.msg }}
+
+    - name: Read the running preload list after the unstartable pass
+      ansible.builtin.command: psql -XtAc "select current_setting('shared_preload_libraries')"
+      become: true
+      become_user: postgres
+      register: preload_after_unstartable
+      changed_when: false
+
+    - name: The server is back up on the previous file
+      ansible.builtin.assert:
+        that:
+          - unstartable_rolled_back | default(false)
+          - not (unstartable_accepted | default(false))
+          - preload_after_unstartable.stdout == 'pg_stat_statements'
+        quiet: true
+
+    # Dropping a preload library removes its line from the file, so there is no new
+    # value to compare — only the server still holding the old one. It needs the
+    # restart all the same.
+    - name: Run the role with query statistics turned off
+      ansible.builtin.include_role:
+        name: postgresql
+      vars:
+        postgresql_stat_statements: false
+
+    - name: Read the start time and preload list after that pass
+      ansible.builtin.command: >-
+        psql -XtAc "select pg_postmaster_start_time() || '|' || current_setting('shared_preload_libraries')"
+      become: true
+      become_user: postgres
+      register: started_after_unload
+      changed_when: false
+
+    - name: The library is gone because the server was restarted
+      ansible.builtin.assert:
+        that:
+          - started_after_unload.stdout.split('|')[1] == ''
+          - started_after_unload.stdout.split('|')[0] != started_before.stdout
+        quiet: true
+
+    # postgresql.auto.conf is read after conf.d, so an ALTER SYSTEM wins over the
+    # role's file. Measured on a production machine: a month-old manual ALTER SYSTEM
+    # kept connection logging on through a run that reported turning it off. Neither
+    # ALTER SYSTEM below is followed by a reload: the role has to notice the changed
+    # postgresql.auto.conf itself, on the way in and again after the RESET.
+    - name: Override one of the role's settings the way ALTER SYSTEM does
+      ansible.builtin.command: psql -XtAc "ALTER SYSTEM SET work_mem = '5MB'"
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Run the role under the override
+      block:
+        - name: The overridden pass
+          ansible.builtin.include_role:
+            name: postgresql
+        - name: Note that the overridden pass got through
+          ansible.builtin.set_fact:
+            overridden_accepted: true
+      rescue:
+        - name: Note that the role named the override
+          ansible.builtin.set_fact:
+            overridden_reported: >-
+              {{ 'the one in effect: work_mem by' in ansible_failed_result.msg
+                 and 'postgresql.auto.conf' in ansible_failed_result.msg }}
+
+    - name: The run failed and named the file that wins
+      ansible.builtin.assert:
+        that:
+          - overridden_reported | default(false)
+          - not (overridden_accepted | default(false))
+        quiet: true
+
+    - name: Remove the override, without a reload
+      ansible.builtin.command: psql -XtAc "ALTER SYSTEM RESET work_mem"
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Run the role once the override is gone
+      ansible.builtin.include_role:
+        name: postgresql
+
+    - name: Read work_mem after the override is gone
+      ansible.builtin.command: psql -XtAc "select current_setting('work_mem')"
+      become: true
+      become_user: postgres
+      register: work_mem_after_reset
+      changed_when: false
+
+    # The RESET touched only postgresql.auto.conf; a role watching its own file alone
+    # would skip the reload and report success with 5MB still running.
+    - name: The role's value is back in effect
+      ansible.builtin.assert:
+        that:
+          - work_mem_after_reset.stdout == '6MB'
+        quiet: true
+
+    # An override in a later conf.d file, loaded, then deleted without a reload: it
+    # leaves pg_file_settings with no newer time behind, while the server keeps its
+    # value. The role has to tell from where the running value comes.
+    - name: Plant an override after the role's file and load it
+      ansible.builtin.copy:
+        dest: /etc/postgresql/18/main/conf.d/zz-local.conf
+        content: "work_mem = 5MB\n"
+        owner: postgres
+        group: postgres
+        mode: "0640"
+
+    - name: Load the planted override
+      ansible.builtin.command: psql -XtAc "select pg_reload_conf()"
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Delete the override without a reload
+      ansible.builtin.file:
+        path: /etc/postgresql/18/main/conf.d/zz-local.conf
+        state: absent
+
+    - name: Run the role after the override file is gone
+      ansible.builtin.include_role:
+        name: postgresql
+
+    - name: Read work_mem after the deleted override
+      ansible.builtin.command: psql -XtAc "select current_setting('work_mem')"
+      become: true
+      become_user: postgres
+      register: work_mem_after_delete
+      changed_when: false
+
+    - name: The role's value is back although no file changed time
+      ansible.builtin.assert:
+        that:
+          - work_mem_after_delete.stdout == '6MB'
+        quiet: true
+
+    # The winner may itself wait for a restart, so it is not `applied` either; the
+    # role must still see it as the later assignment, restart (with its rollback),
+    # and only then refuse.
+    - name: Override a restart-only setting the way ALTER SYSTEM does
+      ansible.builtin.command: psql -XtAc "ALTER SYSTEM SET max_connections = 150"
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Run the role under the restart-only override
+      block:
+        - name: The pass under the restart-only override
+          ansible.builtin.include_role:
+            name: postgresql
+        - name: Note that the restart-only override got through
+          ansible.builtin.set_fact:
+            pending_override_accepted: true
+      rescue:
+        - name: Note that the role named the restart-only override
+          ansible.builtin.set_fact:
+            pending_override_reported: "{{ 'the one in effect: max_connections by' in ansible_failed_result.msg }}"
+
+    - name: The run failed on max_connections
+      ansible.builtin.assert:
+        that:
+          - pending_override_reported | default(false)
+          - not (pending_override_accepted | default(false))
+        quiet: true
+
+    - name: Remove the restart-only override
+      ansible.builtin.command: psql -XtAc "ALTER SYSTEM RESET max_connections"
+      become: true
+      become_user: postgres
+      changed_when: true
+
+    - name: Run the role once the restart-only override is gone
+      ansible.builtin.include_role:
+        name: postgresql
+
+    - name: Read max_connections after that
+      ansible.builtin.command: psql -XtAc "select current_setting('max_connections')"
+      become: true
+      become_user: postgres
+      register: connections_after_reset
+      changed_when: false
+
+    - name: The role's max_connections is back after a restart
+      ansible.builtin.assert:
+        that:
+          - connections_after_reset.stdout == '123'
+        quiet: true
+
+    # Every pass above that changed the file made a copy of the previous one; each
+    # path — success, rollback, override refusal — has to remove it, or copies pile
+    # up in conf.d on every run that touches the file.
+    - name: Look for copies of the role's file left in conf.d
+      ansible.builtin.find:
+        paths: /etc/postgresql/18/main/conf.d
+        patterns: "99-krot.conf.*"
+      register: conf_copies
+
+    - name: No copy of the previous file is left behind
+      ansible.builtin.assert:
+        that:
+          - conf_copies.files | length == 0
+        fail_msg: "Left behind: {{ conf_copies.files | map(attribute='path') | list }}"
+        quiet: true

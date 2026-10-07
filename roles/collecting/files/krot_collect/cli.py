@@ -14,6 +14,8 @@ logged a successful start every hour.
 import argparse
 import json
 import sys
+from datetime import date
+from pathlib import Path
 
 from krot_collect import logline, ranges
 from krot_collect import store as stores
@@ -25,7 +27,7 @@ from krot_collect.tally import Tally
 
 OK = 0
 FAILED = 1
-JOBS = ("ranges", "crawl")
+JOBS = ("ranges", "crawl", "gsc", "export")
 
 
 def open_store(config, connect, err):
@@ -85,6 +87,8 @@ def main(argv=None, connect=None, out=None, err=None, get=ranges.http_get):
     parser = argparse.ArgumentParser(prog="krot-collect")
     parser.add_argument("--config", required=True)
     parser.add_argument("job", choices=JOBS)
+    parser.add_argument("--from", dest="start", type=date.fromisoformat)
+    parser.add_argument("--to", dest="end", type=date.fromisoformat)
     args = parser.parse_args(argv)
     out = out or sys.stdout
     err = err or sys.stderr
@@ -94,6 +98,31 @@ def main(argv=None, connect=None, out=None, err=None, get=ranges.http_get):
     if not config.get("sites"):
         print("krot-collect: %s declares no sites" % config.get("project"), file=err)
         return FAILED
+
+    if args.job in ("gsc", "export"):
+        from krot_collect.gsc_store import SearchStore
+
+        try:
+            store = SearchStore(config["database"], connect)
+            store.check()
+            if args.job == "export":
+                if args.start is None or args.end is None or args.start > args.end:
+                    raise ValueError("export needs ordered --from and --to")
+                store.export([site["domain"] for site in config["sites"]], args.start, args.end, out)
+                return OK
+            from krot_collect.gsc import Collection, error_label
+            from krot_collect.gsc_api import Client
+
+            with open(Path(args.config).with_suffix(".google.json")) as source:
+                key = source.read()
+            return Collection(Client(key), store, out, err).collect(config, args.start, args.end)
+        except Exception as failure:
+            # No key JSON, transport body or token may enter logs.
+            from krot_collect.gsc import error_label
+
+            message = str(failure) if isinstance(failure, stores.Missing) else error_label(failure)
+            print("krot-collect: %s" % message, file=err)
+            return FAILED
 
     store = open_store(config, connect, err)
     if store is None:

@@ -46,12 +46,12 @@
     #
     # Measured: on a bare machine the package's postinst creates the cluster,
     # the role writes 99-krot.conf, and the server starts afterwards — reading
-    # the finished file on its very first boot. The restart handler then has
-    # nothing to prove, and swapping `state: restarted` for `state: reloaded`
-    # left the whole scenario green.
+    # the finished file on its very first boot. The restart then has nothing to
+    # prove, and swapping `state: restarted` for `state: reloaded` left the whole
+    # scenario green.
     #
     # On a server that is already running, the difference is exactly what the
-    # handler's comment claims: changing max_connections and reloading leaves
+    # role's comment claims: changing max_connections and reloading leaves
     # the old value in effect (123 while the file says 177), while a restart
     # applies it. Since a second provisioning run of an existing machine is the
     # common case, that is the state this scenario starts from.

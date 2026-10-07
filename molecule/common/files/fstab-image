@@ -1,0 +1,3 @@
+# / was on /dev/vda1
+LABEL=cloudimg-rootfs	/	 ext4	discard,commit=30,errors=remount-ro	0 1
+LABEL=UEFI	/boot/efi	vfat	umask=0077	0 1

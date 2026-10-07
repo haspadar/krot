@@ -17,9 +17,9 @@ collecting_unit_marker: "# krot-collecting-unit"
 
 # The version schema.sql creates. krot-collect refuses a database at any other;
 # a unit test holds the three — this, schema.sql and the program — equal.
-collecting_schema_version: 1
+collecting_schema_version: 2
 
-collecting_jobs: [ranges, crawl]
+collecting_jobs: [ranges, crawl, gsc]
 
 # The log formats the program knows by name (krot_collect/logline.py FORMATS).
 collecting_log_formats: [time_first]
@@ -37,10 +37,23 @@ collecting_plans: >-
   {%- for project, spec in collecting_projects.items() -%}
   {%- set logs = spec.logs | default({}) -%}
   {%- set crawl = spec.crawl | default({}) -%}
+  {%- set gsc = spec.gsc | default({}) -%}
+  {%- set sites = [] -%}
+  {%- for site in spec.sites | default([]) -%}
+  {%- set _ = sites.append({'domain': site.domain | default(''),
+                             'property': site.property | default('sc-domain:' ~ (site.domain | default('')))}) -%}
+  {%- endfor -%}
   {%- set _ = plans.append({'name': project,
                             'database': spec.database | default(''),
                             'reader': spec.reader | default(''),
+                            'extra_readers': spec.extra_readers | default([]),
+                            'jobs': spec.jobs | default(['ranges', 'crawl']),
+                            'gsc': {'backfill_days': gsc.backfill_days | default(28),
+                                    'overlap_days': gsc.overlap_days | default(7),
+                                    'retention_months': gsc.retention_months | default(16),
+                                    'freshness_days': gsc.freshness_days | default(5)},
                             'timers': spec.timers | default(true),
+                            'disabled_timers': spec.disabled_timers | default([]),
                             'logs': {'directory': logs.directory | default('/var/log/nginx'),
                                      'pattern': logs.pattern | default('{domain}-access.log*'),
                                      'format': logs.format | default('time_first')},
@@ -50,7 +63,7 @@ collecting_plans: >-
                                       'sections': crawl.sections | default({})},
                             'extra_range_sources': crawl.extra_range_sources | default([]),
                             'schedules': spec.schedules | default({}),
-                            'sites': spec.sites | default([])}) -%}
+                            'sites': sites}) -%}
   {%- endfor -%}
   {{ plans }}
 
@@ -58,9 +71,32 @@ collecting_plans: >-
 # the enable and the retirement agree on what is declared.
 collecting_units: >-
   {%- set units = [] -%}
-  {%- for project in collecting_projects -%}
-  {%- for job in collecting_jobs -%}
-  {%- set _ = units.append('krot-collect-' ~ project ~ '-' ~ job) -%}
+  {%- for project in collecting_plans -%}
+  {%- for job in project.jobs -%}
+  {%- set _ = units.append('krot-collect-' ~ project.name ~ '-' ~ job) -%}
   {%- endfor -%}
   {%- endfor -%}
   {{ units }}
+
+# Timer selection is per job, so importing GSC history can leave crawlers running.
+collecting_enabled_pairs: >-
+  {%- set pairs = [] -%}
+  {%- for project in collecting_plans -%}
+  {%- for job in project.jobs -%}
+  {%- if project.timers and job not in project.disabled_timers -%}
+  {%- set _ = pairs.append([project, job]) -%}
+  {%- endif -%}
+  {%- endfor -%}
+  {%- endfor -%}
+  {{ pairs }}
+
+collecting_disabled_pairs: >-
+  {%- set pairs = [] -%}
+  {%- for project in collecting_plans -%}
+  {%- for job in project.jobs -%}
+  {%- if not project.timers or job in project.disabled_timers -%}
+  {%- set _ = pairs.append([project, job]) -%}
+  {%- endif -%}
+  {%- endfor -%}
+  {%- endfor -%}
+  {{ pairs }}

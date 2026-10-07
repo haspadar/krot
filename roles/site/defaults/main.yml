@@ -142,7 +142,8 @@ site_google_token_uri: https://oauth2.googleapis.com/token
 
 site_monitor:
   enabled: false
-  # A word that must be on the watched page, case as written. Empty: HTTP only.
+  # A word that must be on the watched page, case as written. Set: one keyword monitor,
+  # "<domain> (Profile)". Empty: one plain HTTP monitor, "<domain>".
   keyword: ""
   # The page the keyword monitor watches: for one project it is a profile page (profil/,
   # profiel/, begleitung/ …), where losing the feed shows first.

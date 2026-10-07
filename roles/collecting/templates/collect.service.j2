@@ -3,7 +3,7 @@
 {% set project = item.0.name %}
 {% set job = item.1 %}
 [Unit]
-Description=Collect {{ project }}'s crawler visits: {{ job }}
+Description=Collect {{ project }}'s statistics: {{ job }}
 After=network-online.target postgresql.service
 Wants=network-online.target
 

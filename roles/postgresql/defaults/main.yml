@@ -24,7 +24,10 @@ postgresql_maintenance_work_mem: 64MB
 postgresql_log_destination: csvlog
 postgresql_log_min_duration_ms: 500
 postgresql_log_line_prefix: "%m [%p] %q%u@%d "
-postgresql_log_retention_days: 14
+# Connection and disconnection lines. Cheap behind a pool; an application that
+# connects per request writes three lines a request and buries the slow-query
+# and checkpoint records the log is kept for — turn it off on such a machine.
+postgresql_log_connections: true
 
 # Query statistics, on by default: the slow log only catches a statement that is
 # slow *once*, and the query that actually needs the index is usually the fast

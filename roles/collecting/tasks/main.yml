@@ -10,8 +10,18 @@
     that:
       - item.name is match('^[a-z0-9]+\Z')
       - item.database | length > 0
-      - item.reader | length > 0
+      - item.reader is match('^[a-z_][a-z0-9_]*\Z')
+      - item.reader != collecting_user
+      - item.extra_readers is sequence and item.extra_readers is not string
+      - item.extra_readers | reject('match', '^[a-z_][a-z0-9_]*\Z') | list | length == 0
+      - collecting_user not in item.extra_readers
+      - item.jobs is sequence and item.jobs is not string
+      - item.jobs | length > 0
+      - item.jobs | difference(collecting_jobs) | length == 0
+      - item.jobs | unique | list | length == item.jobs | length
       - item.timers is boolean
+      - item.disabled_timers is sequence and item.disabled_timers is not string
+      - item.disabled_timers | difference(item.jobs) | length == 0
       - item.logs.format in collecting_log_formats
       - item.logs.pattern is search('\{domain\}')
       - item.crawl.ai_paths is boolean
@@ -36,6 +46,52 @@
   loop: "{{ collecting_plans | subelements('sites') }}"
   loop_control:
     label: "{{ item.0.name }} {{ item.1.domain | default('<unnamed>') }}"
+
+- name: Assert GSC settings and properties
+  ansible.builtin.assert:
+    that:
+      - item.gsc.backfill_days is integer and item.gsc.backfill_days >= 28
+      - item.gsc.overlap_days is integer and item.gsc.overlap_days >= 1
+      - item.gsc.retention_months is integer
+        and item.gsc.retention_months >= 1 and item.gsc.retention_months <= 16
+      - item.gsc.freshness_days is integer and item.gsc.freshness_days >= 1
+      - item.sites | map(attribute='property') | reject('match', '^(sc-domain:[a-z0-9][a-z0-9.-]*|https?://[^\s]+/)\Z')
+        | list | length == 0
+    quiet: true
+  loop: "{{ collecting_plans }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when: "'gsc' in item.jobs"
+
+# Validate raw secrets without putting them in a public loop item or message.
+- name: Assert every GSC job has a service account
+  ansible.builtin.assert:
+    that:
+      - collecting_projects[item.name].gsc.service_account | default('') | length > 0
+    quiet: true
+  loop: "{{ collecting_plans }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  when: "'gsc' in item.jobs"
+
+- name: Assert the GSC service account has signing fields
+  ansible.builtin.assert:
+    that:
+      - collecting_google is mapping
+      - collecting_google.type | default('') == 'service_account'
+      - collecting_google.client_email | default('') | length > 0
+      - collecting_google.private_key | default('') | length > 0
+    quiet: true
+  vars:
+    collecting_google_raw: "{{ collecting_projects[item.name].gsc.service_account }}"
+    collecting_google: >-
+      {{ collecting_google_raw | from_json if collecting_google_raw is string else collecting_google_raw }}
+  loop: "{{ collecting_plans }}"
+  loop_control:
+    label: "{{ item.name }}"
+  no_log: true
+  when: "'gsc' in item.jobs"
 
 # The sum check — sections of a family equal its requests — holds only while
 # every path lands in exactly one section; a rule taking a built-in name, or two
@@ -143,6 +199,7 @@
         name:
           - python3
           - python3-psycopg2
+          - python3-cryptography
           # The schema is applied as the program's account, and Ansible hands a
           # module to an unprivileged account by ACL (see the umami role).
           - acl
@@ -208,6 +265,7 @@
     - name: Install the program
       ansible.builtin.copy:
         src: krot_collect
+        local_follow: true
         dest: "{{ collecting_program_dir }}/"
         owner: root
         group: root
@@ -223,7 +281,8 @@
           - -c
           - >-
             import psycopg2;
-            from krot_collect import cli, crawl, ranges, store, agents, sections;
+            from krot_collect import cli, crawl, ranges, store, agents, sections, gsc, gsc_api, gsc_store, google_jwt;
+            assert google_jwt.HAS_CRYPTOGRAPHY, google_jwt.CRYPTOGRAPHY_ERROR;
             agents.Agents(); ranges.load()
       environment:
         PYTHONPATH: "{{ collecting_program_dir }}"
@@ -259,7 +318,7 @@
         owner: root
         group: root
         mode: "0644"
-      loop: "{{ collecting_plans | product(collecting_jobs) | list }}"
+      loop: "{{ collecting_plans | subelements('jobs') }}"
       loop_control:
         label: "{{ item.0.name }} {{ item.1 }}"
       notify: Reload systemd
@@ -279,7 +338,7 @@
         owner: root
         group: root
         mode: "0644"
-      loop: "{{ collecting_plans | product(collecting_jobs) | list }}"
+      loop: "{{ collecting_plans | subelements('jobs') }}"
       loop_control:
         label: "{{ item.0.name }} {{ item.1 }}"
       notify: Reload systemd
@@ -293,7 +352,7 @@
         name: "{{ collecting_timer }}"
         state: started
         enabled: true
-      loop: "{{ collecting_plans | selectattr('timers') | product(collecting_jobs) | list }}"
+      loop: "{{ collecting_enabled_pairs }}"
       loop_control:
         label: "{{ item.0.name }} {{ item.1 }}"
       vars:
@@ -307,7 +366,7 @@
         name: "{{ collecting_timer }}"
         state: stopped
         enabled: false
-      loop: "{{ collecting_plans | rejectattr('timers') | product(collecting_jobs) | list }}"
+      loop: "{{ collecting_disabled_pairs }}"
       loop_control:
         label: "{{ item.0.name }} {{ item.1 }}"
       vars:
@@ -325,7 +384,9 @@
         label: "{{ item.item.0.name }} {{ item.item.1 }}"
       vars:
         collecting_changed_timer: "krot-collect-{{ item.item.0.name }}-{{ item.item.1 }}.timer"
-      when: not ansible_check_mode or collecting_changed_timer in collecting_timer_names_on_disk
+      when:
+        - item.item.1 not in item.item.0.disabled_timers
+        - not ansible_check_mode or collecting_changed_timer in collecting_timer_names_on_disk
 
 - name: Find previously installed timers
   ansible.builtin.find:
@@ -357,5 +418,11 @@
 - name: Remove the config of retired projects
   ansible.builtin.file:
     path: "{{ collecting_config_dir }}/{{ item }}.json"
+    state: absent
+  loop: "{{ collecting_retired_projects }}"
+
+- name: Remove credentials of retired projects
+  ansible.builtin.file:
+    path: "{{ collecting_config_dir }}/{{ item }}.google.json"
     state: absent
   loop: "{{ collecting_retired_projects }}"

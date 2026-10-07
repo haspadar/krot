@@ -142,11 +142,11 @@
           - state.bing.feeds['https://' + domain + '/'] | length == 1
         quiet: true
 
-    - name: UptimeRobot watches the site twice, telling someone each time
+    - name: UptimeRobot watches the site once, telling someone
       ansible.builtin.assert:
         that:
-          - state.monitors | map(attribute='friendlyName') | sort == [domain, domain + ' (Profile)']
-          - state.monitors | selectattr('assignedAlertContacts') | list | length == 2
+          - state.monitors | map(attribute='friendlyName') | list == [domain + ' (Profile)']
+          - state.monitors | selectattr('assignedAlertContacts') | list | length == 1
           - >-
             (state.monitors | selectattr('friendlyName', 'equalto', domain + ' (Profile)') | first).keywordValue
             == 'Anzeigen'
