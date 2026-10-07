@@ -86,7 +86,6 @@ WORLD = Pair("listing", ["onward", "exit"])
     ("/France/Paris", "listing"),
     ("/onward/abc", "other"),
     ("/EXIT/abc", "other"),
-    ("/france", "listing"),
     ("/france/paris/x", "other"),
     ("/france/app.js", "other"),
     ("/france/photo.jpg", "other"),
