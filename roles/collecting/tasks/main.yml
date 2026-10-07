@@ -75,7 +75,12 @@
     that:
       - item.1.pair_places.section | default('') is match('^[a-z_]{1,16}\Z')
       - item.1.pair_places.section | default('') not in collecting_built_in_sections
+      - item.1.pair_places.except_first | default([]) is sequence
       - item.1.pair_places.except_first | default([]) is not string
+      - item.1.pair_places.except_first | default([]) is not mapping
+      # A number would pass `match` as its text and then fail in the program, taking
+      # every site of the project down with it.
+      - item.1.pair_places.except_first | default([]) | reject('string') | list | length == 0
       - item.1.pair_places.except_first | default([]) | reject('match', '^[a-z0-9_-]+\Z') | list | length == 0
     fail_msg: >-
       {{ item.0.name }} {{ item.1.domain }}: pair_places needs a section of

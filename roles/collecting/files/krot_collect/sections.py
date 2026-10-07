@@ -32,6 +32,11 @@ BUILT_IN = (HOME, ROBOTS, SITEMAP, MEDIA, OTHER)
 # case, as the earlier implementation did: `/FAVICON.ICO` falls through.
 FILE_SUFFIXES = (".css", ".js", ".png", ".ico", ".txt", ".json", ".webmanifest")
 
+# What a Pair refuses as its second segment: anything ending in a short extension. The
+# list above is a guess at a lone segment's files; a place named by data meets any
+# file (`/a/photo.jpg`, `/a/menu.pdf`) and a slug does not end in `.xx`.
+EXTENSION = re.compile(r"\.[A-Za-z0-9]{2,5}\Z")
+
 
 def without_query(path):
     """The path without query or fragment: `/berlin?page=2` is the page `/berlin`."""
@@ -114,7 +119,7 @@ class Sections:
         # After every rule and the slice: a path they claim never gets here. Not a
         # file, as a lone segment is not.
         if (pair and len(segments) == 2 and segments[0].lower() not in pair.except_first
-                and not segments[1].endswith(FILE_SUFFIXES)):
+                and not EXTENSION.search(segments[1])):
             return pair.section
 
         # Deeper than one segment and nothing above: an outbound door, a beacon, a
