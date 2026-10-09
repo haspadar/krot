@@ -1,0 +1,17 @@
+---
+galaxy_info:
+  author: haspadar
+  description: >-
+    Puts the site's passport — country, profile, launch date — on the machine
+    under a path only the secret's holder can compute.
+  license: MIT
+  min_ansible_version: "2.15"
+  platforms:
+    - name: Ubuntu
+      versions:
+        - noble
+  galaxy_tags:
+    - web
+
+dependencies:
+  - role: haspadar.krot.site

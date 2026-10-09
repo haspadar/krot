@@ -1,0 +1,14 @@
+---
+# Validate first: a reload on a broken config leaves nginx serving the old one,
+# which hides the breakage until the next restart. The role's own handler rather
+# than the nginx role's, because a site role runs without that role in the play.
+- name: Verify nginx configuration for the passport
+  ansible.builtin.command: nginx -t
+  changed_when: false
+  listen: Reload nginx for the passport
+
+- name: Reload nginx for the passport
+  ansible.builtin.service:
+    name: nginx
+    state: reloaded
+  listen: Reload nginx for the passport

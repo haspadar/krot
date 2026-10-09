@@ -1,0 +1,16 @@
+{{ ansible_managed | comment }}
+# The site's passport. A vhost opts in by including this file inside its
+# server block:
+#
+#   include {{ site_passport_snippet_dir }}/krot-passport-{{ site_passport_host }}.conf;
+#
+# Nothing else is added: no header, no log line, no other path. The location is
+# exact, so every other request is answered as before. `auth_basic off` keeps a
+# site that is still closed readable here — the file holds no secret, only the
+# path is the lock.
+location = /{{ site_passport_path }} {
+    alias {{ site_passport_root }}/{{ site_passport_host }}/{{ site_passport_path }};
+    default_type application/json;
+    auth_basic off;
+    access_log off;
+}

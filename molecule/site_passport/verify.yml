@@ -1,0 +1,227 @@
+---
+# The question this file answers is not "was a file written" but "does nginx
+# hand a stranger exactly that file at exactly the computed path, and nothing
+# else different anywhere". Every path below is recomputed here by hashlib, not
+# read back from the role's own facts: a role that hashed the wrong string would
+# agree with itself.
+- name: Verify
+  hosts: all
+  vars:
+    secret: molecule-throwaway-secret-0123456789  # secret-lint: allow — the scenario's throwaway value
+    root: /var/lib/krot-passport
+  tasks:
+    - name: Compute the paths independently
+      ansible.builtin.shell: |
+        set -eu
+        python3 - <<'PY'
+        import hashlib
+        for domain in ("example.test", "second.test"):
+            print(hashlib.sha256(("molecule-throwaway-secret-0123456789:" + domain).encode()).hexdigest()[:16])
+        PY
+      args:
+        executable: /bin/bash
+      register: independent
+      changed_when: false
+
+    - name: Name them
+      ansible.builtin.set_fact:
+        main_path: "{{ independent.stdout_lines[0] }}"
+        second_path: "{{ independent.stdout_lines[1] }}"
+
+    # Sixteen lower-case hex characters, and not the placeholder that would
+    # come out of a vector computed on the wrong string.
+    - name: The paths look like the contract says
+      ansible.builtin.assert:
+        that:
+          - main_path | regex_search('^[0-9a-f]{16}$') is not none
+          - second_path | regex_search('^[0-9a-f]{16}$') is not none
+          - main_path != second_path
+        quiet: true
+
+    - name: The nginx config on disk is valid
+      ansible.builtin.command: nginx -t
+      changed_when: false
+
+    # --- the file ---------------------------------------------------------
+
+    - name: Look at the passport and its directories
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - "{{ root }}"
+        - "{{ root }}/example.test"
+        - "{{ root }}/example.test/{{ main_path }}"
+        - "{{ root }}/second.test/{{ second_path }}"
+        - "{{ root }}/example.test/deadbeefdeadbeef"
+      register: stats
+
+    - name: The file is where the independent hash says, and the old one is gone
+      ansible.builtin.assert:
+        that:
+          - stats.results[2].stat.exists
+          - stats.results[3].stat.exists
+          - not stats.results[4].stat.exists
+        fail_msg: >-
+          Either the passport is not at the path computed from
+          sha256("molecule-throwaway-secret-0123456789:<domain>")[:16], or the passport an earlier
+          secret left is still answering.
+        quiet: true
+
+    # prepare made the directory 0755 and the role has to tighten it: with the
+    # listing open, the lock's name is readable by every local account.
+    - name: Directories cannot be listed and the file can be read
+      ansible.builtin.assert:
+        that:
+          - stats.results[0].stat.mode == "0711"
+          - stats.results[1].stat.mode == "0711"
+          - stats.results[2].stat.mode == "0644"
+        quiet: true
+
+    - name: Read the files
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - "{{ root }}/example.test/{{ main_path }}"
+        - "{{ root }}/second.test/{{ second_path }}"
+      register: bodies
+
+    - name: The content is the contract's, byte for byte
+      ansible.builtin.assert:
+        that:
+          - (bodies.results[0].content | b64decode) == '{"country":"KZ","profile":"str-esc","launched":null}' ~ "\n"
+          - (bodies.results[1].content | b64decode) == '{"country":"DE","profile":"dir","launched":"2026-01-15"}' ~ "\n"
+        quiet: true
+
+    - name: The secret is in no file under the passport root
+      ansible.builtin.command:
+        argv: [grep, -rl, "{{ secret }}", "{{ root }}"]
+      register: leak
+      changed_when: false
+      failed_when: leak.rc != 1
+
+    # --- what nginx says --------------------------------------------------
+
+    - name: Ask for the passport
+      ansible.builtin.command:
+        argv: [curl, -sS, -i, -H, "Host: example.test", "http://127.0.0.1/{{ main_path }}"]
+      register: served
+      changed_when: false
+
+    - name: It is a 200 with a JSON body, the server-level header, and no header of its own
+      ansible.builtin.assert:
+        that:
+          - served.stdout_lines[0] is match('HTTP/1.1 200')
+          - "served.stdout | regex_search('(?im)^content-type: application/json') is not none"
+          - "served.stdout | regex_search('(?im)^x-frame-options: DENY') is not none"
+          - served.stdout | regex_search('(?im)^x-(?!frame-options)') is none
+          - served.stdout | regex_search('(?im)^(cache-control|expires):') is none
+          - served.stdout | regex_search('(?im)^server-timing') is none
+          - served.stdout_lines[-1] == '{"country":"KZ","profile":"str-esc","launched":null}'
+        fail_msg: "{{ served.stdout }}"
+        quiet: true
+
+    - name: The same path on the vhost without the snippet is not served
+      ansible.builtin.command:
+        argv: [curl, -sS, -o, /dev/null, -w, "%{http_code}", -H, "Host: plain.test", "http://127.0.0.1/{{ main_path }}"]
+      register: not_there
+      changed_when: false
+
+    - name: It is a 404
+      ansible.builtin.assert:
+        that: not_there.stdout == "404"
+        quiet: true
+
+    # Everything else answers the same on the two vhosts: status, headers (but
+    # the date, which differs by a second) and body.
+    - name: Ask both vhosts for the same strangers' paths
+      ansible.builtin.shell: |
+        set -euo pipefail
+        for path in / /nope /robots.txt "/{{ main_path | truncate(8, True, '') }}" "/{{ main_path }}x"; do
+          for host in example.test plain.test; do
+            curl -sS -i -H "Host: $host" "http://127.0.0.1$path" | grep -vi '^date:' > "/tmp/$host.out"
+          done
+          cmp -s /tmp/example.test.out /tmp/plain.test.out || { echo "DIFFERS: $path"; exit 1; }
+        done
+        echo same
+      args:
+        executable: /bin/bash
+      register: compared
+      changed_when: false
+
+    - name: Nothing but the passport answers differently
+      ansible.builtin.assert:
+        that: compared.stdout == "same"
+        quiet: true
+
+    # Counted around one request rather than searched for the path: the 404s
+    # the comparison above provokes on the other vhost log that path too.
+    - name: Ask for the passport again and count the log lines around it
+      ansible.builtin.shell: |
+        set -eu
+        before=$(wc -l < /var/log/nginx/access.log)
+        curl -sS -o /dev/null -H "Host: example.test" "http://127.0.0.1/{{ main_path }}"
+        after=$(wc -l < /var/log/nginx/access.log)
+        echo "$before $after"
+      args:
+        executable: /bin/bash
+      register: logged
+      changed_when: false
+
+    - name: The passport left no line in the access log
+      ansible.builtin.assert:
+        that: logged.stdout.split()[0] == logged.stdout.split()[1]
+        quiet: true
+
+    # --- the snippet ------------------------------------------------------
+
+    - name: Look at the snippet
+      ansible.builtin.stat:
+        path: /etc/nginx/snippets/krot-passport-example.test.conf
+      register: snippet
+
+    - name: It is private and named for the normalised domain
+      ansible.builtin.assert:
+        that:
+          - snippet.stat.exists
+          - snippet.stat.mode == "0640"
+        quiet: true
+
+    # --- what the role refuses -------------------------------------------
+
+    # Each run is one thing missing or wrong. The role has to stop on every
+    # one, with a message that does not repeat the secret.
+    - name: Run the role with one thing wrong each time
+      ansible.builtin.include_tasks: tasks/refuse.yml
+      loop:
+        - {site_passport_country: "", site_passport_profile: str-esc}
+        - {site_passport_country: KZ, site_passport_profile: ""}
+        - {site_passport_country: KZ, site_passport_profile: unknown}
+        - {site_passport_country: kz, site_passport_profile: str-esc}
+        - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_secret: ""}
+        # secret-lint: allow — a deliberately short value
+        - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_secret: short-secret}
+        - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: ../../../etc/nginx}
+        - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: a.test/../b}
+        - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: localhost}
+        - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_launched: "15.01.2026"}
+      loop_control:
+        loop_var: case
+        label: "{{ case | dict2items | map(attribute='key') | join(',') }} = {{ case.values() | join(',') }}"
+
+    - name: Nothing in the passport root changed after the refusals
+      ansible.builtin.find:
+        paths: "{{ root }}"
+        recurse: true
+        file_type: file
+      register: after
+
+    - name: Still the two files
+      ansible.builtin.assert:
+        that: after.files | length == 2
+        quiet: true
+
+    - name: Nothing on the machine is in a failed state
+      ansible.builtin.command: systemctl --failed --no-legend
+      register: failed_units
+      changed_when: false
+      failed_when: failed_units.stdout | trim | length > 0

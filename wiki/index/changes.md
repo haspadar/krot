@@ -2,7 +2,7 @@
 kind: index
 title: Changes
 owner: generated
-verified: 2026-10-07
+verified: 2026-10-09
 roles: []
 ---
 
@@ -11,9 +11,9 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **34**.
+В работе — **1**, заархивировано — **34**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **11** из 34: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **12** из 35: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
@@ -21,6 +21,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
+| [`2026-10-09-serve-site-passport`](../../openspec/changes/2026-10-09-serve-site-passport/proposal.md) | **в работе** | — | Роль `site_passport`: сайт сам сообщает свою страну и профиль |
 | [`count-two-segment-paths-as-places`](../../openspec/changes/archive/2026-10-07-count-two-segment-paths-as-places/proposal.md) | 2026-10-07 | [#87](https://github.com/haspadar/krot/pull/87) | Двухсегментный путь сайта многих стран считается страницей места |
 | [`bound-postgres-log-rotation`](../../openspec/changes/archive/2026-10-03-bound-postgres-log-rotation/proposal.md) | 2026-10-03 | [#80](https://github.com/haspadar/krot/pull/80) | The PostgreSQL log recycles within a month, and connection logging is a setting |
 | [`prove-zero-search-days`](../../openspec/changes/archive/2026-10-03-prove-zero-search-days/proposal.md) | 2026-10-03 | [#78](https://github.com/haspadar/krot/pull/78) | A finalized day without impressions is a measured zero |

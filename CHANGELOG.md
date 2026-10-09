@@ -3,6 +3,18 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## Unreleased
+
+### Added
+
+- **`site_passport` role: the site states its country and profile at a path only the secret's
+  holder can compute.** A static JSON at `/var/lib/krot-passport/<domain>/<path>` with
+  `path = sha256("<secret>:<domain>")[:16]`, plus the nginx snippet
+  `/etc/nginx/snippets/krot-passport-<domain>.conf` that a project's vhost includes. Stops before
+  writing without a country, a profile from the closed list, or a secret. Variables
+  `site_passport_*` live in `roles/site/defaults/main.yml`; not part of `site_launch`, so no
+  existing site changes until a project calls the role
+
 ## 9.1.0
 
 ### Added
