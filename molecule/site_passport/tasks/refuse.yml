@@ -1,0 +1,30 @@
+---
+# One refusal: the role is run with `case` laid over the scenario's variables
+# and must stop before writing. A role that did not stop would fall through to
+# the `fail` below, so the scenario cannot pass on a role that accepts anything.
+- name: Run the role and expect it to stop
+  block:
+    - name: The role
+      ansible.builtin.include_role:
+        name: site_passport
+      vars:
+        site_passport_country: "{{ case.site_passport_country | default('KZ') }}"
+        site_passport_profile: "{{ case.site_passport_profile | default('str-esc') }}"
+        # secret-lint: allow — the scenario's throwaway value
+        site_passport_secret: "{{ case.site_passport_secret | default('test-secret') }}"
+        site_passport_launched: "{{ case.site_passport_launched | default(none) }}"
+
+    - name: It did not stop
+      ansible.builtin.fail:
+        msg: "The role accepted {{ case.keys() | join(', ') }} and wrote a passport."
+  rescue:
+    - name: It stopped on its own assertion and not on something else
+      ansible.builtin.assert:
+        that:
+          - ansible_failed_result.msg is defined
+          - >-
+            'cannot be written' in ansible_failed_result.msg
+            or 'site_passport_launched' in ansible_failed_result.msg
+          - "'accepted' not in ansible_failed_result.msg"
+          - "'test-secret' not in (ansible_failed_result | to_json)"
+        quiet: true

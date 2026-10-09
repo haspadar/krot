@@ -2,7 +2,7 @@
 kind: index
 title: Роли коллекции
 owner: generated
-verified: 2026-10-03
+verified: 2026-10-09
 roles: []
 ---
 
@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-Всего **28**. Источник — `roles/`. Роль отвечает на вопрос «что ставится на машину»; страница вики — «как с этим работать и что кусается».
+Всего **29**. Источник — `roles/`. Роль отвечает на вопрос «что ставится на машину»; страница вики — «как с этим работать и что кусается».
 
 | Роль | Ручек в `defaults` | Объясняет страница |
 |---|---|---|
@@ -29,7 +29,7 @@ roles: []
 | [`nginx`](../../roles/nginx/) | 21 | [operations/cloudflare.md](../operations/cloudflare.md), [operations/logging.md](../operations/logging.md), [operations/secrets.md](../operations/secrets.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`php`](../../roles/php/) | 20 | [operations/logging.md](../operations/logging.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [research/fpm-pools-cannot-share-a-socket.md](../research/fpm-pools-cannot-share-a-socket.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`postgresql`](../../roles/postgresql/) | 17 | [operations/logging.md](../operations/logging.md), [operations/postgresql.md](../operations/postgresql.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
-| [`site`](../../roles/site/) | 52 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
+| [`site`](../../roles/site/) | 59 | [operations/site-passport.md](../operations/site-passport.md), [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_analytics`](../../roles/site_analytics/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_check`](../../roles/site_check/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_database`](../../roles/site_database/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
@@ -37,6 +37,7 @@ roles: []
 | [`site_dns_zone`](../../roles/site_dns_zone/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_domain`](../../roles/site_domain/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_monitor`](../../roles/site_monitor/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
+| [`site_passport`](../../roles/site_passport/) | 0 | [operations/site-passport.md](../operations/site-passport.md) |
 | [`site_preflight`](../../roles/site_preflight/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_search`](../../roles/site_search/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_serve_check`](../../roles/site_serve_check/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |

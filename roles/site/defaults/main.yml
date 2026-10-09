@@ -164,6 +164,25 @@ site_bing_api_url: https://ssl.bing.com/webmaster/api.svc/json
 site_search_wait_attempts: 6
 site_search_wait_delay: 20
 
+# --- Passport -----------------------------------------------------------------
+
+# What the site says about itself to the network's ledger, at a path only the
+# secret's holder can compute: "/" + the first 16 hex of
+# sha256("<secret>:<domain>"). Country and profile are required; the role
+# stops without them.
+site_passport_country: ""
+# One of site_passport_profiles. A new code is not invented here: the list is
+# kept by the ledger's owner.
+site_passport_profile: ""
+# YYYY-MM-DD, or null to let the ledger take the age from the counter.
+site_passport_launched: null
+# A value, never a vault name, like the other secrets; empty stops the role.
+site_passport_secret: ""
+site_passport_profiles: [str-esc, ts-esc, gay-esc, dat, dir]
+# Directories 0711 (no listing): the file's name is the lock.
+site_passport_root: /var/lib/krot-passport
+site_passport_snippet_dir: /etc/nginx/snippets
+
 # --- Project ------------------------------------------------------------------
 
 # Names (not values) that must be in the project's env file on the machine.

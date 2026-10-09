@@ -30,3 +30,4 @@ molecule/nginx_auth/verify.yml command-instead-of-module
 molecule/nginx_cloudflare/verify.yml command-instead-of-module
 molecule/php/verify.yml command-instead-of-module
 molecule/postgresql/verify.yml command-instead-of-module
+molecule/site_passport/verify.yml command-instead-of-module

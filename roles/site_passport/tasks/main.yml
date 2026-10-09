@@ -1,0 +1,109 @@
+---
+# The passport of ONE site: a static JSON file at a path computed from a shared
+# secret and the domain, plus the nginx snippet that serves it. Which vhosts
+# include the snippet is the site generator's call, not this role's.
+
+# Stopped before anything is written: a site without a country or a profile
+# would otherwise be served with a passport that says nothing, which is the
+# very thing the passport exists to prevent.
+- name: Stop when the site has no country, profile or secret
+  ansible.builtin.assert:
+    that:
+      - site_domain | length > 0
+      - site_passport_country | string | regex_search('^[A-Z]{2}$') is not none
+      - site_passport_profile in site_passport_profiles
+      - site_passport_secret | length > 0
+    fail_msg: >-
+      The passport of '{{ site_domain }}' cannot be written: it needs
+      site_passport_country (two capital letters, now '{{ site_passport_country }}'),
+      site_passport_profile (one of {{ site_passport_profiles | join(', ') }};
+      now '{{ site_passport_profile }}') and a non-empty site_passport_secret.
+      A site is not deployed without them.
+    quiet: true
+
+- name: Stop when the launch date is not a date
+  ansible.builtin.assert:
+    that: >-
+      site_passport_launched is none
+      or (site_passport_launched | string | regex_search('^\d{4}-\d{2}-\d{2}$') is not none
+          and (site_passport_launched | string | to_datetime('%Y-%m-%d')) is defined)
+    fail_msg: >-
+      site_passport_launched is '{{ site_passport_launched }}'; it is either
+      unset (null) or a date written YYYY-MM-DD.
+    quiet: true
+
+# The hash is not the secret, but it is the lock: anyone holding the path reads
+# the file. So it stays out of the task output like the secret does.
+- name: Work out the passport's host and path
+  ansible.builtin.set_fact:
+    site_passport_host: >-
+      {{ site_domain | lower | regex_replace('^www\.', '') | regex_replace('\.$', '') }}
+    site_passport_path: >-
+      {{ ((site_passport_secret ~ ':' ~
+           (site_domain | lower | regex_replace('^www\.', '') | regex_replace('\.$', '')))
+          | hash('sha256'))[:16] }}
+  no_log: true
+
+# Execute-only for everyone but root: the file's name is the lock, so a local
+# account must not be able to list it. nginx's worker reaches the file by its
+# full path, which needs only the x bit.
+- name: Create the passport directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0711"
+  loop:
+    - "{{ site_passport_root }}"
+    - "{{ site_passport_root }}/{{ site_passport_host }}"
+  loop_control:
+    label: "{{ item | basename }}"
+
+# A site that changed its path (new secret, new domain) must not leave the old
+# one answering: the old lock would stay open for good.
+- name: Find passports left by an earlier secret
+  ansible.builtin.find:
+    paths: "{{ site_passport_root }}/{{ site_passport_host }}"
+    file_type: file
+    excludes:
+      - "{{ site_passport_path }}"
+  register: site_passport_stale
+  no_log: true
+
+- name: Remove them
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ site_passport_stale.files }}"
+  loop_control:
+    label: stale passport
+  no_log: true
+
+- name: Write the passport
+  ansible.builtin.template:
+    src: passport.json.j2
+    dest: "{{ site_passport_root }}/{{ site_passport_host }}/{{ site_passport_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  no_log: true
+
+- name: Create the snippets directory
+  ansible.builtin.file:
+    path: "{{ site_passport_snippet_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+# 0640: the snippet spells the path out, so it is as private as the path.
+- name: Write the nginx snippet
+  ansible.builtin.template:
+    src: passport.conf.j2
+    dest: "{{ site_passport_snippet_dir }}/krot-passport-{{ site_passport_host }}.conf"
+    owner: root
+    group: root
+    mode: "0640"
+  notify: Reload nginx for the passport
+  no_log: true
