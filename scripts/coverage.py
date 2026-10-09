@@ -79,7 +79,7 @@ EXTRA_SCENARIOS = {
 # These two cannot be moved that way. Deleting a scenario, or gutting the roles
 # it covers, drops covered_tasks below the floor; adding tasks anywhere does not.
 MIN_COVERED_ROLES = 26
-MIN_COVERED_TASKS = 429
+MIN_COVERED_TASKS = 431
 
 
 def count_tasks(role: Path) -> int:

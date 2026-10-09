@@ -178,6 +178,8 @@ site_passport_profile: ""
 site_passport_launched: null
 # A value, never a vault name, like the other secrets; empty stops the role.
 site_passport_secret: ""
+# The path is the only lock, so a short secret is refused (openssl rand -hex 16 gives 32).
+site_passport_secret_min_length: 24
 site_passport_profiles: [str-esc, ts-esc, gay-esc, dat, str-dat, dir]
 # Directories 0711 (no listing): the file's name is the lock.
 site_passport_root: /var/lib/krot-passport

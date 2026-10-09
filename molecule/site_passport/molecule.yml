@@ -39,7 +39,7 @@ provisioner:
         site_passport_profile: str-esc
         # A made-up value for a container that is destroyed at the end of the
         # run. The real secret is the owner's and never appears in this repository.
-        site_passport_secret: test-secret  # secret-lint: allow — throwaway, destroyed with the container
+        site_passport_secret: molecule-throwaway-secret-0123456789  # secret-lint: allow — throwaway
 
 scenario:
   test_sequence:

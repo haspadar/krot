@@ -7,7 +7,7 @@
 - name: Verify
   hosts: all
   vars:
-    secret: test-secret  # secret-lint: allow — the scenario's throwaway value
+    secret: molecule-throwaway-secret-0123456789  # secret-lint: allow — the scenario's throwaway value
     root: /var/lib/krot-passport
   tasks:
     - name: Compute the paths independently
@@ -16,7 +16,7 @@
         python3 - <<'PY'
         import hashlib
         for domain in ("example.test", "second.test"):
-            print(hashlib.sha256(("test-secret:" + domain).encode()).hexdigest()[:16])
+            print(hashlib.sha256(("molecule-throwaway-secret-0123456789:" + domain).encode()).hexdigest()[:16])
         PY
       args:
         executable: /bin/bash
@@ -63,7 +63,7 @@
           - not stats.results[4].stat.exists
         fail_msg: >-
           Either the passport is not at the path computed from
-          sha256("test-secret:<domain>")[:16], or the passport an earlier
+          sha256("molecule-throwaway-secret-0123456789:<domain>")[:16], or the passport an earlier
           secret left is still answering.
         quiet: true
 
@@ -107,12 +107,14 @@
       register: served
       changed_when: false
 
-    - name: It is a 200 with a JSON body and no header beyond nginx's own
+    - name: It is a 200 with a JSON body, the server-level header, and no header of its own
       ansible.builtin.assert:
         that:
           - served.stdout_lines[0] is match('HTTP/1.1 200')
           - "served.stdout | regex_search('(?im)^content-type: application/json') is not none"
-          - served.stdout | regex_search('(?im)^x-') is none
+          - "served.stdout | regex_search('(?im)^x-frame-options: DENY') is not none"
+          - served.stdout | regex_search('(?im)^x-(?!frame-options)') is none
+          - served.stdout | regex_search('(?im)^(cache-control|expires):') is none
           - served.stdout | regex_search('(?im)^server-timing') is none
           - served.stdout_lines[-1] == '{"country":"KZ","profile":"str-esc","launched":null}'
         fail_msg: "{{ served.stdout }}"
@@ -196,6 +198,10 @@
         - {site_passport_country: KZ, site_passport_profile: unknown}
         - {site_passport_country: kz, site_passport_profile: str-esc}
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_secret: ""}
+        - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_secret: short-secret}  # secret-lint: allow — a deliberately short value
+        - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: ../../../etc/nginx}
+        - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: a.test/../b}
+        - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: localhost}
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_launched: "15.01.2026"}
       loop_control:
         loop_var: case

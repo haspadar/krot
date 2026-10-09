@@ -28,6 +28,8 @@
               listen 80;
               server_name {{ item.name }};
               root /var/www/html;
+              # A server-level header like the real vhosts have: the passport must inherit it.
+              add_header X-Frame-Options DENY always;
           {% if item.passport %}
               include /etc/nginx/snippets/krot-passport-{{ item.name }}.conf;
           {% endif %}
