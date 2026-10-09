@@ -198,7 +198,8 @@
         - {site_passport_country: KZ, site_passport_profile: unknown}
         - {site_passport_country: kz, site_passport_profile: str-esc}
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_secret: ""}
-        - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_secret: short-secret}  # secret-lint: allow — a deliberately short value
+        # secret-lint: allow — a deliberately short value
+        - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_secret: short-secret}
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: ../../../etc/nginx}
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: a.test/../b}
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: localhost}
