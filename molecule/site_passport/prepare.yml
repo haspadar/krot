@@ -1,0 +1,60 @@
+---
+- name: Make the collection importable for the scenario
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Make the namespace directory
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/collections/ansible_collections/haspadar"
+        state: directory
+        mode: "0755"
+
+    - name: Link this checkout in as haspadar.krot
+      ansible.builtin.file:
+        src: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+        dest: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/collections/ansible_collections/haspadar/krot"
+        state: link
+
+- name: Prepare a machine that is already serving, with an old passport on it
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait until the container is answering at all
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      register: boot_state
+      changed_when: false
+      retries: 30
+      delay: 2
+      until: boot_state is not failed
+
+    - name: Gather facts now that the machine responds
+      ansible.builtin.setup:
+
+    - name: Install nginx and curl ahead of the role
+      ansible.builtin.apt:
+        name:
+          - nginx
+          - curl
+        state: present
+        update_cache: true
+        cache_valid_time: 3600
+
+    - name: Make sure nginx is running
+      ansible.builtin.service:
+        name: nginx
+        state: started
+
+    # What an earlier secret left behind, in a directory that is world-listable.
+    # Without it the removal task and the tightening of the mode would be
+    # no-ops that nothing here could tell from a missing task.
+    - name: A passport from an earlier secret, in a loose directory
+      ansible.builtin.file:
+        path: /var/lib/krot-passport/example.test
+        state: directory
+        mode: "0755"
+
+    - name: The old file
+      ansible.builtin.copy:
+        dest: /var/lib/krot-passport/example.test/deadbeefdeadbeef
+        content: '{"country":"XX","profile":"dir","launched":null}'
+        mode: "0644"
