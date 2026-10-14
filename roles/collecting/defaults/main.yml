@@ -33,6 +33,8 @@
 #                              `media` section and no `-media` families.
 #               ai_paths:      true keeps the pages AI readers took
 #                              (crawler_path); false by default.
+#               path_families: crawler families whose paths are recorded;
+#                              empty by default, in addition to ai_paths.
 #               extra_agents:  [{mark, family, ai: read|train}] — the project's
 #                              own crawler marks, looked for BEFORE the shared
 #                              ones: its uptime monitor, for one.

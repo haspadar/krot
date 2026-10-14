@@ -19,9 +19,9 @@ def line(path="/", status=200, agent=GOOGLE, address="66.249.66.1", size=100, ta
         day, address, path, status, size, agent, tail)
 
 
-def tally(lines, ai_paths=False, ranges=RANGES):
+def tally(lines, ai_paths=False, ranges=RANGES, path_families=()):
     sections = Sections(rules=[{"section": "card", "prefixes": ["/card/"], "bare": "other"}], media_prefix="/media/")
-    return Tally(Agents(), from_rows(ranges), sections, logline.FORMATS["time_first"], ai_paths).of(lines)
+    return Tally(Agents(), from_rows(ranges), sections, logline.FORMATS["time_first"], ai_paths, path_families=path_families).of(lines)
 
 
 def test_a_day_of_people_alone_is_still_a_day_read():
@@ -126,3 +126,22 @@ def test_a_pair_applies_to_the_domain_that_declared_it_and_not_to_another():
     where = {domain: [key[2] for key in mine.of([line(path="/france/paris")], domain).sections]
              for domain in ("a.example", "b.example")}
     assert where == {"a.example": ["listing"], "b.example": ["other"]}
+
+
+def test_configured_search_paths_collapse_query_variations():
+    reading = tally([line(path="/berlin?page=1"), line(path="/berlin?page=2")], path_families=["googlebot"])
+    assert reading.paths == {(DAY, "googlebot", "/berlin"): 2}
+
+
+def test_unconfigured_search_family_does_not_grow_the_path_table():
+    assert tally([line()], path_families=["bingbot"]).paths == {}
+
+
+def test_configured_paths_exclude_media_and_unverified_requests():
+    reading = tally([line(path="/media/a.jpg"), line(path="/card/4", address="203.0.113.9")], path_families=["googlebot"])
+    assert reading.paths == {}
+
+
+def test_configured_training_family_is_opt_in():
+    reading = tally([line(path="/oslo", agent=TRAINER)], path_families=["gptbot"])
+    assert reading.paths == {(DAY, "gptbot", "/oslo"): 1}

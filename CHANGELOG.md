@@ -7,6 +7,13 @@ changing a default that affects production) bump major.
 
 ### Added
 
+- **`site_passport` role: the site states its country and profile at a path only the secret's
+  holder can compute.** A static JSON at `/var/lib/krot-passport/<domain>/<path>` with
+  `path = sha256("<secret>:<domain>")[:16]`, plus the nginx snippet
+  `/etc/nginx/snippets/krot-passport-<domain>.conf` that a project's vhost includes. Stops before
+  writing without a country, a profile from the closed list, or a secret. Variables
+  `site_passport_*` live in `roles/site/defaults/main.yml`; not part of `site_launch`, so no
+  existing site changes until a project calls the role
 - **`indexing` role: a daily reading of how many pages Bing and Yandex hold of each site.** A project
   that declares `bing` or `yandex` in `engines` gets a unit and timer of its own,
   `krot-index-<project>-counts` (06:00, `schedules.counts` moves it), that writes
@@ -16,6 +23,12 @@ changing a default that affects production) bump major.
   as today's figure. Reading spends none of the submission allowance. The schema is now version 2:
   the role applies it on the next run, and nights of a project not yet re-applied keep working at
   version 1
+
+## 9.2.0
+
+### Added
+
+- `collecting.crawl.path_families` opts selected verified crawler families into daily path capture while preserving `ai_paths`
 
 ## 9.1.0
 

@@ -1,0 +1,49 @@
+---
+- name: Converge
+  hosts: all
+  tasks:
+    - name: Run the role for the main site
+      ansible.builtin.include_role:
+        name: site_passport
+
+    # A second site with a launch date, a www prefix and a trailing dot, which
+    # the path must not see. Run in its own role call: the facts the role sets
+    # are per call, and the second call must not inherit the first's path.
+    - name: Run the role for a site with a launch date
+      ansible.builtin.include_role:
+        name: site_passport
+      vars:
+        site_domain: www.Second.TEST.  # noqa: var-naming[no-role-prefix]
+        site_passport_launched: "2026-01-15"
+        site_passport_country: DE
+        site_passport_profile: dir
+
+    # Two vhosts that are the same in every respect but one: the first includes
+    # the snippet the role wrote. verify.yml compares their answers.
+    - name: Two vhosts, one with the passport
+      ansible.builtin.copy:
+        dest: "/etc/nginx/sites-enabled/{{ item.name }}.conf"
+        content: |
+          server {
+              listen 80;
+              server_name {{ item.name }};
+              root /var/www/html;
+              # A server-level header like the real vhosts have: the passport must inherit it.
+              add_header X-Frame-Options DENY always;
+          {% if item.passport %}
+              include /etc/nginx/snippets/krot-passport-{{ item.name }}.conf;
+          {% endif %}
+          }
+        mode: "0644"
+      loop:
+        - {name: example.test, passport: true}
+        - {name: plain.test, passport: false}
+      loop_control:
+        label: "{{ item.name }}"
+      notify: Reload nginx
+
+  handlers:
+    - name: Reload nginx
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded

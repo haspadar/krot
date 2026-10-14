@@ -39,6 +39,7 @@ Krot держит машины проектов-потребителей: про
 | [Дневная статистика поиска](operations/search-performance.md) | GSC final, история, ошибки и перенос читателей |
 | [Сбор обходов краулеров](operations/crawler-collection.md) | логи nginx и диапазоны краулеров по проекту, схема `krot_collect`, что красит ночь |
 | [Резервные копии баз](operations/database-backups.md) | список баз спрашивается у кластера; свой ключ; проверка восстановления судит по данным |
+| [Паспорт сайта](operations/site-passport.md) | страна и профиль сайта по неугадываемому пути; фрагмент nginx и `include` проекта |
 | [Секреты](operations/secrets.md) | Bitwarden в рантайме, `BW_SESSION`, почему роль падает |
 | [Выкатка и ключи](operations/deploy.md) | Deployer с control-машины, ключ на репозиторий |
 

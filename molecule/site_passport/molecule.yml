@@ -1,0 +1,55 @@
+---
+# The site passport on a real nginx. The role writes a file and a snippet; what
+# matters is that nginx answers the file at the computed path and answers
+# nothing differently anywhere else, so the scenario runs two vhosts, one that
+# includes the snippet and one that does not, and compares them.
+driver:
+  name: docker
+
+dependency:
+  name: galaxy
+  options:
+    requirements-file: ../requirements.yml
+
+platforms:
+  - name: krot-site-passport
+    image: geerlingguy/docker-ubuntu2404-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+
+provisioner:
+  name: ansible
+  env:
+    # The role depends on haspadar.krot.site by its full name, so the
+    # collection has to be importable; prepare.yml links this checkout in.
+    ANSIBLE_COLLECTIONS_PATH: "${MOLECULE_EPHEMERAL_DIRECTORY}/collections:${HOME}/.ansible/collections:${ANSIBLE_COLLECTIONS_PATH:-/usr/share/ansible/collections}"  # yamllint disable-line rule:line-length
+  config_options:
+    defaults:
+      roles_path: ../../roles
+  inventory:
+    host_vars:
+      krot-site-passport:
+        # Mixed case on purpose: the path is computed from the lower-case name.
+        site_domain: Example.TEST
+        site_passport_country: KZ
+        site_passport_profile: str-esc
+        # A made-up value for a container that is destroyed at the end of the
+        # run. The real secret is the owner's and never appears in this repository.
+        site_passport_secret: molecule-throwaway-secret-0123456789  # secret-lint: allow — throwaway
+
+scenario:
+  test_sequence:
+    - destroy
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy
+
+verifier:
+  name: ansible
