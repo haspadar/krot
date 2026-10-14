@@ -2,7 +2,7 @@
 {% set project = item.0.name %}
 {% set engine = item.1 %}
 [Unit]
-Description=Offer {{ project }}'s pages to {{ engine }} (timer)
+Description={{ ("Count what the engines hold of " ~ project ~ "'s sites") if engine == 'counts' else ("Offer " ~ project ~ "'s pages to " ~ engine) }} (timer)
 
 [Timer]
 OnCalendar={{ item.0.schedules[engine] | default(indexing_schedules[engine]) }}

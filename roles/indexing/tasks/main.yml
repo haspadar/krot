@@ -195,7 +195,7 @@
           - -c
           - >-
             import psycopg2;
-            from krot_index import cli, google_jwt;
+            from krot_index import cli, counts, google_jwt;
             from krot_index.engines import google, bing, yandex, indexnow;
             assert google_jwt.HAS_CRYPTOGRAPHY, google_jwt.CRYPTOGRAPHY_ERROR
       environment:
@@ -232,7 +232,7 @@
         owner: root
         group: root
         mode: "0644"
-      loop: "{{ indexing_plans | subelements('engines') }}"
+      loop: "{{ indexing_plans | subelements('jobs') }}"
       loop_control:
         label: "{{ item.0.name }} {{ item.1 }}"
       notify: Reload systemd
@@ -252,7 +252,7 @@
         owner: root
         group: root
         mode: "0644"
-      loop: "{{ indexing_plans | subelements('engines') }}"
+      loop: "{{ indexing_plans | subelements('jobs') }}"
       loop_control:
         label: "{{ item.0.name }} {{ item.1 }}"
       notify: Reload systemd
