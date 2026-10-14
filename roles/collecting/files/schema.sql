@@ -77,8 +77,8 @@ CREATE TABLE IF NOT EXISTS krot_collect.request_day (
 
 CREATE INDEX IF NOT EXISTS request_day_day ON krot_collect.request_day (day);
 
--- The pages AI readers took — only for a project that asks (ai_paths), only bare
--- reader families, the path without its query and cut to 255 bytes.
+-- Paths of configured families and opt-in AI readers, under their bare family
+-- names. The query is stripped and a path is cut to 255 bytes.
 CREATE TABLE IF NOT EXISTS krot_collect.crawler_path (
     site     varchar(255) NOT NULL,
     family   varchar(64)  NOT NULL,

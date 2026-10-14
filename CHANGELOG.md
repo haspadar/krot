@@ -15,6 +15,12 @@ changing a default that affects production) bump major.
   `site_passport_*` live in `roles/site/defaults/main.yml`; not part of `site_launch`, so no
   existing site changes until a project calls the role
 
+## 9.2.0
+
+### Added
+
+- `collecting.crawl.path_families` opts selected verified crawler families into daily path capture while preserving `ai_paths`
+
 ## 9.1.0
 
 ### Added

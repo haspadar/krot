@@ -25,6 +25,13 @@
       - item.logs.format in collecting_log_formats
       - item.logs.pattern is search('\{domain\}')
       - item.crawl.ai_paths is boolean
+      - item.crawl.path_families | default([]) is sequence
+      - item.crawl.path_families | default([]) is not string
+      - item.crawl.path_families | default([]) is not mapping
+      - item.crawl.path_families | default([]) | reject('string') | list | length == 0
+      - item.crawl.path_families | default([]) | reject('match', '^[a-z0-9-]{1,40}\Z') | list | length == 0
+      - item.crawl.path_families | default([]) | select('match', '.*-(media|unverified)\Z') | list | length == 0
+      - item.crawl.path_families | default([]) | intersect(['monitor', 'other', 'impostor']) | length == 0
       - item.crawl.media_prefix is none or item.crawl.media_prefix is match('^/(.*/)?\\Z')
       - item.sites | length > 0
     fail_msg: >-
