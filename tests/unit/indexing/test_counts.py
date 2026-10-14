@@ -120,6 +120,13 @@ def test_a_refused_site_is_red_and_the_others_are_still_read(config, keys):
     assert (code, "add the site" in err, len(store.counts)) == (1, True, 1)
 
 
+def test_an_answer_nobody_foresaw_is_red_for_its_site_and_the_others_are_still_read(config, keys):
+    store = Checked()
+    bing = FakeCounting({"abendseite.de": OSError("year 36812 is out of range"), "nordseite.be": [(DAY, 7, None)]})
+    code, _, err = run(config(["bing"]), store, {"bing": bing})
+    assert (code, "OSError" in err, len(store.counts)) == (1, True, 1)
+
+
 def test_a_refused_write_is_red_and_the_other_sites_are_still_written(config, keys):
     class Odd(Checked):
         def count(self, site, engine, day, in_index, not_in_index):

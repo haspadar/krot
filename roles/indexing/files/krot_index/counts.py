@@ -38,6 +38,12 @@ def over(engine, name, sites, store, today, out, err):
             print("%s %s: %s%s" % (name, domain, stores.first_line(refused),
                                    " (%s)" % refused.repair if refused.repair else ""), file=err)
             continue
+        except Exception as failure:
+            # An engine answer this program did not foresee: this site is red, the others are still read.
+            failed += 1
+            print("%s %s: the figures could not be read: %s: %s"
+                  % (name, domain, type(failure).__name__, stores.first_line(failure)), file=err)
+            continue
         if not days:
             print("%s %s: the engine named no days yet — nothing to write" % (name, domain), file=out)
             continue

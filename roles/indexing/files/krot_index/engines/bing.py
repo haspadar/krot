@@ -87,12 +87,20 @@ def _day(value):
     found = _DATE.match(value) if isinstance(value, str) else None
     if found is None or int(found.group(1)) <= 0:
         return None
-    moment = datetime.datetime.fromtimestamp(int(found.group(1)) // 1000, datetime.timezone.utc)
     zone = found.group(2)
-    if zone:
-        minutes = int(zone[1:3]) * 60 + int(zone[3:5])
-        moment += datetime.timedelta(minutes=minutes if zone[0] == "+" else -minutes)
-    return moment.date()
+    try:
+        moment = datetime.datetime.fromtimestamp(int(found.group(1)) // 1000, datetime.timezone.utc)
+        if zone:
+            hours, mins = int(zone[1:3]), int(zone[3:5])
+            if hours > 14 or mins > 59:
+                # No zone on earth: a day shifted by it would be a day nobody measured.
+                return None
+            minutes = hours * 60 + mins
+            moment +=datetime.timedelta(minutes=minutes if zone[0] == "+" else -minutes)
+        return moment.date()
+    except (OverflowError, OSError, ValueError):
+        # A date far beyond the calendar is a day Bing never measured, the same as an unreadable one.
+        return None
 
 
 def _code(value):

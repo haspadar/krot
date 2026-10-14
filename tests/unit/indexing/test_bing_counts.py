@@ -55,6 +55,13 @@ def test_a_day_without_a_readable_date_is_dropped_not_dated_today(api):
     assert counts(api) == [(datetime.date(2026, 10, 2), 3, None)]
 
 
+@pytest.mark.parametrize("date", ["/Date(999999999999999999999)/", "/Date(1790899200000+9999)/",
+                                  "/Date(253402300800000)/"])
+def test_a_date_beyond_the_calendar_is_dropped_and_the_next_day_still_read(api, date):
+    api.crawl_stats[URL] = [(date, 5), (FIRST, 2)]
+    assert counts(api) == [(datetime.date(2026, 10, 2), 2, None)]
+
+
 @pytest.mark.parametrize("held", [None, "many", -1, 2.5, True])
 def test_a_day_without_a_readable_figure_is_dropped_not_zeroed(api, held):
     api.crawl_stats[URL] = [(FIRST, held)]

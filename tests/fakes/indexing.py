@@ -267,6 +267,8 @@ class FakeYandexRecrawl:
         self.excluded = {}
         # (status, body) answered by the statistics calls instead of the figures
         self.stats_error = None
+        # A body answered with 200 instead of the figures, per call: "history" and "summary".
+        self.stats_body = {}
         self.server = FakeServer(self)
 
     @property
@@ -289,6 +291,9 @@ class FakeYandexRecrawl:
             host = request.path.split("/hosts/")[1].split("/")[0]
             if self.stats_error is not None:
                 return self.stats_error
+            kind = "summary" if request.path.endswith("/summary") else "history"
+            if kind in self.stats_body:
+                return 200, self.stats_body[kind]
             if request.path.endswith("/summary"):
                 return 200, {"sqi": 10, "excluded_pages_count": self.excluded.get(host, 0),
                              "searchable_pages_count": 1, "site_problems": {}}

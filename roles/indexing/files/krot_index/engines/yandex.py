@@ -205,8 +205,14 @@ class Yandex:
         since = today - datetime.timedelta(days=HISTORY_DAYS)
         history = self._read(domain, host, "/search-urls/in-search/history?date_from=%s&date_to=%s"
                              % (since.isoformat(), today.isoformat()))
+        points = history.get("history")
+        if not isinstance(points, list):
+            # ⚠️ A refusal, not "no days": an answer without its list is an API that changed or
+            # an outage in a 200, and read as an empty history the unit would stay green while
+            # nothing is written. A real empty history is the list `[]`.
+            raise night.Refused("Yandex answered the page counts of %s without a list of points" % domain)
         found = {}
-        for point in history.get("history") if isinstance(history.get("history"), list) else []:
+        for point in points:
             if not isinstance(point, dict):
                 continue
             stamp, value = point.get("date"), point.get("value")
@@ -215,12 +221,15 @@ class Yandex:
                 continue
             if day not in found or stamp >= found[day][0]:
                 found[day] = (stamp, value)
+        if points and not found:
+            # Points came and none is readable: the shape moved, not a young site.
+            raise night.Refused("Yandex answered the page counts of %s with points none of which can be read" % domain)
         try:
             excluded = self._read(domain, host, "/summary").get("excluded_pages_count")
+            if isinstance(excluded, bool) or not isinstance(excluded, int) or excluded < 0:
+                raise night.Refused("Yandex answered the summary of %s without a usable excluded_pages_count" % domain)
         except night.NoData:
             # The history is already in hand; the summary being behind it costs only today's excluded figure.
-            excluded = None
-        if isinstance(excluded, bool) or not isinstance(excluded, int) or excluded < 0:
             excluded = None
         days = {day: [value, None] for day, (_, value) in found.items()}
         if excluded is not None:

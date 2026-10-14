@@ -63,13 +63,40 @@ def test_zero_excluded_pages_is_a_figure(api):
 
 @pytest.mark.parametrize("value", [None, "7", -1, True, 1.5])
 def test_a_point_without_a_whole_figure_is_dropped(api, value):
-    api.in_search[HOST] = [("2026-09-19T10:00:00.000+03:00", value)]
-    assert [row[1] for row in counts(api)] == [None]
+    api.in_search[HOST] = [("2026-09-19T10:00:00.000+03:00", value), ("2026-09-20T10:00:00.000+03:00", 8)]
+    assert [row[:2] for row in counts(api) if row[1] is not None] == [(datetime.date(2026, 9, 20), 8)]
 
 
 def test_a_point_without_a_date_is_dropped(api):
-    api.in_search[HOST] = [("not a date", 3), (None, 4)]
+    api.in_search[HOST] = [("not a date", 3), (None, 4), ("2026-09-20T10:00:00.000+03:00", 8)]
+    assert [row[:2] for row in counts(api) if row[1] is not None] == [(datetime.date(2026, 9, 20), 8)]
+
+
+def test_points_none_of_which_can_be_read_are_a_refusal_not_an_empty_site(api):
+    api.in_search[HOST] = [("not a date", 3), ("2026-09-19T10:00:00.000+03:00", "many")]
+    with pytest.raises(night.Refused):
+        counts(api)
+
+
+def test_a_young_site_with_an_empty_list_of_points_has_no_days(api):
+    api.in_search[HOST] = []
+    api.excluded[HOST] = 0
     assert [row[1] for row in counts(api)] == [None]
+
+
+@pytest.mark.parametrize("body", [{}, {"history": None}, {"history": "none"}, {"points": []}])
+def test_a_history_without_its_list_is_a_refusal_not_no_data(api, body):
+    api.stats_body["history"] = body
+    with pytest.raises(night.Refused):
+        counts(api)
+
+
+@pytest.mark.parametrize("body", [{}, {"excluded_pages_count": None}, {"excluded_pages_count": "41"},
+                                  {"excluded_pages_count": -1}, {"excluded_pages_count": True}])
+def test_a_summary_without_its_figure_is_a_refusal(api, body):
+    api.stats_body["summary"] = body
+    with pytest.raises(night.Refused):
+        counts(api)
 
 
 @pytest.mark.parametrize("code", ["HOST_NOT_LOADED", "HOST_NOT_INDEXED"])
