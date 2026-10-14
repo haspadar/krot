@@ -177,6 +177,10 @@ class Yandex:
             return answer
         if code in NO_DATA_YET:
             raise night.NoData("Yandex has no figures for %s yet (%s)" % (domain, code))
+        if status == 429 or code in QUOTA:
+            # Reading statistics spends no allowance, but Yandex still paces its callers; it repairs itself.
+            raise night.Refused("Yandex asked for the figures of %s faster than it answers" % domain,
+                                exhausted=True, too_fast=True)
         if status == 401:
             raise night.Refused("Yandex: the token was refused",
                                 repair="Yandex no longer accepts KROT_INDEX_YANDEX_TOKEN — a new OAuth token")
@@ -203,8 +207,11 @@ class Yandex:
             raise night.Refused("Yandex does not hold %s" % domain, ownership=True,
                                 repair="the site is not in this Yandex Webmaster account — the site_search role adds it")
         since = today - datetime.timedelta(days=HISTORY_DAYS)
+        # date_to a day past today: Yandex dates its points in Moscow time, ahead of a machine
+        # on UTC, and a point dated tomorrow there would otherwise fall outside the window.
+        until = today + datetime.timedelta(days=1)
         history = self._read(domain, host, "/search-urls/in-search/history?date_from=%s&date_to=%s"
-                             % (since.isoformat(), today.isoformat()))
+                             % (since.isoformat(), until.isoformat()))
         points = history.get("history")
         if not isinstance(points, list):
             # ⚠️ A refusal, not "no days": an answer without its list is an API that changed or
@@ -224,17 +231,25 @@ class Yandex:
         if points and not found:
             # Points came and none is readable: the shape moved, not a young site.
             raise night.Refused("Yandex answered the page counts of %s with points none of which can be read" % domain)
+        days = {day: [value, None] for day, (_, value) in found.items()}
         try:
             excluded = self._read(domain, host, "/summary").get("excluded_pages_count")
             if isinstance(excluded, bool) or not isinstance(excluded, int) or excluded < 0:
                 raise night.Refused("Yandex answered the summary of %s without a usable excluded_pages_count" % domain)
+            days.setdefault(today, [None, None])[1] = excluded
         except night.NoData:
             # The history is already in hand; the summary being behind it costs only today's excluded figure.
-            excluded = None
-        days = {day: [value, None] for day, (_, value) in found.items()}
-        if excluded is not None:
-            days.setdefault(today, [None, None])[1] = excluded
-        return [(day, held, left) for day, (held, left) in sorted(days.items())]
+            pass
+        except night.Refused as refused:
+            # ⚠️ The page counts are the series; the excluded figure is the extra. A summary that
+            # fails must not take the history with it, nor go unsaid: written, and still red.
+            raise night.Partial(str(refused), _rows(days), ownership=refused.ownership, exhausted=refused.exhausted,
+                                too_fast=refused.too_fast, repair=refused.repair)
+        return _rows(days)
+
+
+def _rows(days):
+    return [(day, held, left) for day, (held, left) in sorted(days.items())]
 
 
 def _stamp_day(stamp):

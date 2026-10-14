@@ -23,29 +23,42 @@ from krot_index.cli import FAILED, KEYS, OK, build
 COUNTED = ("bing", "yandex")
 
 
+def read(engine, name, domain, today, out, err):
+    """(days, failed): what the engine said about one site, and whether a person is needed."""
+    try:
+        days = engine.index_counts(domain, today)
+        if not days:
+            print("%s %s: the engine named no days yet — nothing to write" % (name, domain), file=out)
+        return days, False
+    except night.NoData as nothing:
+        print("%s %s: %s — nothing to write yet" % (name, domain, stores.first_line(nothing)), file=out)
+        return [], False
+    except night.Refused as refused:
+        # Days it came with are kept: a refusal after part of the figures must not take them along.
+        days = getattr(refused, "days", None) or []
+        if refused.exhausted or refused.too_fast:
+            # Self-repairing, like a spent day in the nights: the figures come again tomorrow, and a red
+            # that repeats on its own stops being read before a revoked key produces one.
+            print("%s %s: %s — read again tomorrow" % (name, domain, stores.first_line(refused)), file=out)
+            return days, False
+        print("%s %s: %s%s" % (name, domain, stores.first_line(refused),
+                               " (%s)" % refused.repair if refused.repair else ""), file=err)
+        return days, True
+    except Exception as failure:
+        # An answer this program did not foresee: this site is red, the others are still read.
+        print("%s %s: the figures could not be read: %s: %s"
+              % (name, domain, type(failure).__name__, stores.first_line(failure)), file=err)
+        return [], True
+
+
 def over(engine, name, sites, store, today, out, err):
     """One engine over every site. Returns how many sites need a person."""
     failed = 0
     for site in sites:
         domain = site["domain"]
-        try:
-            days = engine.index_counts(domain, today)
-        except night.NoData as nothing:
-            print("%s %s: %s — nothing to write yet" % (name, domain, stores.first_line(nothing)), file=out)
-            continue
-        except night.Refused as refused:
-            failed += 1
-            print("%s %s: %s%s" % (name, domain, stores.first_line(refused),
-                                   " (%s)" % refused.repair if refused.repair else ""), file=err)
-            continue
-        except Exception as failure:
-            # An engine answer this program did not foresee: this site is red, the others are still read.
-            failed += 1
-            print("%s %s: the figures could not be read: %s: %s"
-                  % (name, domain, type(failure).__name__, stores.first_line(failure)), file=err)
-            continue
+        days, unread = read(engine, name, domain, today, out, err)
+        failed += unread
         if not days:
-            print("%s %s: the engine named no days yet — nothing to write" % (name, domain), file=out)
             continue
         try:
             for day, in_index, not_in_index in days:

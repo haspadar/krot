@@ -130,3 +130,33 @@ def test_counting_never_touches_the_recrawl_queue(api):
     api.in_search[HOST] = [("2026-09-19T10:00:00.000+03:00", 3)]
     counts(api)
     assert (api.queued, {request.method for request in api.server.requests}) == ([], {"GET"})
+
+
+def test_a_summary_that_fails_keeps_the_history_it_arrived_after(api):
+    api.in_search[HOST] = [("2026-09-19T10:00:00.000+03:00", 3)]
+    api.summary_error = 500, {"error_code": "INTERNAL_ERROR", "error_message": "down"}
+    with pytest.raises(night.Partial) as partial:
+        counts(api)
+    assert partial.value.days == [(datetime.date(2026, 9, 19), 3, None)]
+
+
+def test_a_summary_that_fails_without_history_carries_no_days(api):
+    api.summary_error = 500, {"error_code": "INTERNAL_ERROR", "error_message": "down"}
+    with pytest.raises(night.Partial) as partial:
+        counts(api)
+    assert partial.value.days == []
+
+
+@pytest.mark.parametrize("answer", [(429, {"error_code": "TOO_MANY_REQUESTS_ERROR", "error_message": "slow"}),
+                                    (429, None), (429, {"error_code": "QUOTA_EXCEEDED", "error_message": "spent"})])
+def test_being_paced_is_a_refusal_that_repairs_itself(api, answer):
+    api.stats_error = answer
+    with pytest.raises(night.Refused) as refused:
+        counts(api)
+    assert (refused.value.exhausted, refused.value.too_fast) == (True, True)
+
+
+def test_the_window_ends_a_day_past_today_for_the_moscow_clock(api):
+    counts(api)
+    asked = [request for request in api.server.requests if request.path.endswith("/in-search/history")][0]
+    assert (asked.query["date_from"], asked.query["date_to"]) == ("2026-09-09", "2026-10-15")

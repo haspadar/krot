@@ -42,6 +42,18 @@ class Refused(Exception):
         self.accepted = []
 
 
+class Partial(Refused):
+    """A refusal that arrived after part of the figures were already in hand.
+
+    The caller writes `days` and still counts the site as failed: a figure
+    the engine did not give must not take the ones it did with it.
+    """
+
+    def __init__(self, message, days, **kwargs):
+        super().__init__(message, **kwargs)
+        self.days = days
+
+
 class NoData(Exception):
     """The engine has nothing to say about the site YET — a young site, not a fault.
 

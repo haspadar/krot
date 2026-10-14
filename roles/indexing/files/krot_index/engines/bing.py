@@ -232,6 +232,11 @@ class Bing:
             raise night.Refused("Bing could not be reached for the figures of %s" % domain)
         answer = web.decoded(raw)
         code = _code(answer.get("ErrorCode")) if isinstance(answer, dict) else 0
+        if code in (THROTTLED, THROTTLED_USER, QUOTA_SPENT):
+            # Said about reading, not about offering pages: the submission refusals name an allowance
+            # that reading does not spend, and a throttle repairs itself by tomorrow.
+            raise night.Refused("Bing is answering the figures of %s too fast to be asked again today" % domain,
+                                exhausted=True, too_fast=True)
         if code != 0:
             raise self.refusal(code, domain)
         rows = answer.get("d") if isinstance(answer, dict) else None

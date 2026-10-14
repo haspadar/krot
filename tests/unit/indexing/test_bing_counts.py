@@ -96,3 +96,18 @@ def test_counting_asks_for_no_page_and_no_allowance(api):
     api.crawl_stats[URL] = [(FIRST, 2)]
     counts(api)
     assert [request.path.rsplit("/", 1)[1] for request in api.server.requests] == ["GetCrawlStats"]
+
+
+@pytest.mark.parametrize("code", [2, 4, 5])
+def test_a_throttle_of_the_reading_repairs_itself(api, code):
+    api.stats_answer = 200, {"ErrorCode": code, "Message": "ERROR!!!"}
+    with pytest.raises(night.Refused) as refused:
+        counts(api)
+    assert (refused.value.exhausted, refused.value.too_fast) == (True, True)
+
+
+def test_a_throttle_of_the_reading_does_not_talk_about_offering_pages(api):
+    api.stats_answer = 200, {"ErrorCode": 5, "Message": "ERROR!!!"}
+    with pytest.raises(night.Refused) as refused:
+        counts(api)
+    assert "offered" not in str(refused.value) and "submission" not in str(refused.value)
