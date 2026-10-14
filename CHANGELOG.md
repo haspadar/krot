@@ -3,6 +3,12 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## 9.2.0
+
+### Added
+
+- `collecting.crawl.path_families` opts selected verified crawler families into daily path capture while preserving `ai_paths`
+
 ## 9.1.0
 
 ### Added
