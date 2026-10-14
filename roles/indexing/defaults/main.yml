@@ -20,7 +20,9 @@
 #   yandex_token:      Yandex Webmaster OAuth token.  secret-lint: allow — a field's description
 #   indexnow_secret:   the project's secret; each site's key is derived from it.
 #              Each key is required exactly when its engine is declared.
-#   schedules: optional dict engine -> OnCalendar, over indexing_schedules.
+#   schedules: optional dict engine -> OnCalendar, over indexing_schedules. The key
+#              `counts` is the daily reading of the engines' figures for each site,
+#              which a project gets when it declares bing or yandex.
 #   sites:     required list of
 #                domain:        the site as the engines know it.
 #                sitemap_url:   read over HTTP, as a search engine reads it.
@@ -47,6 +49,9 @@ indexing_schedules:
   indexnow: "*-*-* 18:00:00"
   bing: "*-*-* 20:00:00"
   yandex: "*-*-* 02:00:00"
+  # Bing's days run a day or two behind and Yandex refreshes its results during
+  # the day, so the hour matters little; off every night's hour all the same.
+  counts: "*-*-* 06:00:00"
 
 # A hung site must not hold its unit forever: the timer would keep firing into a
 # unit still active, and the engine would stop being offered while everything
@@ -58,6 +63,8 @@ indexing_timeouts:
   # One post a site, but a run with new keys spends up to ten one-minute
   # pauses repeating first posts (engines/indexnow.py, FIRST_KEY_WAITS).
   indexnow: 1h
+  # Two requests a site at most, and the reading spends no allowance.
+  counts: 30min
 
 # At most 15 minutes: Google's night starts an hour after its reset, and the
 # spread is taken out of that margin, not added to it.

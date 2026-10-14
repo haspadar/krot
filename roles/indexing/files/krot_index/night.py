@@ -42,6 +42,14 @@ class Refused(Exception):
         self.accepted = []
 
 
+class NoData(Exception):
+    """The engine has nothing to say about the site YET — a young site, not a fault.
+
+    Never colours the unit: it repairs itself once the engine has walked the
+    site, and a red that arrives for every new site nightly stops being read.
+    """
+
+
 def share_of(allowance, between):
     """This site's part of an allowance shared by `between` sites.
 

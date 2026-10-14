@@ -12,7 +12,7 @@
   tasks:
     - name: A timer per declared engine is enabled
       ansible.builtin.command: systemctl is-enabled krot-index-molecule-{{ item }}.timer
-      loop: [indexnow, bing, google]
+      loop: [indexnow, bing, google, counts]
       register: indexing_enabled
       changed_when: false
       failed_when: indexing_enabled.stdout != "enabled"
@@ -22,6 +22,22 @@
       register: indexing_calendar
       changed_when: false
       failed_when: "'05:05:00' not in indexing_calendar.stdout"
+
+    # The project declares bing, so it gets the daily reading of the engines' figures as a unit
+    # of its own, on its own hour — and a project with no counted engine would get none.
+    - name: The counts unit runs at its own hour
+      ansible.builtin.command: systemctl show krot-index-molecule-counts.timer -p TimersCalendar
+      register: indexing_counts_calendar
+      changed_when: false
+      failed_when: "'06:00:00' not in indexing_counts_calendar.stdout"
+
+    - name: The counts unit reads and never offers
+      ansible.builtin.command: systemctl cat krot-index-molecule-counts.service
+      register: indexing_counts_unit
+      changed_when: false
+      failed_when: >-
+        '-m krot_index.counts --config /etc/krot-index/molecule.json' not in indexing_counts_unit.stdout
+        or '--engine' in indexing_counts_unit.stdout
 
     # The zone rides in the expression: Google's day resets at midnight
     # Pacific, whatever the machine's clock says.
@@ -155,7 +171,7 @@
       register: indexing_owners
       # The count too: on an empty schema "none foreign" would hold vacuously.
       failed_when: >-
-        indexing_owners.query_result[0].tables != 3
+        indexing_owners.query_result[0].tables != 4
         or indexing_owners.query_result[0].foreign != 0
 
     # The run itself. It is red on purpose — the sitemap is on a port nobody
@@ -209,6 +225,82 @@
       become_user: postgres
       register: indexing_write
       failed_when: "'permission denied' not in (indexing_write.msg | default(''))"
+
+    # The counts unit, which reads Bing's real API from here: with a made-up key it ends red
+    # either way — Bing refusing the key, or nobody answering from a container without a
+    # network — but only after the key, the peer login and a schema at version 2 have all
+    # passed, and the red names the engine and the site.
+    - name: Run the counts unit
+      ansible.builtin.command: systemctl start --wait krot-index-molecule-counts.service
+      register: indexing_counts_run
+      changed_when: true
+      failed_when: false
+
+    - name: It failed the way a person is meant to see
+      ansible.builtin.command: systemctl show krot-index-molecule-counts.service -p Result -p ExecMainStatus
+      register: indexing_counts_result
+      changed_when: false
+      failed_when: >-
+        'Result=exit-code' not in indexing_counts_result.stdout
+        or 'ExecMainStatus=1' not in indexing_counts_result.stdout
+
+    - name: And named the engine and the site
+      ansible.builtin.command: journalctl -u krot-index-molecule-counts.service --no-pager -n 20
+      register: indexing_counts_journal
+      changed_when: false
+      failed_when: "'bing molecule.test:' not in indexing_counts_journal.stdout"
+
+    # The write the unit makes once an engine answers, made the way the unit makes it: by the
+    # program's own code, as its own account, over peer. A refused grant or a table owned by
+    # somebody else would show only here, never in a green night.
+    - name: Write a figure as the program's account
+      ansible.builtin.command:
+        argv:
+          - python3
+          - -c
+          - >-
+            import datetime;
+            from krot_index.store import PostgresStore;
+            store = PostgresStore('molecule_site');
+            store.count('molecule.test', 'bing', datetime.date(2026, 10, 2), 7, None);
+            store.count('molecule.test', 'bing', datetime.date(2026, 10, 2), None, None)
+      environment:
+        PYTHONPATH: /usr/local/lib/krot-index
+      become: true
+      become_user: krot_index
+      changed_when: true
+
+    - name: The figure is there, unknown kept apart from zero
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: SELECT in_index, not_in_index FROM krot_index.index_count WHERE site = 'molecule.test'
+      become: true
+      become_user: postgres
+      register: indexing_figure
+      failed_when: >-
+        indexing_figure.query_result | length != 1
+        or indexing_figure.query_result[0].in_index != 7
+        or indexing_figure.query_result[0].not_in_index is not none
+
+    - name: The application reads the figures
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        session_role: molecule_app
+        query: SELECT count(*) AS rows FROM krot_index.index_count
+      become: true
+      become_user: postgres
+      register: indexing_figure_read
+      failed_when: indexing_figure_read.query_result[0].rows != 1
+
+    - name: And cannot write them
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        session_role: molecule_app
+        query: DELETE FROM krot_index.index_count
+      become: true
+      become_user: postgres
+      register: indexing_figure_write
+      failed_when: "'permission denied' not in (indexing_figure_write.msg | default(''))"
 
     # A table a later schema version adds, made the way the role applies the
     # schema: by the program's account. Readable by the application with no

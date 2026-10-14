@@ -9,6 +9,7 @@ page exists and answers nothing, this asks for a walk and says whether it was
 taken.
 """
 
+import datetime
 import time
 
 from krot_index import night, web
@@ -23,6 +24,14 @@ DAILY_QUOTA = 150
 # a night is not a pace worth defending, and a second keeps a site under three
 # minutes.
 PACE = 1
+
+# How far back the page counts are asked for each night. The history is a handful
+# of points on the dates Yandex refreshed its results, not a point a day.
+HISTORY_DAYS = 35
+
+# Yandex has nothing to say about a site it has not walked or loaded yet: the
+# ordinary state of a site opened this week, not a fault.
+NO_DATA_YET = ("HOST_NOT_LOADED", "HOST_NOT_INDEXED")
 
 QUOTA = ("QUOTA_EXCEEDED", "TOO_MANY_REQUESTS_ERROR")
 OWNERSHIP = ("HOST_NOT_VERIFIED", "HOST_NOT_INDEXED", "FORBIDDEN")
@@ -150,3 +159,80 @@ class Yandex:
         # or a 5xx about this one request. One bad address must not end a night
         # that has 149 more.
         return False
+
+    def _read(self, domain, host, path):
+        """One reading call about a host: the answer, or NoData for a site not walked yet.
+
+        Refused for everything a person must look at. Spends nothing of the recrawl
+        allowance — these only read statistics.
+        """
+        try:
+            status, raw = self.call("GET", "%s/user/%s/hosts/%s%s" % (self.api, self.user, host, path),
+                                    headers={"Authorization": "OAuth " + self.token}, timeout=30)
+        except web.Unreachable:
+            raise night.Refused("Yandex could not be reached for the figures of %s" % domain)
+        answer = web.decoded(raw)
+        code = answer.get("error_code") if isinstance(answer, dict) and isinstance(answer.get("error_code"), str) else ""
+        if status == 200 and isinstance(answer, dict):
+            return answer
+        if code in NO_DATA_YET:
+            raise night.NoData("Yandex has no figures for %s yet (%s)" % (domain, code))
+        if status == 401:
+            raise night.Refused("Yandex: the token was refused",
+                                repair="Yandex no longer accepts KROT_INDEX_YANDEX_TOKEN — a new OAuth token")
+        if code in OWNERSHIP or status in (403, 404):
+            raise night.Refused("Yandex: %s answered %d %s" % (path, status, code), ownership=True,
+                                repair="the site is not verified in this Yandex Webmaster account")
+        raise night.Refused("Yandex answered %s with %d %s" % (path, status, code))
+
+    def index_counts(self, domain, today):
+        """What Yandex holds of the site: [(day, in_index, not_in_index)], oldest first.
+
+        in_index: the page count of the search results, on the day each point is dated
+        — Yandex's own, in its own zone. Points are the dates Yandex refreshed its
+        results, so most days have none; none is invented between them, and the
+        last point of a day wins.
+
+        not_in_index: Yandex gives the excluded pages as today's number only — its
+        events history is a flow (appeared, removed), not a stock — so it is stored
+        on `today`, the day it was read, and no earlier day gets one. Read again
+        each night, the days gather their own history from the first night on.
+        """
+        host = self.host(domain)
+        if host is None:
+            raise night.Refused("Yandex does not hold %s" % domain, ownership=True,
+                                repair="the site is not in this Yandex Webmaster account — the site_search role adds it")
+        since = today - datetime.timedelta(days=HISTORY_DAYS)
+        history = self._read(domain, host, "/search-urls/in-search/history?date_from=%s&date_to=%s"
+                             % (since.isoformat(), today.isoformat()))
+        found = {}
+        for point in history.get("history") if isinstance(history.get("history"), list) else []:
+            if not isinstance(point, dict):
+                continue
+            stamp, value = point.get("date"), point.get("value")
+            day = _stamp_day(stamp)
+            if day is None or isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                continue
+            if day not in found or stamp >= found[day][0]:
+                found[day] = (stamp, value)
+        try:
+            excluded = self._read(domain, host, "/summary").get("excluded_pages_count")
+        except night.NoData:
+            # The history is already in hand; the summary being behind it costs only today's excluded figure.
+            excluded = None
+        if isinstance(excluded, bool) or not isinstance(excluded, int) or excluded < 0:
+            excluded = None
+        days = {day: [value, None] for day, (_, value) in found.items()}
+        if excluded is not None:
+            days.setdefault(today, [None, None])[1] = excluded
+        return [(day, held, left) for day, (held, left) in sorted(days.items())]
+
+
+def _stamp_day(stamp):
+    """The date part of `2026-09-19T10:00:11.592+03:00`, as Yandex dated it — or None."""
+    if not isinstance(stamp, str):
+        return None
+    try:
+        return datetime.date.fromisoformat(stamp[:10])
+    except ValueError:
+        return None

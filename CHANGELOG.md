@@ -3,6 +3,20 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## Unreleased
+
+### Added
+
+- **`indexing` role: a daily reading of how many pages Bing and Yandex hold of each site.** A project
+  that declares `bing` or `yandex` in `engines` gets a unit and timer of its own,
+  `krot-index-<project>-counts` (06:00, `schedules.counts` moves it), that writes
+  `krot_index.index_count` — `site`, `engine`, `day`, `in_index`, `not_in_index`, `collected_at`; null
+  is unknown, zero is measured. Bing gives `InIndex` for about a month at once and no excluded count;
+  Yandex gives the pages in search on the dates it refreshed its results and the excluded count only
+  as today's figure. Reading spends none of the submission allowance. The schema is now version 2:
+  the role applies it on the next run, and nights of a project not yet re-applied keep working at
+  version 1
+
 ## 9.1.0
 
 ### Added
