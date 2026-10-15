@@ -40,3 +40,32 @@ class NoSchema:
 def test_a_missing_schema_sends_the_reader_to_the_role(tmp_path):
     code, err = run(["--config", config(tmp_path), "crawl"], lambda dbname: NoSchema())
     assert (code, "run the collecting role" in err) == (1, True)
+
+
+def test_crawl_passes_configured_path_families_to_the_existing_tally(tmp_path):
+    from datetime import date
+
+    class MemoryStore:
+        def __init__(self):
+            self.readings = {}
+
+        def range_rows(self):
+            return []
+
+        def newest_day(self, domain):
+            return None
+
+        def store(self, domain, reading):
+            self.readings[domain] = reading
+
+        def forget_older_than(self):
+            return 0
+
+    (tmp_path / 'pages.test-access.log').write_text(
+        '[13/Oct/2026:12:00:00 +0300] 66.249.66.1 - pages.test "GET /berlin HTTP/1.1" '
+        '200 32 "-" "Googlebot/2.1" cf=DE rt=0.1\n')
+    memory = MemoryStore()
+    cli.run_crawl({'database': 'unused', 'sites': [{'domain': 'pages.test'}],
+                   'logs': {'directory': str(tmp_path)}, 'crawl': {'path_families': ['googlebot']}},
+                  memory, io.StringIO(), io.StringIO())
+    assert memory.readings['pages.test'].paths == {(date(2026, 10, 13), 'googlebot', '/berlin'): 1}

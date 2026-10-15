@@ -79,13 +79,14 @@ def new_day():
 
 
 class Tally:
-    def __init__(self, agents, ranges, sections, pattern, ai_paths=False, pairs=None):
+    def __init__(self, agents, ranges, sections, pattern, ai_paths=False, pairs=None, path_families=()):
         self.agents = agents
         # confirms(family, address) -> True / False / None
         self.ranges = ranges
         self.sections = sections
         self.pattern = pattern
         self.ai_paths = ai_paths
+        self.path_families = frozenset(path_families)
         # domain -> Pair, for the sites that declared one
         self.pairs = pairs or {}
         self.media_prefix = sections.media_prefix
@@ -157,7 +158,7 @@ class Tally:
             sections[part] = sections.get(part, 0) + 1
 
             # Asked after every suffix, so `-media` and `-unverified` fall out here.
-            if self.ai_paths and self.agents.reads_for_ai(family):
+            if family in self.path_families or (self.ai_paths and self.agents.reads_for_ai(family)):
                 key = (day, family, stored_path(one.path))
                 paths[key] = paths.get(key, 0) + 1
 

@@ -47,14 +47,33 @@ CREATE TABLE IF NOT EXISTS krot_index.index_run (
 
 CREATE INDEX IF NOT EXISTS index_run_day ON krot_index.index_run (day);
 
+-- What an engine says it holds of a site, a day at a time. Not what krot-index
+-- sent: the engine's own count, read by `python3 -m krot_index.counts`.
+-- Null is unknown, zero is a measured zero. A site's day is dated by the engine
+-- that measured it (Bing names the day, Yandex dates its search updates), except
+-- not_in_index of Yandex, which only exists as today's figure and is stored on
+-- the day it was read.
+CREATE TABLE IF NOT EXISTS krot_index.index_count (
+    site         varchar(255) NOT NULL,
+    -- yandex / bing
+    engine       varchar(16)  NOT NULL,
+    day          date         NOT NULL,
+    -- Pages the engine holds in its index / search.
+    in_index     integer,
+    -- Pages it excluded; null where the engine does not say (Bing never does).
+    not_in_index integer,
+    collected_at timestamptz  NOT NULL,
+    PRIMARY KEY (site, engine, day)
+);
+
 CREATE TABLE IF NOT EXISTS krot_index.schema_version (
     version integer NOT NULL
 );
 
--- One row, whatever it held before: this file IS version 1. In one transaction,
+-- One row, whatever it held before: this file IS version 2. In one transaction,
 -- because the role reapplies this on every pass and a timer starting between the
 -- two statements would find no version and go red over a healthy database.
 BEGIN;
 DELETE FROM krot_index.schema_version;
-INSERT INTO krot_index.schema_version (version) VALUES (1);
+INSERT INTO krot_index.schema_version (version) VALUES (2);
 COMMIT;

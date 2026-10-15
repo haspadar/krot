@@ -10,7 +10,13 @@ import sys
 
 # The version of schema.sql this program was written against. The role writes
 # it; the program only reads it.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+# The oldest version a night of offering still works against. The program is one
+# per machine and each project's schema is raised by that project's own run of
+# the role, so between the two a database stays at 1: its nights must not go
+# red over a table they never touch. Counting needs the table of version 2.
+OLDEST_FOR_NIGHTS = 1
 
 # The schema the role makes, and its name before 7.0.0 — read until the role has
 # renamed it in this database.
@@ -68,17 +74,22 @@ class PostgresStore:
             cursor.execute(sql, args)
             return cursor.rowcount
 
-    def check(self):
-        """Raises Missing unless the schema is here and at this program's version."""
+    def check(self, oldest=OLDEST_FOR_NIGHTS):
+        """Raises Missing unless the schema is here and at a version this work can use.
+
+        `oldest` is the first version that has what the caller reads and writes;
+        nothing newer than this program is accepted.
+        """
         try:
             rows = self._rows("SELECT version FROM schema_version")
         except Exception as failure:
             raise Missing("no krot_index schema in database %s (%s) — run the indexing role"
                           % (self.database, first_line(failure)))
         versions = [row[0] for row in rows]
-        if versions != [SCHEMA_VERSION]:
-            raise Missing("krot_index schema in database %s is at version %s, this program expects %d — run the indexing role"
-                          % (self.database, versions or "none", SCHEMA_VERSION))
+        if len(versions) != 1 or not oldest <= versions[0] <= SCHEMA_VERSION:
+            expects = "%d" % SCHEMA_VERSION if oldest == SCHEMA_VERSION else "%d to %d" % (oldest, SCHEMA_VERSION)
+            raise Missing("krot_index schema in database %s is at version %s, this program expects %s — run the indexing role"
+                          % (self.database, versions or "none", expects))
 
     def remember(self, site, engine, url, state):
         self._run(
@@ -142,3 +153,24 @@ class PostgresStore:
             # summary missing for a month was then found only from the screen.
             print("warning: %s %s: the night was not recorded: %s"
                   % (spending.engine, spending.site, first_line(failure)), file=sys.stderr)
+
+    def count(self, site, engine, day, in_index, not_in_index):
+        """Writes what an engine holds of a site on a day; a day read again is replaced.
+
+        ⚠️ A figure the engine did not give this time keeps the one it gave
+        before: a night that learns the site's excluded pages but not its
+        searchable ones must not blank yesterday's figure, and a zero is a
+        measurement, which is why None, not falsy, is what is kept.
+        """
+        self._run(
+            "INSERT INTO index_count (site, engine, day, in_index, not_in_index, collected_at)"
+            " VALUES (%s, %s, %s, %s, %s, now())"
+            " ON CONFLICT (site, engine, day) DO UPDATE SET"
+            " in_index = COALESCE(EXCLUDED.in_index, index_count.in_index),"
+            " not_in_index = COALESCE(EXCLUDED.not_in_index, index_count.not_in_index),"
+            " collected_at = now()",
+            (site, engine, day, in_index, not_in_index))
+
+    def today(self):
+        """The machine's day, as the nights' own rows count it (current_date)."""
+        return self._rows("SELECT current_date")[0][0]

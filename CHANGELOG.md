@@ -20,6 +20,33 @@ changing a default that affects production) bump major.
   `site_google_service_account` and `site_ga4_reader_service_account`. Roll-out order for a
   consuming project: put the collecting key in its inventory first, then raise the pin
 
+## 9.3.0
+
+### Added
+
+- **`site_passport` role: the site states its country and profile at a path only the secret's
+  holder can compute.** A static JSON at `/var/lib/krot-passport/<domain>/<path>` with
+  `path = sha256("<secret>:<domain>")[:16]`, plus the nginx snippet
+  `/etc/nginx/snippets/krot-passport-<domain>.conf` that a project's vhost includes. Stops before
+  writing without a country, a profile from the closed list, or a secret. Variables
+  `site_passport_*` live in `roles/site/defaults/main.yml`; not part of `site_launch`, so no
+  existing site changes until a project calls the role
+- **`indexing` role: a daily reading of how many pages Bing and Yandex hold of each site.** A project
+  that declares `bing` or `yandex` in `engines` gets a unit and timer of its own,
+  `krot-index-<project>-counts` (06:00, `schedules.counts` moves it), that writes
+  `krot_index.index_count` — `site`, `engine`, `day`, `in_index`, `not_in_index`, `collected_at`; null
+  is unknown, zero is measured. Bing gives `InIndex` for about a month at once and no excluded count;
+  Yandex gives the pages in search on the dates it refreshed its results and the excluded count only
+  as today's figure. Reading spends none of the submission allowance. The schema is now version 2:
+  the role applies it on the next run, and nights of a project not yet re-applied keep working at
+  version 1
+
+## 9.2.0
+
+### Added
+
+- `collecting.crawl.path_families` opts selected verified crawler families into daily path capture while preserving `ai_paths`
+
 ## 9.1.0
 
 ### Added

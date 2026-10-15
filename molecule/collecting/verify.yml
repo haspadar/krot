@@ -268,7 +268,7 @@
       become_user: postgres
       register: collecting_versions
       failed_when: >-
-        collecting_versions.query_result[0] != {'indexing': [1], 'collecting': [2]}
+        collecting_versions.query_result[0] != {'indexing': [2], 'collecting': [2]}
 
     - name: Look for the planted units
       ansible.builtin.stat:

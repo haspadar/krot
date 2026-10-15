@@ -69,7 +69,7 @@ def run_crawl(config, store, out, err):
     pairs = {site["domain"]: Pair(site["pair_places"]["section"], site["pair_places"].get("except_first", []))
              for site in config["sites"] if site.get("pair_places")}
     tally = Tally(Agents(crawl.get("extra_agents", [])), ranges.from_rows(store.range_rows()), sections, pattern,
-                  ai_paths=crawl.get("ai_paths", False), pairs=pairs)
+                  ai_paths=crawl.get("ai_paths", False), pairs=pairs, path_families=crawl.get("path_families", []))
     files = LogFiles(logs.get("directory", "/var/log/nginx"), logs.get("pattern", "{domain}-access.log*"))
     domains = [site["domain"] for site in config["sites"]]
     failed = Collection(files, tally, store, pattern, out, err).collect(domains)

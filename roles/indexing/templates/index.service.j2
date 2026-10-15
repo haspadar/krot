@@ -3,7 +3,7 @@
 {% set project = item.0.name %}
 {% set engine = item.1 %}
 [Unit]
-Description=Offer {{ project }}'s pages to {{ engine }}
+Description={{ ("Count what the engines hold of " ~ project ~ "'s sites") if engine == 'counts' else ("Offer " ~ project ~ "'s pages to " ~ engine) }}
 After=network-online.target postgresql.service
 Wants=network-online.target
 
@@ -16,4 +16,9 @@ Environment=PYTHONPATH={{ indexing_program_dir }}
 # unit still active and the engine would stop being offered, green.
 TimeoutStartSec={{ indexing_timeouts[engine] }}
 # Exit 1 means a person is needed; a spent allowance or a throttle exits 0.
+# `counts` only reads statistics, so a red one never means an allowance is spent.
+{% if engine == 'counts' %}
+ExecStart=/usr/bin/python3 -m krot_index.counts --config {{ indexing_config_dir }}/{{ project }}.json
+{% else %}
 ExecStart=/usr/bin/python3 -m krot_index --config {{ indexing_config_dir }}/{{ project }}.json --engine {{ engine }}
+{% endif %}

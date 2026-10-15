@@ -23,6 +23,9 @@ class FakeStore:
         self.runs = []
         self.offer_fails = False
         self.record_fails = False
+        # (site, engine, day) -> {"in_index", "not_in_index"}, as index_count keeps it
+        self.counts = {}
+        self.count_fails = False
 
     def tick(self, **delta):
         self.now += datetime.timedelta(**delta)
@@ -59,6 +62,17 @@ class FakeStore:
     def record(self, spending):
         if not self.record_fails:
             self.runs.append(spending)
+
+    def count(self, site, engine, day, in_index, not_in_index):
+        if self.count_fails:
+            raise RuntimeError("permission denied for table index_count")
+        row = self.counts.setdefault((site, engine, day), {"in_index": None, "not_in_index": None})
+        # A figure unknown this time keeps the one known before, a zero included.
+        row["in_index"] = row["in_index"] if in_index is None else in_index
+        row["not_in_index"] = row["not_in_index"] if not_in_index is None else not_in_index
+
+    def today(self):
+        return self.now.date()
 
     def state(self, site, engine, url):
         return self.pages.get((site, engine, url), {}).get("state")
@@ -195,6 +209,10 @@ class FakeBingSubmission:
         # (status, body) SubmitUrlBatch answers instead of taking the batch.
         self.submit_answer = None
         self.quota_down = False
+        # site url -> the days GetCrawlStats answers, as Bing words them:
+        # (date text, InIndex). Absent site: Bing refuses it as NotAuthorized.
+        self.crawl_stats = {}
+        self.stats_answer = None
         self.server = FakeServer(self)
 
     @property
@@ -210,6 +228,14 @@ class FakeBingSubmission:
             daily, monthly = self.quotas.get(request.query.get("siteUrl"), (100, 700))
             return 200, {"d": {"__type": "UrlSubmissionQuota:#Microsoft.Bing.Webmaster.Api",
                                "DailyQuota": daily, "MonthlyQuota": monthly}}
+        if request.path.endswith("/GetCrawlStats"):
+            if self.stats_answer is not None:
+                return self.stats_answer
+            site = request.query.get("siteUrl")
+            if site not in self.crawl_stats:
+                return 200, {"ErrorCode": 14, "Message": "ERROR!!! NotAuthorized"}
+            return 200, {"d": [{"__type": "CrawlStats:#Microsoft.Bing.Webmaster.Api", "Date": date, "InIndex": held,
+                                "CrawledPages": 3} for date, held in self.crawl_stats[site]]}
         if request.path.endswith("/SubmitUrlBatch"):
             if self.error_code is not None:
                 return 200, {"ErrorCode": self.error_code, "Message": "ERROR!!!"}
@@ -235,6 +261,16 @@ class FakeYandexRecrawl:
         # host_id each page was queued against
         self.queued_on = []
         self.error = None
+        # host_id -> [(date text, value)] as the in-search history answers it
+        self.in_search = {}
+        # host_id -> excluded_pages_count the summary answers
+        self.excluded = {}
+        # (status, body) answered by the statistics calls instead of the figures
+        self.stats_error = None
+        # A body answered with 200 instead of the figures, per call: "history" and "summary".
+        self.stats_body = {}
+        # (status, body) answered by the summary alone, the history still answering its figures
+        self.summary_error = None
         self.server = FakeServer(self)
 
     @property
@@ -253,6 +289,19 @@ class FakeYandexRecrawl:
         if request.path == "/v4/user/%d/hosts" % self.user:
             return 200, {"hosts": [{"host_id": host, "ascii_host_url": url, "unicode_host_url": url, "verified": True}
                                    for host, url in self.hosts.items()]}
+        if request.path.endswith("/search-urls/in-search/history") or request.path.endswith("/summary"):
+            host = request.path.split("/hosts/")[1].split("/")[0]
+            if self.stats_error is not None:
+                return self.stats_error
+            if request.path.endswith("/summary") and self.summary_error is not None:
+                return self.summary_error
+            kind = "summary" if request.path.endswith("/summary") else "history"
+            if kind in self.stats_body:
+                return 200, self.stats_body[kind]
+            if request.path.endswith("/summary"):
+                return 200, {"sqi": 10, "excluded_pages_count": self.excluded.get(host, 0),
+                             "searchable_pages_count": 1, "site_problems": {}}
+            return 200, {"history": [{"date": date, "value": value} for date, value in self.in_search.get(host, [])]}
         if request.path.endswith("/recrawl/queue"):
             if self.error is not None:
                 return self.error
