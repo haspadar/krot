@@ -3,7 +3,7 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
-## Unreleased
+## 10.0.0
 
 ### Changed (breaking)
 
