@@ -133,6 +133,8 @@ class FakeGoogle:
         self.grant_lag = 0
         self.pending = {}
         self.data_disabled = False
+        # What a report answers with 200 instead of a report: a proxy's page, an empty object.
+        self.report_replaced_by = None
 
     # Seeding.
 
@@ -267,7 +269,11 @@ class FakeGoogle:
             return refused(403, "User does not have sufficient permissions for this property.", "PERMISSION_DENIED")
         if email not in self.access.get(number, {}):
             return refused(403, "User does not have sufficient permissions for this property.", "PERMISSION_DENIED")
-        return 200, {"rows": [], "rowCount": 0}
+        if self.report_replaced_by is not None:
+            return 200, self.report_replaced_by
+        # A property with no data: the headers, and no rows.
+        return 200, {"metricHeaders": [{"name": "sessions", "type": "TYPE_INTEGER"}], "rowCount": 0,
+                     "kind": "analyticsData#runReport"}
 
     def grant(self, number, request, email):
         """Access bindings: only an administrator of the property adds a user to it."""

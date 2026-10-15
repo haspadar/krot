@@ -135,3 +135,21 @@ def test_key_that_is_not_a_service_account_fails(run, serve, tokens):
     google, number = seeded()
     result = run("ga4_access", args(serve(google), tokens, number, reader_service_account="{}"))
     assert result["failed"] is True
+
+
+@pytest.mark.parametrize("answer", [{}, {"error": {"code": 403}}, {"rows": []}, {"metricHeaders": []},
+                                    {"metricHeaders": [{"name": "users"}]}, []])
+def test_ok_without_a_report_is_not_access(run, serve, tokens, answer):
+    google, number = seeded()
+    google.access[number][COLLECTOR] = VIEWER
+    google.report_replaced_by = answer
+    server = serve(google)
+    result = run("ga4_access", args(server, tokens, number))
+    assert (server.writes(), result["failed"]) == ([], True)
+
+
+def test_property_without_data_still_counts_as_read(run, serve, tokens):
+    google, number = seeded()
+    google.access[number][COLLECTOR] = VIEWER
+    result = run("ga4_access", args(serve(google), tokens, number))
+    assert result.get("failed", False) is False

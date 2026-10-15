@@ -121,8 +121,7 @@ def reads(data, property_id):
     a missing right, and granting one would not cure it: it propagates.
     """
     try:
-        call(data, "POST", "/properties/%s:runReport" % property_id, body=PROBE)
-        return True
+        answer = call(data, "POST", "/properties/%s:runReport" % property_id, body=PROBE)
     except Refused as error:
         if error.status != 403:
             raise
@@ -132,6 +131,14 @@ def reads(data, property_id):
         if "has not been used" in words or "is disabled" in words:
             raise
         raise Denied(str(error))
+    # A 200 is only as good as what it carries: a proxy page, a wrong data_api_url or
+    # an empty body answer 200 too, and none of them proves the key reads the property.
+    # A property without data answers a report with no rows, but with its headers.
+    headers = answer.get("metricHeaders") if isinstance(answer, dict) else None
+    if not isinstance(headers, list) or not any(isinstance(h, dict) and h.get("name") == "sessions"
+                                                for h in headers):
+        raise Unreachable("Analytics answered the report of property %s without the requested metric" % property_id)
+    return True
 
 
 def main():
