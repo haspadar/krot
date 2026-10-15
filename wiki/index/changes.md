@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **2**, заархивировано — **36**.
+В работе — **1**, заархивировано — **37**.
 
 Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **13** из 38: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
@@ -22,7 +22,7 @@ roles: []
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
 | [`2026-10-09-serve-site-passport`](../../openspec/changes/2026-10-09-serve-site-passport/proposal.md) | **влит, не заархивирован** | [#89](https://github.com/haspadar/krot/pull/89) | Роль `site_passport`: сайт сам сообщает свою страну и профиль |
-| [`2026-10-15-grant-traffic-key-ga4-access`](../../openspec/changes/2026-10-15-grant-traffic-key-ga4-access/proposal.md) | **в работе** | — | Заведение сайта само выдаёт сборщику трафика доступ к свойству GA4 |
+| [`grant-traffic-key-ga4-access`](../../openspec/changes/archive/2026-10-15-grant-traffic-key-ga4-access/proposal.md) | 2026-10-15 | — | Заведение сайта само выдаёт сборщику трафика доступ к свойству GA4 |
 | [`record-daily-index-counts`](../../openspec/changes/archive/2026-10-14-record-daily-index-counts/proposal.md) | 2026-10-14 | [#92](https://github.com/haspadar/krot/pull/92) | Роль indexing каждый день сохраняет число страниц в индексе Яндекса и Bing |
 | [`configured-crawler-paths`](../../openspec/changes/archive/2026-10-13-configured-crawler-paths/proposal.md) | 2026-10-13 | — | Collect configured crawler paths |
 | [`count-two-segment-paths-as-places`](../../openspec/changes/archive/2026-10-07-count-two-segment-paths-as-places/proposal.md) | 2026-10-07 | [#87](https://github.com/haspadar/krot/pull/87) | Двухсегментный путь сайта многих стран считается страницей места |
