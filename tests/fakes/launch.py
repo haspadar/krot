@@ -152,10 +152,11 @@ class Launch:
         # TXT value and records nothing on Google's side.
         asks_token = head == "google" and request.path == "/siteVerification/v1/token"
         # Same for a report: Analytics' Data API takes it as a POST and changes nothing.
-        asks_token = asks_token or (head == "google" and request.path.endswith(":runReport"))
+        reports = head == "google" and request.path.endswith(":runReport")
         # And a GET that writes: Dynadot takes every command as a query.
         sets_ns = head == "dynadot" and request.query.get("command") == "set_ns"
-        if (request.method not in ("GET", "HEAD") and not signs_in and not asks_token) or sets_ns:
+        if (request.method not in ("GET", "HEAD") and not signs_in and not asks_token
+                and not reports) or sets_ns:
             if self.runs:
                 self.runs[-1]["writes"].append("%s /%s%s" % (request.method, head, request.path))
 
