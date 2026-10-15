@@ -115,7 +115,7 @@ verify, open, and writing the counters' ids — are task files passed by absolut
 
 The cloud modules this needs are in the collection too (`plugins/modules`): `cloudflare_zone`,
 `cloudflare_zone_settings`, `cloudflare_record`, `cloudflare_ruleset`, `cloudflare_origin_cert`,
-`dns_delegation`, `dynadot_ns`, `umami_website`, `ga4_property`, `uptimerobot_monitor`,
+`dns_delegation`, `dynadot_ns`, `umami_website`, `ga4_property`, `ga4_access`, `uptimerobot_monitor`,
 `gsc_site`, `yandex_site`, `bing_site`. What bites and why the order is what it is —
 `wiki/runbooks/launch-a-site.md`.
 

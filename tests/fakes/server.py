@@ -21,7 +21,8 @@ class Request:
         self.headers = headers
 
     def writes(self):
-        return self.method != "GET"
+        # A report is a POST that only reads: Google's Data API has no GET for it.
+        return self.method != "GET" and not self.path.endswith(":runReport")
 
     def __repr__(self):
         return "%s %s" % (self.method, self.path)

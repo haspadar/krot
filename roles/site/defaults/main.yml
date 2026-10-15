@@ -34,6 +34,12 @@ site_dynadot_key: ""
 site_umami_username: ""
 site_umami_password: ""
 site_google_service_account: ""
+# The key the network collects traffic with, not the one that launches. They are one
+# key for a site launched into the network's own Analytics account and two for a site
+# launched into another: the property is then made by one and read by the other, and
+# the reader is refused until site_analytics gives it access. Required with GA4 —
+# without it nothing can prove the collector will see the property.
+site_ga4_reader_service_account: ""
 site_yandex_token: ""
 site_bing_key: ""
 site_uptimerobot_key: ""
@@ -136,6 +142,9 @@ site_umami_api_url: "http://127.0.0.1:{{ umami_port | default(3000) }}{{ umami_b
 
 site_ga4_account_id: ""
 site_ga4_api_url: https://analyticsadmin.googleapis.com/v1beta
+# Access bindings exist only in the alpha API; the property itself is made in v1beta.
+site_ga4_access_api_url: https://analyticsadmin.googleapis.com/v1alpha
+site_ga4_data_api_url: https://analyticsdata.googleapis.com/v1beta
 site_google_token_uri: https://oauth2.googleapis.com/token
 
 # --- Monitoring (optional) ----------------------------------------------------

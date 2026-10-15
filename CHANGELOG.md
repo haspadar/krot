@@ -3,6 +3,23 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## Unreleased
+
+### Changed (breaking)
+
+- **`site_analytics` makes sure the key that collects traffic can read the GA4 property it just
+  made.** A site launched into another Google account has its property made by one key and read
+  by another, and the collector was refused (403) every hour while the launch reported success.
+  The new module `ga4_access` reads the property with the collecting key and, only when that is
+  refused for want of rights, gives it the Viewer role on that one property with the launching
+  key, then reads again. A launching key that cannot grant fails the launch with the collecting
+  key's address and the manual step. **New required input `site_ga4_reader_service_account`**
+  (the collecting key's JSON) whenever `site_analytics.ga4` is true: `site_preflight` stops the
+  launch without it, before the first write. For a site launched into the network's own
+  Analytics account the launching and the collecting key are one key: pass the same JSON to
+  `site_google_service_account` and `site_ga4_reader_service_account`. Roll-out order for a
+  consuming project: put the collecting key in its inventory first, then raise the pin
+
 ## 9.3.0
 
 ### Added

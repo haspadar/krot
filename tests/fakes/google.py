@@ -1,10 +1,11 @@
-"""Google's token endpoint, Site Verification, Search Console and the
-Analytics Admin API, as far as gsc_site and ga4_property use them.
+"""Google's token endpoint, Site Verification, Search Console, the Analytics
+Admin API and the Analytics Data API, as far as gsc_site, ga4_property and
+ga4_access use them.
 
 The token endpoint is a server of its own: it takes a form rather than JSON, and
 it checks the JWT's signature against the service account's public key, so a
 test that passes has actually signed with RS256. Tokens it hands out name their
-scope, and the API fake refuses a token issued for another scope — which is how
+scope and the account they were signed for, and the API fake refuses a token issued for another scope — which is how
 a module asking Search Console with the verification token would fail.
 
 The key pair is generated when first needed and never written anywhere.
@@ -23,6 +24,9 @@ from fakes.server import FakeServer
 VERIFY_SCOPE = "https://www.googleapis.com/auth/siteverification"
 CONSOLE_SCOPE = "https://www.googleapis.com/auth/webmasters"
 ANALYTICS_SCOPE = "https://www.googleapis.com/auth/analytics.edit"
+USERS_SCOPE = "https://www.googleapis.com/auth/analytics.manage.users"
+READ_SCOPE = "https://www.googleapis.com/auth/analytics.readonly"
+ADMIN = "predefinedRoles/admin"
 
 EMAIL = "launcher@krot-units.iam.gserviceaccount.com"
 
@@ -79,7 +83,7 @@ class FakeTokens:
         if json.loads(unpadded(header)).get("alg") != "RS256" or claim.get("aud") != self.uri:
             return 400, {"error": "invalid_grant", "error_description": "Invalid JWT: aud or alg"}
         self.issued.append(claim["scope"])
-        return 200, {"access_token": "tok|%s|%d" % (claim["scope"], len(self.issued)),
+        return 200, {"access_token": "tok|%s|%d|%s" % (claim["scope"], len(self.issued), claim.get("iss")),
                      "expires_in": 3599, "token_type": "Bearer"}
 
     def close(self):
@@ -121,6 +125,18 @@ class FakeGoogle:
         self.forgets_owners = False
         self.forgets_patches = False
         self.hides_new_properties = False
+        # property number -> {account: role}: who may read it, and who may add readers.
+        self.access = {}
+        # Every grant made through accessBindings, as (property number, user, roles).
+        self.bindings = []
+        # How many reads a fresh grant is refused for before the Data API sees it.
+        self.grant_lag = 0
+        self.pending = {}
+        self.data_disabled = False
+        # What a report answers with 200 instead of a report: a proxy's page, an empty object.
+        self.report_replaced_by = None
+        # A refusal of the report in Google's other words, to tell missing rights from the rest.
+        self.refusal = None
 
     # Seeding.
 
@@ -129,8 +145,11 @@ class FakeGoogle:
         if owned:
             self.sites["sc-domain:" + domain] = "siteOwner"
 
-    def add_property(self, domain, account="301144", time_zone="Europe/Berlin", currency="EUR", stream=True):
+    def add_property(self, domain, account="301144", time_zone="Europe/Berlin", currency="EUR", stream=True,
+                     owner=None):
         number = str(next(self.numbers))
+        # The account that made the property administers it; nobody else sees it.
+        self.access[number] = {owner or self.email: ADMIN}
         self.properties.append({"name": "properties/" + number, "parent": "accounts/" + account,
                                 "displayName": domain, "timeZone": time_zone, "currencyCode": currency})
         self.streams[number] = []
@@ -155,7 +174,9 @@ class FakeGoogle:
     def handle(self, request):
         path = unquote(request.path)
         scope = (VERIFY_SCOPE if path.startswith("/siteVerification") else
-                 CONSOLE_SCOPE if path.startswith("/webmasters") else ANALYTICS_SCOPE)
+                 CONSOLE_SCOPE if path.startswith("/webmasters") else
+                 READ_SCOPE if path.startswith("/data/") else
+                 USERS_SCOPE if path.endswith("/accessBindings") else ANALYTICS_SCOPE)
         bearer = request.headers.get("Authorization", "")
         if not bearer.startswith("Bearer tok|%s|" % scope):
             return refused(401, "Request had invalid authentication credentials.", "UNAUTHENTICATED")
@@ -166,7 +187,11 @@ class FakeGoogle:
             return self.verification(request, path)
         if path.startswith("/webmasters"):
             return self.console(request, path)
-        return self.analytics(request, path)
+        # The account the token was signed for: the last field of the token.
+        email = bearer.split("|")[-1]
+        if path.startswith("/data/"):
+            return self.data(path, email)
+        return self.analytics(request, path, email)
 
     def verification(self, request, path):
         if path == "/siteVerification/v1/token" and request.method == "POST":
@@ -232,7 +257,42 @@ class FakeGoogle:
             return 200, {"path": sitemap, "isPending": True}
         return refused(404, "No route %s %s" % (request.method, path), "NOT_FOUND")
 
-    def analytics(self, request, path):
+    def data(self, path, email):
+        """Data API: a report is answered to an account that holds a role on the property."""
+        if self.data_disabled:
+            return refused(403, "Google Analytics Data API has not been used in project 1234 before or it is "
+                                "disabled. Enable it by visiting the console.", "PERMISSION_DENIED")
+        number = path[len("/data/properties/"):].split(":")[0]
+        if self._property(number) is None:
+            return refused(404, "Property not found", "NOT_FOUND")
+        if self.refusal:
+            return refused(403, self.refusal, "PERMISSION_DENIED")
+        key = (number, email)
+        if self.pending.get(key):
+            self.pending[key] -= 1
+            return refused(403, "User does not have sufficient permissions for this property.", "PERMISSION_DENIED")
+        if email not in self.access.get(number, {}):
+            return refused(403, "User does not have sufficient permissions for this property.", "PERMISSION_DENIED")
+        if self.report_replaced_by is not None:
+            return 200, self.report_replaced_by
+        # A property with no data: the headers, and no rows.
+        return 200, {"metricHeaders": [{"name": "sessions", "type": "TYPE_INTEGER"}], "rowCount": 0,
+                     "kind": "analyticsData#runReport"}
+
+    def grant(self, number, request, email):
+        """Access bindings: only an administrator of the property adds a user to it."""
+        if self.access.get(number, {}).get(email) != ADMIN:
+            return refused(403, "The caller does not have permission", "PERMISSION_DENIED")
+        user = request.body["user"]
+        if user in self.access[number]:
+            return refused(409, "Access binding already exists", "ALREADY_EXISTS")
+        self.access[number][user] = request.body["roles"][0]
+        self.bindings.append((number, user, list(request.body["roles"])))
+        self.pending[(number, user)] = self.grant_lag
+        return 200, {"name": "properties/%s/accessBindings/%d" % (number, len(self.bindings)),
+                     "user": user, "roles": request.body["roles"]}
+
+    def analytics(self, request, path, email):
         if path == "/properties" and request.method == "GET":
             account = request.query.get("filter", "").replace("parent:accounts/", "")
             if account not in self.accounts:
@@ -249,7 +309,7 @@ class FakeGoogle:
             if account not in self.accounts:
                 return refused(403, "The caller does not have permission", "PERMISSION_DENIED")
             number = self.add_property(request.body["displayName"], account, request.body["timeZone"],
-                                       request.body["currencyCode"], stream=False)
+                                       request.body["currencyCode"], stream=False, owner=email)
             found = self._property(number)
             if self.hides_new_properties:
                 self.properties.remove(found)
@@ -259,6 +319,8 @@ class FakeGoogle:
         found = self._property(number)
         if found is None:
             return refused(404, "Property not found", "NOT_FOUND")
+        if len(parts) == 3 and parts[2] == "accessBindings" and request.method == "POST":
+            return self.grant(number, request, email)
         if len(parts) == 2 and request.method == "PATCH":
             if not self.forgets_patches:
                 for field in request.query.get("updateMask", "").split(","):
