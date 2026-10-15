@@ -135,6 +135,8 @@ class FakeGoogle:
         self.data_disabled = False
         # What a report answers with 200 instead of a report: a proxy's page, an empty object.
         self.report_replaced_by = None
+        # A refusal of the report in Google's other words, to tell missing rights from the rest.
+        self.refusal = None
 
     # Seeding.
 
@@ -263,6 +265,8 @@ class FakeGoogle:
         number = path[len("/data/properties/"):].split(":")[0]
         if self._property(number) is None:
             return refused(404, "Property not found", "NOT_FOUND")
+        if self.refusal:
+            return refused(403, self.refusal, "PERMISSION_DENIED")
         key = (number, email)
         if self.pending.get(key):
             self.pending[key] -= 1

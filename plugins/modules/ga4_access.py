@@ -21,8 +21,10 @@ description:
   - Fails, rather than leaving a 403 for the collector's next night, when the launching key
     cannot grant (it is not an administrator of the property) or the grant does not show.
     The message names the collecting key's address and the manual step.
-  - Fails without granting when the Data API itself is switched off in the collecting key's
-    project — no role fixes that.
+  - Grants only on Google's own words for missing rights on the property. Any other refusal
+    (the Data API switched off in the collecting key's project, a restricted key, a quota)
+    fails as it is, with Google's reason, and nothing is written — no role fixes those.
+  - A collecting key that is the launching key is never granted anything; it is only waited for.
   - Only the Viewer role, only on the given property. Existing bindings are never changed or removed.
   - Needs the cryptography library on the machine running the module.
   - In check mode nothing is written; C(changed) says whether a grant is due.
@@ -91,6 +93,7 @@ from ansible.module_utils.basic import AnsibleModule, missing_required_lib
 
 from ansible_collections.haspadar.krot.plugins.module_utils.api import Unreachable
 from ansible_collections.haspadar.krot.plugins.module_utils.google import (
+    ARGUMENTS,
     CRYPTOGRAPHY_ERROR,
     HAS_CRYPTOGRAPHY,
     Refused,
@@ -125,10 +128,12 @@ def reads(data, property_id):
     except Refused as error:
         if error.status != 403:
             raise
-        # A switched-off API is refused with the same status and the same
-        # words "permission denied", but no role of the property answers it.
-        words = str(error).lower()
-        if "has not been used" in words or "is disabled" in words:
+        # Only Google's own words for missing rights on the property are a reason to
+        # grant. A switched-off API, a blocked key or a quota are refused with the same
+        # status, and no role of the property answers them: those fail as they are, with
+        # Google's reason, and nothing is written. If Google rewords this message the
+        # module fails loudly and grants nothing, which is the safe side to err on.
+        if "sufficient permissions" not in str(error).lower():
             raise
         raise Denied(str(error))
     # A 200 is only as good as what it carries: a proxy page, a wrong data_api_url or
@@ -145,13 +150,12 @@ def main():
     module = AnsibleModule(
         argument_spec=dict(
             property_id=dict(type="str", required=True),
-            service_account=dict(type="str", required=True, no_log=True),
             reader_service_account=dict(type="str", required=True, no_log=True),
-            token_uri=dict(type="str", default="https://oauth2.googleapis.com/token"),
             api_url=dict(type="str", default=ADMIN_URL),
             data_api_url=dict(type="str", default=DATA_URL),
             wait_attempts=dict(type="int", default=8),
             wait_delay=dict(type="int", default=4),
+            **ARGUMENTS
         ),
         supports_check_mode=True,
     )
@@ -179,13 +183,18 @@ def main():
         except Denied as denied:
             first = str(denied)
 
+        # The launching key reading its own property is refused only while rights reach the
+        # Data API after the property is made; a role it lacks is not for it to grant itself.
+        same_key = reader.email == launcher.email
+
         if module.check_mode:
-            module.exit_json(changed=True, granted=False, reader=reader.email)
+            module.exit_json(changed=not same_key, granted=False, reader=reader.email)
 
         try:
-            call(launcher.http(p["api_url"], ADMIN_SCOPE), "POST", "/properties/%s/accessBindings" % property_id,
-                 body=dict(user=reader.email, roles=[VIEWER]))
-            granted = True
+            if not same_key:
+                call(launcher.http(p["api_url"], ADMIN_SCOPE), "POST",
+                     "/properties/%s/accessBindings" % property_id, body=dict(user=reader.email, roles=[VIEWER]))
+                granted = True
         except Refused as error:
             # 409: a binding is already there, and the read above says it is not
             # in force yet — the wait below covers it, as it covers a fresh one.
@@ -197,7 +206,8 @@ def main():
             else:
                 raise
 
-        for attempt in range(max(p["wait_attempts"], 1)):
+        attempts = max(p["wait_attempts"], 1)
+        for attempt in range(attempts):
             if attempt:
                 time.sleep(p["wait_delay"])
             try:
@@ -207,7 +217,7 @@ def main():
                 continue
         module.fail_json(
             msg="%s still cannot read property %s after the grant (%d reads, %ds apart); Google said: %s. %s"
-                % (reader.email, property_id, p["wait_attempts"], p["wait_delay"], first, manual),
+                % (reader.email, property_id, attempts, p["wait_delay"], first, manual),
             changed=granted, granted=granted, reader=reader.email)
     except (Unreachable, Refused) as error:
         module.fail_json(msg=str(error), changed=granted, granted=granted)

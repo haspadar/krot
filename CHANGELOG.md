@@ -15,7 +15,10 @@ changing a default that affects production) bump major.
   key, then reads again. A launching key that cannot grant fails the launch with the collecting
   key's address and the manual step. **New required input `site_ga4_reader_service_account`**
   (the collecting key's JSON) whenever `site_analytics.ga4` is true: `site_preflight` stops the
-  launch without it, before the first write
+  launch without it, before the first write. For a site launched into the network's own
+  Analytics account the launching and the collecting key are one key: pass the same JSON to
+  `site_google_service_account` and `site_ga4_reader_service_account`. Roll-out order for a
+  consuming project: put the collecting key in its inventory first, then raise the pin
 
 ## 9.1.0
 

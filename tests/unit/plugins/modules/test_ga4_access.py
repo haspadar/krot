@@ -153,3 +153,28 @@ def test_property_without_data_still_counts_as_read(run, serve, tokens):
     google.access[number][COLLECTOR] = VIEWER
     result = run("ga4_access", args(serve(google), tokens, number))
     assert result.get("failed", False) is False
+
+
+def test_refusal_that_is_not_about_rights_grants_nothing(run, serve, tokens):
+    google, number = seeded()
+    google.refusal = "The caller's key is restricted to other APIs."
+    server = serve(google)
+    result = run("ga4_access", args(server, tokens, number))
+    assert (server.writes(), result["failed"], "restricted" in result["msg"]) == ([], True, True)
+
+
+def test_launching_key_refused_on_its_own_property_is_waited_for_not_granted(run, serve, tokens, pauses):
+    google, number = seeded()
+    google.pending[(number, EMAIL)] = 2
+    server = serve(google)
+    result = run("ga4_access", dict(args(server, tokens, number), reader_service_account=service_account(tokens.uri)))
+    assert (server.writes(), result.get("failed", False), len(pauses)) == ([], False, 1)
+
+
+def test_launching_key_that_never_reads_its_own_property_fails_without_granting(run, serve, tokens):
+    google, number = seeded()
+    google.pending[(number, EMAIL)] = 99
+    server = serve(google)
+    result = run("ga4_access", dict(args(server, tokens, number), reader_service_account=service_account(tokens.uri),
+                                    wait_attempts=2))
+    assert (server.writes(), result["failed"]) == ([], True)
