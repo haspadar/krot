@@ -55,6 +55,9 @@
     - name: site_ga4_account_id
       value: "{{ site_ga4_account_id }}"
       needed: "{{ site_analytics.ga4 | default(false) }}"
+    - name: site_ga4_reader_service_account
+      value: "{{ site_ga4_reader_service_account }}"
+      needed: "{{ site_analytics.ga4 | default(false) }}"
     - {name: site_yandex_token, value: "{{ site_yandex_token }}", needed: "{{ 'yandex' in site_search_engines }}"}
     - {name: site_bing_key, value: "{{ site_bing_key }}", needed: "{{ 'bing' in site_search_engines }}"}
     - name: site_uptimerobot_key
@@ -230,6 +233,26 @@
       register: site_preflight_ga4
       when: site_analytics.ga4 | default(false)
 
+    # Whether the collecting key already reads the property. A new property has no id to
+    # ask about, and the launch will give access once it exists.
+    - name: GA4 access
+      haspadar.krot.ga4_access:
+        property_id: "{{ site_preflight_ga4.property_id }}"
+        service_account: "{{ site_google_service_account }}"
+        reader_service_account: "{{ site_ga4_reader_service_account }}"
+        token_uri: "{{ site_google_token_uri }}"
+        api_url: "{{ site_ga4_access_api_url }}"
+        data_api_url: "{{ site_ga4_data_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_ga4_access
+      when:
+        - site_analytics.ga4 | default(false)
+        - site_preflight_ga4.property_id | default('') | length > 0
+
     # Asks about the monitor site_monitor makes: the keyword one when a word is set, the
     # HTTP one otherwise. Asking about a monitor the role no longer makes reads "pending"
     # on every run, and the second run of the scenario never goes quiet.
@@ -314,6 +337,12 @@
            else 'pending (new property)' if not site_preflight_ga4.property_id
            else site_preflight_ga4.drift if site_preflight_ga4.drift
            else 'pending (web stream)' if site_preflight_ga4.changed else 'done' }}
+      # The collecting key reads the property, or the launch will grant it.
+      ga4 collector access: >-
+        {{ 'skipped' if site_preflight_ga4 is skipped
+           else 'after the property exists' if site_preflight_ga4_access is skipped
+           else 'pending (' ~ site_preflight_ga4_access.reader ~ ' gets Viewer)' if site_preflight_ga4_access.changed
+           else 'done' }}
       certificate: >-
         {{ 'done' if site_preflight_pair.results | selectattr('stat.exists') | selectattr('stat.size', 'gt', 0)
            | list | length == 2 else 'pending' }}

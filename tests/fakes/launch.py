@@ -42,6 +42,7 @@ from fakes.yandex import FakeYandex  # noqa: E402
 
 # The domain the scenario launches, bought at the registrar and still parked.
 DOMAIN = "krot-launch.de"
+COLLECTOR = "collector@krot-launch.iam.gserviceaccount.com"
 PARKING = ["ns1.dyna-ns.net", "ns2.dyna-ns.net"]
 # The word the keyword monitor looks for on the home page.
 WORD = "Anzeigen"
@@ -107,6 +108,9 @@ class Launch:
             "site-www": Site(self, "www." + DOMAIN),
         }
         self.service_account = service_account(self.tokens.uri)
+        # The key the network collects traffic with: another account than the launching one,
+        # as it is when a site is launched into a second Google account.
+        self.reader_service_account = service_account(self.tokens.uri, COLLECTOR)
         self.opened = False
         # One entry per run of the launch: its mode and every write it sent.
         self.runs = []
@@ -147,6 +151,8 @@ class Launch:
         # A POST that reads: Site Verification's getToken only hands out the
         # TXT value and records nothing on Google's side.
         asks_token = head == "google" and request.path == "/siteVerification/v1/token"
+        # Same for a report: Analytics' Data API takes it as a POST and changes nothing.
+        asks_token = asks_token or (head == "google" and request.path.endswith(":runReport"))
         # And a GET that writes: Dynadot takes every command as a query.
         sets_ns = head == "dynadot" and request.query.get("command") == "set_ns"
         if (request.method not in ("GET", "HEAD") and not signs_in and not asks_token) or sets_ns:
@@ -168,7 +174,8 @@ class Launch:
             if head == "_state":
                 return 200, self.state()
             if head == "_setup":
-                return 200, {"service_account": self.service_account}
+                return 200, {"service_account": self.service_account,
+                             "reader_service_account": self.reader_service_account}
             if head == "_run":
                 self.runs.append({"mode": request.body["mode"], "writes": []})
                 return 200, {"run": len(self.runs)}
@@ -201,7 +208,8 @@ class Launch:
             "umami": umami.websites,
             "google": {"resources": self.google.resources, "sites": self.google.sites,
                        "sitemaps": self.google.sitemaps, "properties": self.google.properties,
-                       "streams": self.google.streams},
+                       "streams": self.google.streams, "access": self.google.access,
+                       "bindings": self.google.bindings},
             "yandex": getattr(yandex, "hosts", None),
             "bing": {"sites": bing.sites, "feeds": bing.feeds},
             "monitors": self.routes["uptimerobot"].monitors,
