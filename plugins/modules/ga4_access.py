@@ -140,9 +140,16 @@ def reads(data, property_id):
         if "sufficient permissions" not in str(error).lower():
             raise
         raise Denied(str(error))
-    # A 200 is only as good as what it carries: a proxy page, a wrong data_api_url or
-    # an empty body answer 200 too, and none of them proves the key reads the property.
-    # A property without data answers a report with no rows, but with its headers.
+    # A brand-new property with no events omits metricHeaders even after Viewer has
+    # propagated. Its accepted report still identifies itself and carries the property's
+    # metadata — measured on two live properties on 2026-10-18. Those Google-specific fields,
+    # unlike a bare {}, prove this is a report from the requested API rather than a proxy's
+    # JSON page or a response from a wrong data_api_url.
+    metadata = answer.get("metadata") if isinstance(answer, dict) else None
+    if (isinstance(answer, dict) and "metricHeaders" not in answer
+            and answer.get("kind") == "analyticsData#runReport" and isinstance(metadata, dict)
+            and isinstance(metadata.get("currencyCode"), str) and isinstance(metadata.get("timeZone"), str)):
+        return True
     headers = answer.get("metricHeaders") if isinstance(answer, dict) else None
     if not isinstance(headers, list) or not any(isinstance(h, dict) and h.get("name") == "sessions"
                                                 for h in headers):
