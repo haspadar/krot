@@ -87,6 +87,13 @@ def test_grant_that_reaches_the_data_api_late_is_waited_for(run, serve, tokens, 
     assert (result.get("failed", False), pauses) == (False, [7, 7])
 
 
+def test_grant_whose_accepted_report_is_incomplete_is_waited_for(run, serve, tokens, pauses):
+    google, number = seeded()
+    google.report_lag = 2
+    result = run("ga4_access", args(serve(google), tokens, number, wait_delay=7))
+    assert (result.get("failed", False), result["granted"], pauses) == (False, True, [7, 7])
+
+
 def test_grant_that_never_reaches_the_data_api_fails_naming_the_key(run, serve, tokens):
     google, number = seeded()
     google.grant_lag = 99
