@@ -3,6 +3,14 @@
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 
+## Unreleased
+
+### Fixed
+
+- `ga4_access` now waits when Google accepts `runReport` immediately after a Viewer grant but
+  has not yet included the requested metric header. An incomplete HTTP 200 before a known access
+  delay remains an error rather than proof that the collecting key can read the property.
+
 ## 10.0.0
 
 ### Changed (breaking)

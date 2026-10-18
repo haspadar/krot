@@ -117,6 +117,10 @@ class Denied(Exception):
     """The collecting key is refused on this property."""
 
 
+class IncompleteReport(Unreachable):
+    """The Data API accepted the read before the requested report was ready."""
+
+
 def reads(data, property_id):
     """True when the collecting key reads the property; Denied when it is refused for want of rights.
 
@@ -142,7 +146,8 @@ def reads(data, property_id):
     headers = answer.get("metricHeaders") if isinstance(answer, dict) else None
     if not isinstance(headers, list) or not any(isinstance(h, dict) and h.get("name") == "sessions"
                                                 for h in headers):
-        raise Unreachable("Analytics answered the report of property %s without the requested metric" % property_id)
+        raise IncompleteReport(
+            "Analytics answered the report of property %s without the requested metric" % property_id)
     return True
 
 
@@ -213,7 +218,7 @@ def main():
             try:
                 reads(data, property_id)
                 module.exit_json(changed=granted, granted=granted, reader=reader.email)
-            except Denied:
+            except (Denied, IncompleteReport):
                 continue
         module.fail_json(
             msg="%s still cannot read property %s after the grant (%d reads, %ds apart); Google said: %s. %s"

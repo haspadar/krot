@@ -135,6 +135,8 @@ class FakeGoogle:
         self.data_disabled = False
         # What a report answers with 200 instead of a report: a proxy's page, an empty object.
         self.report_replaced_by = None
+        # How many accepted reads after access appears omit the report while rights propagate.
+        self.report_lag = 0
         # A refusal of the report in Google's other words, to tell missing rights from the rest.
         self.refusal = None
 
@@ -273,6 +275,9 @@ class FakeGoogle:
             return refused(403, "User does not have sufficient permissions for this property.", "PERMISSION_DENIED")
         if email not in self.access.get(number, {}):
             return refused(403, "User does not have sufficient permissions for this property.", "PERMISSION_DENIED")
+        if self.report_lag:
+            self.report_lag -= 1
+            return 200, {}
         if self.report_replaced_by is not None:
             return 200, self.report_replaced_by
         # A property with no data: the headers, and no rows.
