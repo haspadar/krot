@@ -10,6 +10,9 @@ changing a default that affects production) bump major.
 - `ga4_access` now waits when Google accepts `runReport` immediately after a Viewer grant but
   has not yet included the requested metric header. An incomplete HTTP 200 before a known access
   delay remains an error rather than proof that the collecting key can read the property.
+- A `runReport` response carrying Google's report kind and property metadata now counts as a
+  successful read even without metric headers: this is Google's persistent response for a
+  brand-new property without events. `{}` and other JSON without those markers remain invalid.
 
 ## 10.0.0
 

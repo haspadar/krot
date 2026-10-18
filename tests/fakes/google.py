@@ -94,6 +94,9 @@ def refused(status, message, state="INVALID_ARGUMENT"):
     return status, {"error": {"code": status, "message": message, "status": state}}
 
 
+DEFAULT_REPORT = object()
+
+
 class FakeGoogle:
     """Site Verification + Search Console + Analytics Admin behind one address."""
 
@@ -134,8 +137,8 @@ class FakeGoogle:
         self.pending = {}
         self.data_disabled = False
         # What a report answers with 200 instead of a report: a proxy's page, an empty object.
-        self.report_replaced_by = None
-        # How many accepted reads after access appears omit the report while rights propagate.
+        self.report_replaced_by = DEFAULT_REPORT
+        # How many accepted reads after access appears return an incomplete non-empty report.
         self.report_lag = 0
         # A refusal of the report in Google's other words, to tell missing rights from the rest.
         self.refusal = None
@@ -277,8 +280,8 @@ class FakeGoogle:
             return refused(403, "User does not have sufficient permissions for this property.", "PERMISSION_DENIED")
         if self.report_lag:
             self.report_lag -= 1
-            return 200, {}
-        if self.report_replaced_by is not None:
+            return 200, {"rowCount": 0}
+        if self.report_replaced_by is not DEFAULT_REPORT:
             return 200, self.report_replaced_by
         # A property with no data: the headers, and no rows.
         return 200, {"metricHeaders": [{"name": "sessions", "type": "TYPE_INTEGER"}], "rowCount": 0,

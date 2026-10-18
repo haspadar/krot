@@ -144,8 +144,11 @@ def test_key_that_is_not_a_service_account_fails(run, serve, tokens):
     assert result["failed"] is True
 
 
-@pytest.mark.parametrize("answer", [{}, {"error": {"code": 403}}, {"rows": []}, {"metricHeaders": []},
-                                    {"metricHeaders": [{"name": "users"}]}, []])
+@pytest.mark.parametrize("answer", [None, {}, {"error": {"code": 403}}, {"rows": []}, {"metricHeaders": []},
+                                    {"metricHeaders": [{"name": "users"}]},
+                                    {"kind": "analyticsData#runReport",
+                                     "metadata": {"currencyCode": "EUR", "timeZone": "Europe/Berlin"},
+                                     "metricHeaders": [{"name": "users"}]}, []])
 def test_ok_without_a_report_is_not_access(run, serve, tokens, answer):
     google, number = seeded()
     google.access[number][COLLECTOR] = VIEWER
@@ -158,6 +161,10 @@ def test_ok_without_a_report_is_not_access(run, serve, tokens, answer):
 def test_property_without_data_still_counts_as_read(run, serve, tokens):
     google, number = seeded()
     google.access[number][COLLECTOR] = VIEWER
+    google.report_replaced_by = {
+        "metadata": {"currencyCode": "EUR", "timeZone": "Europe/Berlin"},
+        "kind": "analyticsData#runReport",
+    }
     result = run("ga4_access", args(serve(google), tokens, number))
     assert result.get("failed", False) is False
 
