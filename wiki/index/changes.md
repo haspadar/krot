@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **2**, заархивировано — **37**.
+В работе — **1**, заархивировано — **38**.
 
 Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **14** из 39: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
@@ -22,7 +22,7 @@ roles: []
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
 | [`2026-10-09-serve-site-passport`](../../openspec/changes/2026-10-09-serve-site-passport/proposal.md) | **влит, не заархивирован** | [#89](https://github.com/haspadar/krot/pull/89) | Роль `site_passport`: сайт сам сообщает свою страну и профиль |
-| [`2026-10-18-wait-for-complete-ga4-report`](../../openspec/changes/2026-10-18-wait-for-complete-ga4-report/proposal.md) | **в работе** | — | Проверка GA4 ждёт полный отчёт после выдачи доступа |
+| [`wait-for-complete-ga4-report`](../../openspec/changes/archive/2026-10-18-wait-for-complete-ga4-report/proposal.md) | 2026-10-18 | — | Проверка GA4 ждёт полный отчёт после выдачи доступа |
 | [`grant-traffic-key-ga4-access`](../../openspec/changes/archive/2026-10-15-grant-traffic-key-ga4-access/proposal.md) | 2026-10-15 | — | Заведение сайта само выдаёт сборщику трафика доступ к свойству GA4 |
 | [`record-daily-index-counts`](../../openspec/changes/archive/2026-10-14-record-daily-index-counts/proposal.md) | 2026-10-14 | [#92](https://github.com/haspadar/krot/pull/92) | Роль indexing каждый день сохраняет число страниц в индексе Яндекса и Bing |
 | [`configured-crawler-paths`](../../openspec/changes/archive/2026-10-13-configured-crawler-paths/proposal.md) | 2026-10-13 | — | Collect configured crawler paths |
