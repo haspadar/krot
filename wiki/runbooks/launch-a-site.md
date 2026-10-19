@@ -2,7 +2,7 @@
 kind: runbook
 title: Запустить сайт
 owner: haspadar
-verified: 2026-10-15
+verified: 2026-10-19
 roles: [site, site_preflight, site_dns_zone, site_domain, site_tls, site_dns_records, site_database, site_analytics, site_serve_precheck, site_serve_check, site_monitor, site_search, site_check]
 ---
 
@@ -45,6 +45,11 @@ nginx, PostgreSQL, Umami. Роли сайта машину не настраив
 
 Перечень переменных с умолчаниями — `roles/site/defaults/main.yml`: роль `site` без задач держит
 их для всех остальных.
+
+Паспорт сайта проект подключает отдельным вызовом `site_passport`: в `site_launch` он не входит.
+Происхождение домена передаётся из инвентаря как `site_passport_origin` — строка `new` или `drop`,
+либо YAML `null`; отсутствие значения сохраняет неизвестное происхождение (`null`). Полный контракт
+и подключение nginx — в [паспорте сайта](../operations/site-passport.md).
 
 ## Как проект подключается
 
