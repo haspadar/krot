@@ -1,0 +1,33 @@
+---
+- name: Apply an inventory origin to the existing dated passport
+  ansible.builtin.include_role:
+    name: site_passport
+  vars:
+    site_domain: www.Second.TEST.  # noqa: var-naming[no-role-prefix]
+    site_passport_country: DE
+    site_passport_profile: dir
+    site_passport_launched: "2026-01-15"
+    site_passport_origin: "{{ origin }}"
+
+- name: Read the passport from the same independently computed path
+  ansible.builtin.slurp:
+    src: "{{ root }}/second.test/{{ second_path }}"
+  register: origin_body
+
+- name: Only the origin changed and its JSON type is preserved
+  ansible.builtin.assert:
+    that:
+      - >-
+        (origin_body.content | b64decode | from_json)
+        == dict(country='DE', profile='dir', launched='2026-01-15', origin=origin)
+    quiet: true
+
+- name: Read the snippet after the origin changed
+  ansible.builtin.slurp:
+    src: /etc/nginx/snippets/krot-passport-second.test.conf
+  register: origin_snippet
+
+- name: The nginx snippet is byte for byte unchanged
+  ansible.builtin.assert:
+    that: origin_snippet.content == original_snippet.content
+    quiet: true

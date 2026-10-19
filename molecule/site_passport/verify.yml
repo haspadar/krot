@@ -88,8 +88,12 @@
     - name: The content is the contract's, byte for byte
       ansible.builtin.assert:
         that:
-          - (bodies.results[0].content | b64decode) == '{"country":"KZ","profile":"str-esc","launched":null}' ~ "\n"
-          - (bodies.results[1].content | b64decode) == '{"country":"DE","profile":"dir","launched":"2026-01-15"}' ~ "\n"
+          - >-
+            (bodies.results[0].content | b64decode)
+            == '{"country":"KZ","profile":"str-esc","launched":null,"origin":null}' ~ "\n"
+          - >-
+            (bodies.results[1].content | b64decode)
+            == '{"country":"DE","profile":"dir","launched":"2026-01-15","origin":"drop"}' ~ "\n"
         quiet: true
 
     - name: The secret is in no file under the passport root
@@ -116,7 +120,7 @@
           - served.stdout | regex_search('(?im)^x-(?!frame-options)') is none
           - served.stdout | regex_search('(?im)^(cache-control|expires):') is none
           - served.stdout | regex_search('(?im)^server-timing') is none
-          - served.stdout_lines[-1] == '{"country":"KZ","profile":"str-esc","launched":null}'
+          - served.stdout_lines[-1] == '{"country":"KZ","profile":"str-esc","launched":null,"origin":null}'
         fail_msg: "{{ served.stdout }}"
         quiet: true
 
@@ -186,6 +190,18 @@
           - snippet.stat.mode == "0640"
         quiet: true
 
+    # Changing origin must not change an existing launch date or lock.
+    - name: Read the dated passport's snippet before changing origin
+      ansible.builtin.slurp:
+        src: /etc/nginx/snippets/krot-passport-second.test.conf
+      register: original_snippet
+
+    - name: Exercise both origin strings and explicit null on the dated passport
+      ansible.builtin.include_tasks: tasks/origin.yml
+      loop: [new, null, drop]
+      loop_control:
+        loop_var: origin
+
     # --- what the role refuses -------------------------------------------
 
     # Each run is one thing missing or wrong. The role has to stop on every
@@ -204,6 +220,19 @@
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: a.test/../b}
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: localhost}
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_launched: "15.01.2026"}
+        - {site_passport_origin: ""}
+        - {site_passport_origin: unknown}
+        - {site_passport_origin: NEW}
+        - {site_passport_origin: "null"}
+        - {site_passport_origin: " new"}
+        - {site_passport_origin: "drop\n"}
+        - {site_passport_origin: true}
+        - {site_passport_origin: false}
+        - {site_passport_origin: 0}
+        - {site_passport_origin: 1.5}
+        - {site_passport_origin: []}
+        - {site_passport_origin: [new]}
+        - {site_passport_origin: {value: drop}}
       loop_control:
         loop_var: case
         label: "{{ case | dict2items | map(attribute='key') | join(',') }} = {{ case.values() | join(',') }}"
@@ -218,6 +247,21 @@
     - name: Still the two files
       ansible.builtin.assert:
         that: after.files | length == 2
+        quiet: true
+
+    - name: Read the original passports after invalid inputs
+      ansible.builtin.slurp:
+        src: "{{ item }}"
+      loop:
+        - "{{ root }}/example.test/{{ main_path }}"
+        - "{{ root }}/second.test/{{ second_path }}"
+      register: after_refusals
+
+    - name: Refused inputs left both existing passports byte for byte unchanged
+      ansible.builtin.assert:
+        that:
+          - after_refusals.results[0].content == bodies.results[0].content
+          - after_refusals.results[1].content == bodies.results[1].content
         quiet: true
 
     - name: Nothing on the machine is in a failed state

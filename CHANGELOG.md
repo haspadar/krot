@@ -5,6 +5,15 @@ changing a default that affects production) bump major.
 
 ## Unreleased
 
+## 10.1.0
+
+### Added
+
+- `site_passport_origin` carries the consuming inventory's domain origin into
+  passport JSON as `new`, `drop`, or null. Omitted values stay unknown (null);
+  other values and types fail before writes. Existing fields, dates and the
+  secret-derived path are unchanged
+
 ### Fixed
 
 - `ga4_access` now waits when Google accepts `runReport` immediately after a Viewer grant but

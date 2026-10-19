@@ -31,6 +31,14 @@
       {{ site_passport_secret_min_length }} characters. A site is not deployed without them.
     quiet: true
 
+- name: Stop when the domain origin is not declared correctly
+  ansible.builtin.assert:
+    that: >-
+      site_passport_origin is none
+      or (site_passport_origin is string and site_passport_origin in ['new', 'drop'])
+    fail_msg: site_passport_origin must be the string new, the string drop, or null.
+    quiet: true
+
 - name: Stop when the launch date is not a date
   ansible.builtin.assert:
     that: >-
