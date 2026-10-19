@@ -17,6 +17,7 @@
         site_passport_launched: "2026-01-15"
         site_passport_country: DE
         site_passport_profile: dir
+        site_passport_origin: drop
 
     # Two vhosts that are the same in every respect but one: the first includes
     # the snippet the role wrote. verify.yml compares their answers.

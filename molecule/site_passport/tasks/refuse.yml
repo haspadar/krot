@@ -14,6 +14,7 @@
         # secret-lint: allow — the scenario's throwaway value
         site_passport_secret: "{{ case.site_passport_secret | default('molecule-throwaway-secret-0123456789') }}"
         site_passport_launched: "{{ case.site_passport_launched | default(none) }}"
+        site_passport_origin: "{{ case.site_passport_origin | default(none) }}"
 
     - name: It did not stop
       ansible.builtin.fail:
@@ -26,6 +27,7 @@
           - >-
             'cannot be written' in ansible_failed_result.msg
             or 'site_passport_launched' in ansible_failed_result.msg
+            or 'site_passport_origin' in ansible_failed_result.msg
           - "'accepted' not in ansible_failed_result.msg"
           - "'molecule-throwaway-secret-0123456789' not in (ansible_failed_result | to_json)"
         quiet: true

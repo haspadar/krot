@@ -58,3 +58,11 @@
         dest: /var/lib/krot-passport/example.test/deadbeefdeadbeef
         content: '{"country":"XX","profile":"dir","launched":null}'
         mode: "0644"
+
+    - name: A legacy passport at the current path without origin
+      ansible.builtin.copy:
+        # secret-lint: allow — independent vector for the scenario's throwaway value
+        dest: /var/lib/krot-passport/example.test/9ee3c344ed5e633a
+        content: |
+          {"country":"KZ","profile":"str-esc","launched":null}
+        mode: "0644"

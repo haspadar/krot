@@ -185,6 +185,8 @@ site_passport_country: ""
 site_passport_profile: ""
 # YYYY-MM-DD, or null to let the ledger take the age from the counter.
 site_passport_launched: null
+# Declared only by the consumer's inventory: new or drop; unknown stays null.
+site_passport_origin: null
 # A value, never a vault name, like the other secrets; empty stops the role.
 site_passport_secret: ""
 # The path is the only lock, so a short secret is refused (openssl rand -hex 16 gives 32).
