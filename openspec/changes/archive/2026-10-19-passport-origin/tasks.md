@@ -5,4 +5,5 @@
 - [x] Update the passport guide and release metadata
 - [x] Run role, compatibility and collection checks
 - [x] Resolve two Codex role reviews and attempt independent Claude review
-- [ ] Merge after green CI, release and archive with the wiki reconciled
+- [x] Merge after green CI and publish v10.1.0
+- [x] Archive after merge with the wiki reconciled
