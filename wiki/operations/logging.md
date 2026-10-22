@@ -2,7 +2,7 @@
 kind: guide
 title: Логи и ротация
 owner: haspadar
-verified: 2026-10-03
+verified: 2026-10-22
 roles: [nginx, php, postgresql, cron, common]
 ---
 
