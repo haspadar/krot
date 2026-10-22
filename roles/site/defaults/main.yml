@@ -165,6 +165,15 @@ site_search_engines: [google, yandex, bing]
 site_sitemap_path: /sitemap.xml
 # People who should see the Search Console property, besides the account.
 site_search_console_owners: []
+# The key the project reads Search Console and sends pages to Google with (collecting's gsc job,
+# indexing's google engine), as JSON text. It must own the domain property: the Indexing API
+# takes pages only from an owner. The launch makes it one with the launching key and proves it
+# by its own read. Required while google is among site_search_engines; for a launch with the
+# project's own key pass that same JSON here.
+site_search_console_reader_service_account: ""
+# Google left out of site_search_engines is a decision, not a default: without a reason here
+# site_preflight stops the launch, and the reason is printed in its report.
+site_search_console_off_reason: ""
 site_google_api_url: https://www.googleapis.com
 site_yandex_api_url: https://api.webmaster.yandex.net/v4
 site_bing_api_url: https://ssl.bing.com/webmaster/api.svc/json

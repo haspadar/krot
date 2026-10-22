@@ -47,3 +47,19 @@
   become: false
   vars:
     ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+# The launch is not done while the key that will read the property and send its pages is
+# refused: a site launched with another Google account's key left the collector a 403 every
+# night while the launch reported success. Done here, by the collecting key's own read.
+- name: Make the collecting key an owner of the property, and read it with that key
+  haspadar.krot.gsc_access:
+    domain: "{{ site_domain }}"
+    service_account: "{{ site_google_service_account }}"
+    reader_service_account: "{{ site_search_console_reader_service_account }}"
+    token_uri: "{{ site_google_token_uri }}"
+    api_url: "{{ site_google_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"

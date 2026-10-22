@@ -208,6 +208,7 @@ class Launch:
             "certificates": list(self.cloudflare.certificates.values()),
             "umami": umami.websites,
             "google": {"resources": self.google.resources, "sites": self.google.sites,
+                       "others": self.google.others,
                        "sitemaps": self.google.sitemaps, "properties": self.google.properties,
                        "streams": self.google.streams, "access": self.google.access,
                        "bindings": self.google.bindings},

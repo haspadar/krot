@@ -1,6 +1,6 @@
 """Google's token endpoint, Site Verification, Search Console, the Analytics
-Admin API and the Analytics Data API, as far as gsc_site, ga4_property and
-ga4_access use them.
+Admin API and the Analytics Data API, as far as gsc_site, gsc_access,
+ga4_property and ga4_access use them.
 
 The token endpoint is a server of its own: it takes a form rather than JSON, and
 it checks the JWT's signature against the service account's public key, so a
@@ -104,8 +104,15 @@ class FakeGoogle:
         self.email = email
         # dns://<domain> -> owners, for domains the account has verified.
         self.resources = {}
-        # sc-domain:<domain> -> permissionLevel.
+        # sc-domain:<domain> -> permissionLevel, in the launching account's Search Console.
         self.sites = {}
+        # The same for every other key: account -> {sc-domain:<domain> -> permissionLevel}.
+        self.others = {}
+        # How many reads of a property another key added still miss it, as Search Console
+        # does while an ownership granted through Site Verification propagates.
+        self.owner_lag = 0
+        # sites.add answered 403 this many times before it is accepted.
+        self.add_refusals = 0
         # sc-domain:<domain> -> submitted sitemap URLs, and every submission.
         self.sitemaps = {}
         self.submissions = []
@@ -188,17 +195,20 @@ class FakeGoogle:
         if scope in self.disabled_scopes:
             return refused(403, "The API has not been used in project 1234 before or it is disabled.",
                            "PERMISSION_DENIED")
-        if path.startswith("/siteVerification"):
-            return self.verification(request, path)
-        if path.startswith("/webmasters"):
-            return self.console(request, path)
         # The account the token was signed for: the last field of the token.
         email = bearer.split("|")[-1]
+        if path.startswith("/siteVerification"):
+            return self.verification(request, path, email)
+        if path.startswith("/webmasters"):
+            return self.console(request, path, email)
         if path.startswith("/data/"):
             return self.data(path, email)
         return self.analytics(request, path, email)
 
-    def verification(self, request, path):
+    def account_sites(self, email):
+        return self.sites if email == self.email else self.others.setdefault(email, {})
+
+    def verification(self, request, path, email):
         if path == "/siteVerification/v1/token" and request.method == "POST":
             domain = request.body["site"]["identifier"]
             return 200, {"method": "DNS_TXT", "token": "google-site-verification=v-%s" % domain.split(".")[0]}
@@ -212,12 +222,12 @@ class FakeGoogle:
                 return refused(400, "The necessary verification token could not be found on your site.")
             domain = request.body["site"]["identifier"]
             owners = self.resources.setdefault("dns://" + domain, [])
-            if self.email not in owners:
-                owners.append(self.email)
+            if email not in owners:
+                owners.append(email)
             return 200, {"id": "dns://" + domain, "site": request.body["site"], "owners": owners}
         if path.startswith("/siteVerification/v1/webResource/"):
             resource = path[len("/siteVerification/v1/webResource/"):]
-            if resource not in self.resources or self.email not in self.resources[resource]:
+            if resource not in self.resources or email not in self.resources[resource]:
                 return refused(self.unowned_status, "You are not an owner of this site.", "NOT_FOUND")
             if request.method == "PUT":
                 if not self.forgets_owners:
@@ -231,25 +241,38 @@ class FakeGoogle:
                          "owners": owners}
         return refused(404, "No route %s %s" % (request.method, path), "NOT_FOUND")
 
-    def console(self, request, path):
+    def console(self, request, path, email):
+        sites = self.account_sites(email)
         if path == "/webmasters/v3/sites" and request.method == "GET":
             if self.permission_lag:
                 self.permission_lag -= 1
                 return 200, {"siteEntry": [{"siteUrl": s, "permissionLevel": "siteUnverifiedUser"}
-                                           for s in self.sites]}
+                                           for s in sites]}
             # An account with no sites answers {} rather than an empty list.
-            if not self.sites:
+            if not sites:
                 return 200, {}
-            return 200, {"siteEntry": [{"siteUrl": s, "permissionLevel": p} for s, p in self.sites.items()]}
+            return 200, {"siteEntry": [{"siteUrl": s, "permissionLevel": p} for s, p in sites.items()]}
         prefix = "/webmasters/v3/sites/"
         rest = path[len(prefix):]
         site, _, sitemap = rest.partition("/sitemaps/")
         if not sitemap and request.method == "PUT":
-            verified = "dns://" + site[len("sc-domain:"):] in self.resources
-            self.sites[site] = "siteOwner" if verified else "siteUnverifiedUser"
+            if email != self.email and self.add_refusals:
+                self.add_refusals -= 1
+                return refused(403, "User does not have sufficient permission for site.", "PERMISSION_DENIED")
+            verified = email in self.resources.get("dns://" + site[len("sc-domain:"):], [])
+            sites[site] = "siteOwner" if verified else "siteUnverifiedUser"
             return 204, None
+        # sites.get: a property is known only to an account that added it, in the words Google
+        # answered a key without rights with on 2026-10-22.
+        if not sitemap and request.method == "GET":
+            if site not in sites or (email != self.email and self.owner_lag):
+                if site in sites:
+                    self.owner_lag -= 1
+                return refused(404, "'%s' is not a verified Search Console site in this account." % site,
+                               "NOT_FOUND")
+            return 200, {"siteUrl": site, "permissionLevel": sites[site]}
         if sitemap and request.method == "PUT":
-            if self.sites.get(site) != "siteOwner":
+            if sites.get(site) != "siteOwner":
                 return refused(403, "User does not have sufficient permission for site.", "PERMISSION_DENIED")
             self.submissions.append(sitemap)
             listed = self.sitemaps.setdefault(site, [])

@@ -19,6 +19,16 @@
       none; engines are google, yandex, bing.
     quiet: true
 
+# A site without Google has no Search Console property for the project's collector, and
+# nothing downstream would say so. Leaving it out is allowed, but only in words.
+- name: Check Google is among the engines, or the reason it is not is given
+  ansible.builtin.assert:
+    that: "'google' in site_search_engines or site_search_console_off_reason | trim | length > 0"
+    fail_msg: >-
+      google is not in site_search_engines ({{ site_search_engines | join(', ') }}), so the site
+      gets no Search Console property. Add google, or say why in site_search_console_off_reason.
+    quiet: true
+
 # A project may tune the zone, not weaken it: strict TLS and the HTTPS redirect
 # are what the base is for, and an override of either would reach the live
 # zone looking like any other setting in the report.
@@ -52,6 +62,9 @@
     - name: site_google_service_account
       value: "{{ site_google_service_account }}"
       needed: "{{ (site_analytics.ga4 | default(false)) or 'google' in site_search_engines }}"
+    - name: site_search_console_reader_service_account
+      value: "{{ site_search_console_reader_service_account }}"
+      needed: "{{ 'google' in site_search_engines }}"
     - name: site_ga4_account_id
       value: "{{ site_ga4_account_id }}"
       needed: "{{ site_analytics.ga4 | default(false) }}"
@@ -288,6 +301,24 @@
       register: site_preflight_google
       when: "'google' in site_search_engines"
 
+    # Asked on a new site too: Google then answers that the collecting key has no such
+    # property, which still proves the key signs in and the API answers it, before the
+    # first write. The launch makes it an owner once the domain is verified.
+    - name: Search Console access
+      haspadar.krot.gsc_access:
+        domain: "{{ site_domain }}"
+        service_account: "{{ site_google_service_account }}"
+        reader_service_account: "{{ site_search_console_reader_service_account }}"
+        token_uri: "{{ site_google_token_uri }}"
+        api_url: "{{ site_google_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_gsc_access
+      when: "'google' in site_search_engines"
+
     - name: Yandex
       haspadar.krot.yandex_site:
         domain: "{{ site_domain }}"
@@ -343,6 +374,11 @@
            else 'after the property exists' if site_preflight_ga4_access is skipped
            else 'pending (' ~ site_preflight_ga4_access.reader ~ ' gets Viewer)' if site_preflight_ga4_access.changed
            else 'done' }}
+      # The collecting key owns the Search Console property, or the launch will make it one.
+      search console collector access: >-
+        {{ 'off (' ~ site_search_console_off_reason | trim ~ ')' if site_preflight_gsc_access is skipped
+           else 'done' if site_preflight_gsc_access.owner
+           else 'pending (' ~ site_preflight_gsc_access.reader ~ ' becomes owner)' }}
       certificate: >-
         {{ 'done' if site_preflight_pair.results | selectattr('stat.exists') | selectattr('stat.size', 'gt', 0)
            | list | length == 2 else 'pending' }}
