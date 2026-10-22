@@ -41,6 +41,16 @@ provisioner:
           - fpm
           - pgsql
 
+        # The upgrade path, since `present` is the install task alone. On a
+        # fresh container both end in the newest real packages, so the upgrade
+        # is made visible by a probe package prepare builds (see there). The
+        # step between two real patches was measured once with the previous
+        # release's packages (wiki/research/2026-10-22-php-security-patch.md)
+        # and is not repeated, because the PPA drops superseded versions.
+        # `present` runs nothing the install task does not already run under
+        # `latest`; values to refuse are run by the refusal cases in verify.
+        php_packages_state: latest
+
         # Every value differs from both PHP's own default and the role's, so a
         # setting read back from a running interpreter proves the template put
         # it there. memory_limit at the role's 256M would be indistinguishable

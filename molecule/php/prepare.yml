@@ -69,6 +69,52 @@
         group: root
         mode: "0644"
 
+    # The scenario runs with php_packages_state: latest, and on a fresh
+    # container `present` already lands on the newest packages, so the upgrade
+    # would be invisible. A probe makes it visible: a package of the branch
+    # that php_extensions does not name, installed at 1.0, with 1.1 waiting in
+    # a local repository. Only the role's upgrade can move it, and only if its
+    # selection takes packages the role was not asked for. Built here rather
+    # than taken from the PPA, which drops superseded versions and would leave
+    # the scenario nothing to start from. 8.5 for the same reason molecule.yml
+    # pins php_version: it is the role's default.
+    - name: The tool that indexes the probe's repository
+      ansible.builtin.apt:
+        name: apt-utils
+        state: present
+
+    - name: Build the probe at 1.0 and 1.1, install 1.0, publish 1.1
+      ansible.builtin.shell: |
+        set -eu
+        # The container runs with umask 000, and dpkg-deb refuses a control
+        # directory that is 777. Measured: "control directory has bad
+        # permissions 777".
+        umask 022
+        root=/srv/krot-probe
+        rm -rf "$root"
+        mkdir -p "$root/build" "$root/repo"
+        for v in 1.0 1.1; do
+          pkg="$root/build/$v"
+          mkdir -p "$pkg/DEBIAN"
+          printf '%s\n' \
+            'Package: php8.5-krotprobe' \
+            "Version: $v" \
+            'Architecture: all' \
+            'Maintainer: krot <probe@example.invalid>' \
+            'Description: scenario probe for the php role upgrade' \
+            > "$pkg/DEBIAN/control"
+          dpkg-deb --build "$pkg" "$root/php8.5-krotprobe_${v}_all.deb" >/dev/null
+        done
+        dpkg -i "$root/php8.5-krotprobe_1.0_all.deb" >/dev/null
+        mv "$root/php8.5-krotprobe_1.1_all.deb" "$root/repo/"
+        cd "$root/repo"
+        apt-ftparchive packages . > Packages
+        echo 'deb [trusted=yes] file:/srv/krot-probe/repo ./' \
+          > /etc/apt/sources.list.d/krot-probe.list
+      args:
+        executable: /bin/bash
+        creates: /etc/apt/sources.list.d/krot-probe.list
+
     # Nothing else is planted. Unlike postgresql, this role has no task that
     # removes a legacy source, so there is no prior state for one to act on —
     # and a file put here only to be looked at afterwards would test the

@@ -1,0 +1,7 @@
+---
+# Every package of the branch that pins php{{ php_version }}-common to its own
+# exact version: php8.5 and php8.5-*, and the two SAPIs named the other way
+# round, libapache2-mod-php8.5 and libphp8.5-embed. Anchored on both sides, so
+# php8.50 or php-common is not taken for the branch. Not in defaults: it follows
+# from how the repository names its packages, not from a choice.
+php_branch_package_pattern: "^(lib|libapache2-mod-)?php{{ php_version | regex_escape }}(-|$)"

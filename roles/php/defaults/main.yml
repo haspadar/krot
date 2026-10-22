@@ -1,6 +1,14 @@
 ---
 php_version: "8.5"
 
+# `present` leaves an installed PHP exactly where it is, security patch or not:
+# unattended-upgrades only takes Ubuntu's security pockets, and the ondrej PPA
+# is not one of them. Set `latest` for the run that should bring the packages up
+# to the newest patch of php_version — the package restarts FPM as it installs,
+# which is why it is not the default. Anything else is refused: `absent` would
+# be accepted by apt and remove PHP from a live machine.
+php_packages_state: present
+
 # A PostgreSQL-backed PHP site: ext-pgsql for the database, ext-intl for
 # locale-aware output. Override the list per project.
 # opcache is absent on purpose: ondrej ships it inside php{{ php_version }}-common,
