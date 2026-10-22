@@ -8,6 +8,9 @@
   vars:
     php_version: "8.5"
     fpm_pool: krot-test
+    # The role's own expression, copied rather than imported: a verify that
+    # read the role's vars would agree with any mistake in them.
+    php_branch_package_pattern: "^(lib|libapache2-mod-)?php{{ php_version | regex_escape }}(-|$)"
   tasks:
     # This means something only because prepare stopped the package from
     # enabling the unit — see the reasoning there. Left to itself, dpkg leaves
@@ -106,17 +109,58 @@
       loop_control:
         label: "{{ item.key }}={{ item.value }}"
 
-    # php_packages_state is latest in this scenario. apt-get -s upgrade lists
-    # what a real upgrade would install as "Inst <package> [<installed>]";
-    # anything of the branch there means the role left a package behind.
-    - name: Nothing of the branch is left to upgrade
-      ansible.builtin.command: apt-get -s upgrade
-      register: upgradable
+    # php_packages_state is latest in this scenario, so every installed package
+    # of the branch must sit on apt's candidate. Compared per package rather than
+    # read off `apt-get -s upgrade`: review pointed out that a failing apt prints
+    # no "Inst" lines and a held package is never listed as one, so their absence
+    # proved nothing.
+    - name: Read every installed package of the branch
+      ansible.builtin.package_facts:
+        manager: apt
+
+    # prepare installed the probe at 1.0 and published 1.1. Nothing but the
+    # role's upgrade moves it, and only if the selection takes a package
+    # php_extensions does not name — so this fails if the upgrade tasks are
+    # skipped, select nothing, or select only the role's own list.
+    - name: The probe the role was not asked for was upgraded
+      ansible.builtin.assert:
+        that:
+          - "'php8.5-krotprobe' in ansible_facts.packages"
+          - ansible_facts.packages['php8.5-krotprobe'][0].version == '1.1'
+        fail_msg: >-
+          php8.5-krotprobe is
+          {{ ansible_facts.packages['php8.5-krotprobe'][0].version | default('missing') }},
+          not 1.1.
+        quiet: true
+
+    - name: Ask apt for the installed and candidate version of each
+      ansible.builtin.command: >-
+        apt-cache policy
+        {{ ansible_facts.packages.keys()
+           | select('match', php_branch_package_pattern)
+           | join(' ') }}
+      # The parse below reads apt's English labels.
+      environment:
+        LC_ALL: C
+      register: branch_policy
       changed_when: false
-      failed_when: >-
-        upgradable.stdout_lines
-        | select('match', '^Inst php' ~ (php_version | regex_escape) ~ '(-| )')
-        | list | length > 0
+
+    - name: Each one is on the candidate, and none of them is missing from the answer
+      vars:
+        branch: >-
+          {{ ansible_facts.packages.keys()
+             | select('match', php_branch_package_pattern)
+             | list }}
+        pairs: "{{ branch_policy.stdout | regex_findall('Installed: (\\S+)\\n\\s+Candidate: (\\S+)') }}"
+      ansible.builtin.assert:
+        that:
+          - branch | length > 0
+          - pairs | length == branch | length
+          - pairs | map('unique') | map('length') | select('gt', 1) | list | length == 0
+        fail_msg: >-
+          Installed and candidate versions of {{ branch | join(', ') }}:
+          {{ pairs }}. A package below its candidate is one the role left behind.
+        quiet: true
 
     - name: The extension the scenario asked for is loaded
       ansible.builtin.command: php -m
@@ -218,3 +262,11 @@
       register: failed_units
       changed_when: false
       failed_when: failed_units.stdout | trim | length > 0
+
+    # Last, because each case runs the role. absent is the value apt would act
+    # on; Latest is the typo the check must not let through as "not latest".
+    - name: A package state other than present or latest is refused
+      ansible.builtin.include_tasks: tasks/refused.yml
+      loop: [absent, Latest]
+      loop_control:
+        loop_var: refused_state

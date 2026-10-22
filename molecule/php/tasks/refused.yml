@@ -1,0 +1,33 @@
+---
+# One value of php_packages_state the role must refuse, from verify.yml: in the
+# check meant for it, before the role changes anything — absent would otherwise
+# reach apt and remove PHP.
+- name: Run the role with the refused state
+  block:
+    - name: Apply the role
+      ansible.builtin.include_role:
+        name: php
+      vars:
+        php_packages_state: "{{ refused_state }}"
+
+    - name: The run was not refused
+      ansible.builtin.fail:
+        msg: php_packages_state={{ refused_state }} was accepted.
+  rescue:
+    - name: The refusal came from the check meant for it
+      ansible.builtin.assert:
+        that: ansible_failed_task.name is search('Refuse a package state other than present or latest')
+        fail_msg: >-
+          php_packages_state={{ refused_state }} failed in
+          {{ ansible_failed_task.name }}, not in the state check.
+
+- name: Read the packages after the refused run
+  ansible.builtin.package_facts:
+    manager: apt
+
+- name: PHP is still installed
+  ansible.builtin.assert:
+    that:
+      - "'php8.5-fpm' in ansible_facts.packages"
+      - "'php8.5-cli' in ansible_facts.packages"
+    fail_msg: The refused run of php_packages_state={{ refused_state }} removed PHP.

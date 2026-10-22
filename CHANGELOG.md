@@ -11,7 +11,7 @@ changing a default that affects production) bump major.
 
 - `php_packages_state: latest` brings every installed package of the `php_version` branch up to
   the newest patch in the repository, extensions the role did not install included. The default
-  stays `present`, which never upgrades; any other value fails before the machine is touched
+  stays `present`, which never upgrades; any other value fails before the role changes anything
 
 ## 10.1.0
 

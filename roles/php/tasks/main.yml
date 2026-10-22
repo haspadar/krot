@@ -31,7 +31,8 @@
     # packages are not in the cache yet.
     cache_valid_time: "{{ php_repo.changed | ternary(0, 3600) }}"
 
-# Every installed package of the branch, not only php_extensions: each extension
+# Every installed package of the branch (php_branch_package_pattern in vars),
+# not only php_extensions: each extension
 # depends on php{{ php_version }}-common at the exact same version, so a machine
 # where a project added one of its own (php8.5-sqlite3 on the first machine this
 # ran on) would otherwise leave apt to choose between upgrading it and removing
@@ -45,7 +46,7 @@
   ansible.builtin.apt:
     name: >-
       {{ ansible_facts.packages.keys()
-         | select('match', '^php' ~ (php_version | regex_escape) ~ '(-|$)')
+         | select('match', php_branch_package_pattern)
          | list }}
     state: latest
     only_upgrade: true
