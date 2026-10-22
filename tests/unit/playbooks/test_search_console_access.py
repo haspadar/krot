@@ -32,7 +32,7 @@ def playbook(tmp_path, tokens):
     collections.mkdir(parents=True)
     os.symlink(ROOT, collections / "krot")
 
-    def run(server, domains, **extra):
+    def run(server, domains, flags=(), **extra):
         variables = dict(search_console_domains=domains,
                          site_google_service_account=service_account(tokens.uri),
                          site_search_console_reader_service_account=service_account(tokens.uri, COLLECTOR),
@@ -41,7 +41,8 @@ def playbook(tmp_path, tokens):
         path.write_text(json.dumps(variables))
         env = dict(os.environ, ANSIBLE_COLLECTIONS_PATH=str(tmp_path / "collections"),
                    ANSIBLE_LOCALHOST_WARNING="False", ANSIBLE_NOCOLOR="1")
-        done = subprocess.run([sys.executable, "-m", "ansible.cli.playbook", PLAYBOOK, "-e", "@" + str(path)],
+        done = subprocess.run([sys.executable, "-m", "ansible.cli.playbook", PLAYBOOK, "-e", "@" + str(path)]
+                              + list(flags),
                               capture_output=True, text=True, env=env, cwd=str(tmp_path), timeout=300)
         return done.returncode, done.stdout + done.stderr
 
@@ -87,13 +88,19 @@ def test_a_domain_google_refuses_to_answer_about_fails_the_run(serve, playbook):
     google = seeded()
     google.disabled_scopes = {"https://www.googleapis.com/auth/webmasters"}
     code, out = playbook(serve(google), ["gehoert.de"])
-    assert (code != 0, "not checked" in out) == (True, True), out
+    assert (code != 0, "FAILED: " in out) == (True, True), out
 
 
 def test_grant_makes_the_collecting_key_an_owner(serve, playbook):
     google = seeded()
     code, out = playbook(serve(google), ["gehoert.de", "luecke.de"], search_console_access_grant=True)
     assert (code, google.others[COLLECTOR].get("sc-domain:luecke.de")) == (0, "siteOwner"), out
+
+
+def test_check_mode_wins_over_the_grant_flag(serve, playbook):
+    server = serve(seeded())
+    playbook(server, ["luecke.de"], flags=["--check"], search_console_access_grant=True)
+    assert server.writes() == []
 
 
 def test_grant_leaves_domains_it_cannot_grant_failing(serve, playbook):

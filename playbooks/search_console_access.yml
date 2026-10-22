@@ -17,7 +17,7 @@
 # With -e search_console_access_grant=true the launching key makes the collecting key an owner
 # wherever it is an owner itself — the step the launch takes — and the rest stay in the
 # report with the manual step. A domain launched with another account's key needs that
-# account's key here.
+# account's key here. --check still wins: with it nothing is written, flag or not.
 - name: Check the collecting key owns each site's Search Console property
   hosts: localhost
   connection: local
@@ -54,7 +54,7 @@
         token_uri: "{{ site_google_token_uri }}"
         api_url: "{{ site_google_api_url }}"
       loop: "{{ search_console_domains }}"
-      check_mode: "{{ not (search_console_access_grant | bool) }}"
+      check_mode: "{{ ansible_check_mode or not (search_console_access_grant | bool) }}"
       failed_when: false
       register: search_console_access
       vars:
@@ -73,7 +73,7 @@
           {%- for r in search_console_access.results -%}
             {#- failed_when: false clears `failed`; a refused domain is the one without `owner`. -#}
             {%- if r.owner is not defined -%}
-              {%- set _ = out.append('not checked: ' ~ r.msg | default('no message')) -%}
+              {%- set _ = out.append('FAILED: ' ~ r.msg | default('no message')) -%}
             {%- elif r.owner -%}
               {%- set _ = out.append('owned' ~ (' (granted now)' if r.changed else '')) -%}
             {%- elif r.grantable | default(false) -%}
@@ -87,7 +87,7 @@
     - name: Stop while any domain is not owned by the collecting key
       ansible.builtin.assert:
         that: holes | length == 0
-        fail_msg: "Not owned by the collecting key, or not checked: {{ holes | join(', ') }}."
+        fail_msg: "Not owned by the collecting key, or the run failed on: {{ holes | join(', ') }}."
         success_msg: "The collecting key owns all {{ search_console_domains | length }} domain(s)."
       vars:
         holes: >-
