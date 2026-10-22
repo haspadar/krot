@@ -237,11 +237,11 @@ PR не гоняет всю матрицу: `scripts/molecule-select.py` по с
 
 | Изменено | Гоняется |
 |---|---|
-| только `wiki/`, `openspec/`, `*.md`, `tests/unit/`, настройки линтеров | ни одного сценария; `lint` идёт всегда |
+| только `wiki/`, `openspec/`, `*.md`, `tests/unit/`, настройки линтеров и редактора (`.idea/`, `.claude/`, `.gitignore`, `.worktreeinclude`), скрипты проверок (`scripts/coverage.py`, `wiki-*.py`, `*-lint.py`, `module-docs.py`) | ни одного сценария; `lint` идёт всегда |
 | `roles/<r>/` | сценарии, которые запускают `r`, роли, запускающие `r` (`include_role`, `role:`, `dependencies`), и роли, читающие её переменные |
 | `molecule/<s>/` | `s` |
 | `playbooks/<p>.yml` | сценарии, импортирующие `haspadar.krot.<p>` |
-| `plugins/modules/<m>.py` | сценарии, роли которых зовут `haspadar.krot.<m>` |
+| `plugins/modules/<m>.py` | сценарии, роли которых зовут `haspadar.krot.<m>` (только по полному имени; вызов короткой формой через `collections:` селектор не найдёт) |
 | `tests/fakes/` | сценарии, поднимающие эти подделки (сейчас `site_launch`) |
 | `galaxy.yml`, `requirements.yml`, `molecule/requirements.yml`, `.github/`, `plugins/module_utils/`, `meta/`, сам селектор, любой путь, не названный в скрипте | все |
 
