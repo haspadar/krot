@@ -5,6 +5,14 @@ name: lint
   push:
     branches: [main]
   pull_request:
+  # A pull request runs only the scenarios its files can reach (see the
+  # `scenarios` job), so something has to run them all: every push to main does,
+  # and this does too, weekly, for what no push touched — a base image or a
+  # collection moving under roles nobody edited. Also by hand, before a release
+  # tag if the last run on main is not the one being tagged.
+  schedule:
+    - cron: "17 5 * * 1"
+  workflow_dispatch:
 
 # Grouped by ref rather than by SHA: a SHA-based group never matches across two
 # pushes and would therefore cancel nothing, while looking like a working
@@ -199,34 +207,46 @@ jobs:
   # list has to be edited twice when a scenario is added, and the half that gets
   # forgotten is this one — where a missing entry means the scenario silently
   # never runs, which looks exactly like a scenario that passes.
+  #
+  # A pull request runs only the scenarios its changed files can reach, chosen
+  # by scripts/molecule-select.py; everything else — a push to main, the weekly
+  # run, a manual one — runs all of them, and so does any pull request that
+  # touches a path the script does not know to be harmless. A pull request that
+  # reaches none (documentation, wiki, openspec) runs no scenario at all, and
+  # the `molecule` gate below accepts that only because `empty` says so.
   scenarios:
     runs-on: ubuntu-latest
     permissions:
       contents: read
     outputs:
       list: ${{ steps.find.outputs.list }}
+      empty: ${{ steps.find.outputs.empty }}
     steps:
+      # Full history: the changed files are the diff against the merge base,
+      # and a shallow clone has none.
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
+          fetch-depth: 0
           persist-credentials: false
 
-      - name: Collect the scenario names
+      - name: Choose the scenarios
         id: find
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
-          # A read loop rather than a find | xargs pipeline: -print0 with
-          # xargs -0 needs a second delimiter switch for basename, and that
-          # spelling is GNU-only. This form is portable and, unlike the
-          # pipeline, can be run to completion on the author's machine.
-          list=$(
-            find molecule -mindepth 2 -maxdepth 2 -name molecule.yml -print \
-              | while IFS= read -r f; do basename "$(dirname "$f")"; done \
-              | sort | jq -R . | jq -sc .
-          )
-          echo "list=$list" >> "$GITHUB_OUTPUT"
-          echo "$list"
-          # An empty matrix is not an error to GitHub — it skips the job and
-          # reports green, so a broken find would read as "all scenarios pass".
-          [ "$list" != "[]" ] || { echo "no scenarios found under molecule/"; exit 1; }
+          if [ "$EVENT" = pull_request ]; then
+            # --no-renames lists both ends of a rename: moving a file out of a
+            # role changes that role as much as moving one in.
+            choice=$(git diff --name-only --no-renames "$BASE...$HEAD" \
+              | python3 scripts/molecule-select.py)
+          else
+            choice=$(python3 scripts/molecule-select.py --all)
+          fi
+          echo "$choice"
+          echo "list=$(jq -c .scenarios <<<"$choice")" >> "$GITHUB_OUTPUT"
+          echo "empty=$(jq -r .empty <<<"$choice")" >> "$GITHUB_OUTPUT"
 
   # One job per scenario, so the wait is the slowest scenario rather than their
   # sum. Measured on the run of 2026-08-16: nine scenarios, 783s in total, the
@@ -247,6 +267,9 @@ jobs:
   # settings first.
   molecule-scenario:
     needs: scenarios
+    # An empty list cannot go into a matrix — GitHub fails the job instead of
+    # skipping it — so the job is skipped here, and only for this reason.
+    if: needs.scenarios.outputs.empty != 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -322,12 +345,18 @@ jobs:
       contents: read
     steps:
       - name: Every scenario passed
+        env:
+          CHOOSING: ${{ needs.scenarios.result }}
+          LEGS: ${{ needs.molecule-scenario.result }}
+          EMPTY: ${{ needs.scenarios.outputs.empty }}
         run: |
-          echo "scenarios: ${{ needs.scenarios.result }}"
-          echo "molecule-scenario: ${{ needs.molecule-scenario.result }}"
-          # 'success' is the only acceptable result for either. Note that a
-          # matrix rolls its legs up into one result here, and 'skipped' has to
-          # be rejected as well: an empty matrix skips the legs and would
-          # otherwise pass the gate without running a single scenario.
-          [ "${{ needs.scenarios.result }}" = "success" ] \
-            && [ "${{ needs.molecule-scenario.result }}" = "success" ]
+          echo "scenarios: $CHOOSING"
+          echo "molecule-scenario: $LEGS (nothing to run: $EMPTY)"
+          # The selection must have succeeded, and the legs too — a matrix
+          # rolls them up into one result. 'skipped' is accepted for the legs
+          # only when the selection itself reported an empty list: a pull
+          # request that reaches no scenario. A matrix that was skipped any
+          # other way — an empty find, a failed need — passes nothing.
+          [ "$CHOOSING" = "success" ] || exit 1
+          [ "$LEGS" = "success" ] && exit 0
+          [ "$LEGS" = "skipped" ] && [ "$EMPTY" = "true" ]
