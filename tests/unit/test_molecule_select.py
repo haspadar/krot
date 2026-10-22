@@ -121,6 +121,57 @@ def test_a_removed_role_still_selects_the_scenario_that_ran_it(repo):
 
 
 @pytest.mark.parametrize(
+    "converge",
+    [
+        # parameter order, the string spelling of a roles list, a dict item
+        # that names the role with `name:`, a template — each an Ansible form
+        "- hosts: all\n  tasks:\n    - ansible.builtin.include_role:\n"
+        "        public: true\n        name: haspadar.krot.alpha\n",
+        "- hosts: all\n  roles:\n    - haspadar.krot.alpha\n",
+        "- hosts: all\n  roles:\n    - name: alpha\n",
+        "- hosts: all\n  tasks:\n    - ansible.builtin.import_role: alpha\n",
+    ],
+)
+def test_every_spelling_of_running_a_role_counts(repo, converge):
+    write(repo.root, "molecule/spelled/molecule.yml")
+    write(repo.root, "molecule/spelled/converge.yml", converge)
+    tree = select_module.Tree(repo.root)
+    assert "spelled" in chosen(tree, "roles/alpha/tasks/main.yml")["scenarios"]
+
+
+def test_a_string_dependency_in_meta_counts(repo):
+    write(repo.root, "roles/gamma/meta/main.yml", "dependencies:\n  - haspadar.krot.beta\n")
+    tree = select_module.Tree(repo.root)
+    assert "gamma" in chosen(tree, "roles/beta/tasks/main.yml")["scenarios"]
+
+
+def test_a_role_named_by_a_template_leans_on_every_role(repo):
+    write(
+        repo.root,
+        "molecule/gamma/converge.yml",
+        "- hosts: all\n  tasks:\n    - ansible.builtin.include_role:\n"
+        "        name: \"{{ which }}\"\n",
+    )
+    tree = select_module.Tree(repo.root)
+    assert "gamma" in chosen(tree, "roles/lonely/tasks/main.yml")["scenarios"]
+
+
+def test_a_file_that_does_not_parse_leans_on_every_role(repo):
+    write(repo.root, "molecule/gamma/verify.yml", "- hosts: [unclosed\n")
+    tree = select_module.Tree(repo.root)
+    assert "gamma" in chosen(tree, "roles/lonely/tasks/main.yml")["scenarios"]
+
+
+def test_a_deleted_variable_still_names_who_read_it(repo):
+    # beta no longer defines beta_port, but delta still reads it
+    write(repo.root, "roles/beta/defaults/main.yml", "---\nbeta_other: 1\n")
+    now = select_module.Tree(repo.root)
+    assert "launch" not in chosen(now, "roles/beta/defaults/main.yml")["scenarios"]
+    before = select_module.Tree(repo.root, {"beta": {"beta_port"}})
+    assert "launch" in chosen(before, "roles/beta/defaults/main.yml")["scenarios"]
+
+
+@pytest.mark.parametrize(
     "path",
     [
         "galaxy.yml",
@@ -140,6 +191,35 @@ def test_shared_or_unnamed_paths_run_everything(repo, path):
 
 def test_one_shared_path_among_documentation_still_runs_everything(repo):
     assert chosen(repo, "wiki/README.md", "galaxy.yml")["full"] is True
+
+
+def test_variables_are_read_from_the_base_ref_of_a_real_checkout(tmp_path):
+    import subprocess
+
+    def git(*args):
+        subprocess.run(
+            ["git", "-C", str(tmp_path), "-c", "user.name=t", "-c", "user.email=t@t", *args],
+            check=True,
+            capture_output=True,
+        )
+
+    git("init", "-q")
+    write(tmp_path, "roles/beta/defaults/main.yml", "---\nbeta_port: 22\nbeta_x: 1\n")
+    git("add", ".")
+    git("commit", "-qm", "base")
+    found = select_module.earlier_variables(
+        tmp_path,
+        "HEAD",
+        ["roles/beta/defaults/main.yml", "roles/new/defaults/main.yml", "wiki/a.md"],
+    )
+    assert found == {"beta": {"beta_port", "beta_x"}}
+
+
+def test_the_real_tree_has_no_reference_the_script_cannot_read():
+    # A role named by a template widens every selection that touches it; this
+    # fails so that the widening is a decision rather than an accident.
+    tree = select_module.Tree(ROOT)
+    assert (tree.dynamic, tree.scenario_dynamic) == (set(), set())
 
 
 def test_every_scenario_is_run_by_a_change_to_its_own_directory():
