@@ -194,7 +194,8 @@ sudo -u postgres psql -d <база> -c "SELECT * FROM krot_index.index_run ORDER
 норма и заглушение — зелёные: красный, повторяющийся от календаря, перестают читать.
 
 Владение у Google — уровень `siteOwner` ключа проекта на `sc-domain:<сайт>`: без него URL
-Inspection отвечает 403 «You do not own this site». Запуск с 11.0.0 его обеспечивает; у сайтов,
+Inspection отвечает 403 `PERMISSION_DENIED: You do not own this site` (проба проекта-потребителя
+22.10.2026). Запуск с 11.0.0 его обеспечивает; у сайтов,
 запущенных раньше, дыры находит плейбук `search_console_access`
 ([Запустить сайт](../runbooks/launch-a-site.md#проверить-уже-запущенные-сайты)).
 
