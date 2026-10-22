@@ -5,6 +5,38 @@ changing a default that affects production) bump major.
 
 ## Unreleased
 
+## 11.0.0
+
+### Changed (breaking)
+
+- **`site_search` makes sure the key that collects search data owns the site's Search Console
+  property.** The launching key verified the domain and owned it; the key that reads it
+  (`collecting`'s `gsc` job) and sends pages (`indexing`'s `google` engine — the Indexing API
+  takes pages only from an owner) got nothing when a site was launched with another Google
+  account's key, and both were refused (403) every night while the launch reported success. The
+  new module `gsc_access` asks Search Console with the collecting key; below `siteOwner` it adds
+  that key to the domain's owners with the launching key (Site Verification, the existing owners
+  kept), adds the property to the collecting key's console and reads again. A launching key that
+  is not an owner fails the launch with the collecting key's address and the manual step.
+  **New required input `site_search_console_reader_service_account`** (the collecting key's JSON)
+  whenever `google` is in `site_search_engines`: `site_preflight` stops the launch without it,
+  before the first write, and asks Google about the key in check mode. For a launch with the
+  project's own key pass the same JSON as `site_google_service_account`
+- **Google can no longer be left out of `site_search_engines` silently**: `site_preflight`
+  requires `site_search_console_off_reason` then, and prints it in its report
+
+### Added
+
+- Playbook `haspadar.krot.search_console_access`: for a list of launched domains
+  (`search_console_domains`) it reports which ones the collecting key does not own and fails
+  while any is left, writing nothing; `search_console_access_grant: true` makes the collecting
+  key an owner wherever the given launching key is one
+
+Roll-out order for a consuming project: put `site_search_console_reader_service_account` in its
+launch inventory first (the same key its `collecting` gsc job and `indexing` google engine use),
+then raise the pin; run the new playbook over its launched domains to find sites launched before
+this release without the collecting key as owner
+
 ## 10.2.0
 
 ### Added

@@ -1,0 +1,96 @@
+---
+# Which launched sites' Search Console domains the collecting key does not own: the hole a
+# launch with another Google account's key left before the launch checked it. Reads only.
+#
+#   ansible-playbook haspadar.krot.search_console_access -e @<vars>
+#
+# The vars name the domains to look at and the two keys, the same values a launch takes:
+#
+#   search_console_domains: [example.de, beispiel.de]
+#   site_search_console_reader_service_account: <the collecting key's JSON>
+#   site_google_service_account: <a launching key's JSON>
+#
+# The report says, domain by domain, whether the collecting key owns the property and, where
+# it does not, whether this launching key could make it one. The run fails while any domain
+# is not owned or could not be asked, so a scheduled run of it is red until the hole is closed.
+#
+# With -e search_console_access_grant=true the launching key makes the collecting key an owner
+# wherever it is an owner itself — the step the launch takes — and the rest stay in the
+# report with the manual step. A domain launched with another account's key needs that
+# account's key here. --check still wins: with it nothing is written, flag or not.
+- name: Check the collecting key owns each site's Search Console property
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    search_console_access_grant: false
+  tasks:
+    # For the Google addresses and their defaults, the ones a launch uses.
+    - name: Load the site variables
+      ansible.builtin.include_role:
+        name: haspadar.krot.site
+        public: true
+
+    - name: Check the domains and both keys are given
+      ansible.builtin.assert:
+        that:
+          - search_console_domains | default([]) is sequence
+          - search_console_domains | default([]) is not string
+          - search_console_domains | default([]) | length > 0
+          - site_search_console_reader_service_account | length > 0
+          - site_google_service_account | length > 0
+        fail_msg: >-
+          Give search_console_domains (a list), site_search_console_reader_service_account and
+          site_google_service_account.
+        quiet: true
+
+    # failed_when is off so that one broken domain does not hide the others: every refusal
+    # is read below and fails the run there, with the rest of the report.
+    - name: Ask Search Console about each domain
+      haspadar.krot.gsc_access:
+        domain: "{{ item }}"
+        service_account: "{{ site_google_service_account }}"
+        reader_service_account: "{{ site_search_console_reader_service_account }}"
+        token_uri: "{{ site_google_token_uri }}"
+        api_url: "{{ site_google_api_url }}"
+      loop: "{{ search_console_domains }}"
+      check_mode: "{{ ansible_check_mode or not (search_console_access_grant | bool) }}"
+      failed_when: false
+      register: search_console_access
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+
+    - name: Report each domain
+      ansible.builtin.debug:
+        msg: "{{ dict(search_console_access.results | map(attribute='item') | zip(states)) }}"
+      vars:
+        grantable: the launching key can grant it; run again with search_console_access_grant=true
+        manual: >-
+          the launching key is not an owner; make the collecting key an owner in Search Console >
+          Settings > Users and permissions, permission Owner, or run again with its launching key
+        states: >-
+          {%- set out = [] -%}
+          {%- for r in search_console_access.results -%}
+            {#- failed_when: false clears `failed`; a refused domain is the one without `owner`. -#}
+            {%- if r.owner is not defined -%}
+              {%- set _ = out.append('FAILED: ' ~ r.msg | default('no message')) -%}
+            {%- elif r.owner -%}
+              {%- set _ = out.append('owned' ~ (' (granted now)' if r.changed else '')) -%}
+            {%- elif r.grantable | default(false) -%}
+              {%- set _ = out.append('NOT owned by ' ~ r.reader ~ ': ' ~ grantable) -%}
+            {%- else -%}
+              {%- set _ = out.append('NOT owned by ' ~ r.reader ~ ': ' ~ manual) -%}
+            {%- endif -%}
+          {%- endfor -%}
+          {{ out }}
+
+    - name: Stop while any domain is not owned by the collecting key
+      ansible.builtin.assert:
+        that: holes | length == 0
+        fail_msg: "Not owned by the collecting key, or the run failed on: {{ holes | join(', ') }}."
+        success_msg: "The collecting key owns all {{ search_console_domains | length }} domain(s)."
+      vars:
+        holes: >-
+          {{ search_console_access.results | rejectattr('owner', 'defined') | map(attribute='item') | list
+             + search_console_access.results | selectattr('owner', 'defined') | rejectattr('owner')
+               | map(attribute='item') | list }}

@@ -125,6 +125,19 @@
           - state.google.sitemaps['sc-domain:' + domain] | length == 1
         quiet: true
 
+    # Asked of the collecting key's own Search Console, not of the owners list alone: an
+    # owner that never added the property is still refused by the collector.
+    - name: The collecting key owns the Search Console property, beside everyone who did
+      ansible.builtin.assert:
+        that:
+          - state.google.resources['dns://' + domain][-1] == collector
+          - state.google.resources['dns://' + domain] | length == 3
+          - "state.google.others[collector] == {'sc-domain:' + domain: 'siteOwner'}"
+        fail_msg: "{{ state.google.resources | to_json }} {{ state.google.others | to_json }}"
+        quiet: true
+      vars:
+        collector: collector@krot-launch.iam.gserviceaccount.com
+
     - name: GA4 holds one property with one web stream, counted in the site's own time zone
       ansible.builtin.assert:
         that:

@@ -103,7 +103,8 @@ ansible-playbook haspadar.krot.site_launch -i <inventory> -e site_machine=<host>
 The order: preflight (reads everything, writes nothing) → Cloudflare zone → nameservers at the
 registrar → Origin CA certificate → records, once two public resolvers see the delegation →
 the site's database → counters (Umami, optionally GA4) → a directory check before the project's
-deploy and a vhost check after it → monitoring → Google, Yandex and Bing → a smoke check from
+deploy and a vhost check after it → monitoring → Google (with the collecting key made an owner),
+Yandex and Bing → a smoke check from
 outside. A run that stops at the records is waiting for the delegation, not broken: run it again
 later.
 
@@ -116,8 +117,12 @@ verify, open, and writing the counters' ids — are task files passed by absolut
 The cloud modules this needs are in the collection too (`plugins/modules`): `cloudflare_zone`,
 `cloudflare_zone_settings`, `cloudflare_record`, `cloudflare_ruleset`, `cloudflare_origin_cert`,
 `dns_delegation`, `dynadot_ns`, `umami_website`, `ga4_property`, `ga4_access`, `uptimerobot_monitor`,
-`gsc_site`, `yandex_site`, `bing_site`. What bites and why the order is what it is —
+`gsc_site`, `gsc_access`, `yandex_site`, `bing_site`. What bites and why the order is what it is —
 `wiki/runbooks/launch-a-site.md`.
+
+The key that collects search data must own each site's Search Console property; the launch makes
+it one. For sites launched before that, `haspadar.krot.search_console_access` lists the domains it
+does not own, writing nothing (`-e @<vars>` with `search_console_domains` and both keys).
 
 ## Deployment
 
