@@ -41,10 +41,21 @@ ansible-playbook site.yml --tags php -e php_packages_state=latest
 остаются в `/var/cache/apt/archives/`, если кеш не чистили. Их стоит скопировать в отдельный
 каталог до прогона: `apt-get autoclean` удаляет пакеты, которых больше нет в индексе.
 
+Сохранять надо всё, что роль обновит, то есть те же пакеты ветки, включая
+`libapache2-mod-php<ветка>` и `libphp<ветка>-*`, если они стоят. Каждый из них привязан к
+`php<ветка>-common` строгой версией, поэтому откат одного `common` без них apt не разрешит или
+разрешит удалением SAPI.
+
 ```bash
-sudo mkdir -p /root/php-rollback-<старая версия>
-sudo cp /var/cache/apt/archives/php<ветка>*_<старая версия>_*.deb /root/php-rollback-<старая версия>/
-# откат: sudo apt-get install --allow-downgrades /root/php-rollback-<старая версия>/*.deb
+d=/root/php-rollback-<старая версия>
+sudo mkdir -p $d
+sudo cp /var/cache/apt/archives/{php,libphp,libapache2-mod-php}<ветка>*_<старая версия>_*.deb $d/
+# комплект полон, если числа совпадают; без отбора по ii dpkg-query считает и
+# пакеты, которых на машине нет, но о которых dpkg помнит
+dpkg-query -W -f='${db:Status-Abbrev} ${Package}\n' | awk '$1 == "ii" {print $2}' \
+  | grep -cE '^(lib|libapache2-mod-)?php<ветка>(-|$)'
+ls $d | wc -l
+# откат одной транзакцией: sudo apt-get install --allow-downgrades $d/*.deb
 ```
 
 Если в кеше пусто, пакеты ещё какое-то время лежат в пуле PPA по прямому адресу
