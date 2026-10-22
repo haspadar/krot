@@ -23,6 +23,7 @@ roles: []
 | `systemd_service` отдаёт `ActiveState=inactive` про юнит, который сам же запустил | [status — снимок до действия](systemd-service-status-is-stale.md) |
 | Файл с бо́льшим номером в `apt.conf.d` дополнил список origins вместо замены — машина брала обновления всего релиза | [Allowed-Origins дополняется](apt-allowed-origins-appends.md) |
 | Пакетный пул FPM и пул роли на одном сокете — сервис не стартует вовсе (`status=78/CONFIG`) | [два пула на одном сокете](fpm-pools-cannot-share-a-socket.md) |
+| Патч PHP против двух RCE: версии до и после, откат, двойной перезапуск FPM пакетом | [патч PHP 22.10.2026](2026-10-22-php-security-patch.md) |
 
 ## Замеры внутри описаний
 

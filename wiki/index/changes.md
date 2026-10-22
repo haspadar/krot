@@ -2,7 +2,7 @@
 kind: index
 title: Changes
 owner: generated
-verified: 2026-10-19
+verified: 2026-10-22
 roles: []
 ---
 
@@ -11,9 +11,9 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **1**, заархивировано — **40**.
+В работе — **2**, заархивировано — **40**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **16** из 41: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **17** из 42: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
@@ -22,6 +22,7 @@ roles: []
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
 | [`2026-10-09-serve-site-passport`](../../openspec/changes/2026-10-09-serve-site-passport/proposal.md) | **влит, не заархивирован** | [#89](https://github.com/haspadar/krot/pull/89) | Роль `site_passport`: сайт сам сообщает свою страну и профиль |
+| [`2026-10-22-upgrade-php-on-demand`](../../openspec/changes/2026-10-22-upgrade-php-on-demand/proposal.md) | **в работе** | — | Роль php умеет поднять PHP до свежего патча по требованию |
 | [`passport-origin`](../../openspec/changes/archive/2026-10-19-passport-origin/proposal.md) | 2026-10-19 | — | Report the inventory's domain origin in the site passport |
 | [`accept-empty-ga4-property-report`](../../openspec/changes/archive/2026-10-18-accept-empty-ga4-property-report/proposal.md) | 2026-10-18 | — | Пустой отчёт нового свойства GA4 доказывает доступ |
 | [`wait-for-complete-ga4-report`](../../openspec/changes/archive/2026-10-18-wait-for-complete-ga4-report/proposal.md) | 2026-10-18 | — | Проверка GA4 ждёт полный отчёт после выдачи доступа |

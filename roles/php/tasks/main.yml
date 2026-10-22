@@ -1,4 +1,12 @@
 ---
+- name: Refuse a package state other than present or latest
+  ansible.builtin.assert:
+    that: php_packages_state in ['present', 'latest']
+    fail_msg: >-
+      php_packages_state is "{{ php_packages_state }}"; it must be present or
+      latest. apt would take absent and remove PHP from the machine.
+    quiet: true
+
 # Ubuntu ships an older PHP than most projects target, so the ondrej PPA is what makes
 # {{ php_version }} available at all. The signing key is vendored (fingerprint
 # B8DC7E53946656EFBCE4C1DD71DAEAAB4AD4CAB6) rather than fetched at run time, so a
@@ -22,6 +30,29 @@
     # Force a refresh when the repository was just added, otherwise the new
     # packages are not in the cache yet.
     cache_valid_time: "{{ php_repo.changed | ternary(0, 3600) }}"
+
+# Every installed package of the branch, not only php_extensions: each extension
+# depends on php{{ php_version }}-common at the exact same version, so a machine
+# where a project added one of its own (php8.5-sqlite3 on the first machine this
+# ran on) would otherwise leave apt to choose between upgrading it and removing
+# it. Listing what is installed makes that choice for it.
+- name: Find the installed packages of PHP {{ php_version }}
+  ansible.builtin.package_facts:
+    manager: apt
+  when: php_packages_state == 'latest'
+
+- name: Bring to the newest patch in the repository PHP {{ php_version }}
+  ansible.builtin.apt:
+    name: >-
+      {{ ansible_facts.packages.keys()
+         | select('match', '^php' ~ (php_version | regex_escape) ~ '(-|$)')
+         | list }}
+    state: latest
+    only_upgrade: true
+    # The patch is what this run is for, so the cache is refreshed regardless
+    # of age: an hour-old cache can predate the release.
+    update_cache: true
+  when: php_packages_state == 'latest'
 
 # FPM refuses to start if its log directory is missing, so this precedes the
 # pool config that points at it.

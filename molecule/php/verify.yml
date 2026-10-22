@@ -106,6 +106,18 @@
       loop_control:
         label: "{{ item.key }}={{ item.value }}"
 
+    # php_packages_state is latest in this scenario. apt-get -s upgrade lists
+    # what a real upgrade would install as "Inst <package> [<installed>]";
+    # anything of the branch there means the role left a package behind.
+    - name: Nothing of the branch is left to upgrade
+      ansible.builtin.command: apt-get -s upgrade
+      register: upgradable
+      changed_when: false
+      failed_when: >-
+        upgradable.stdout_lines
+        | select('match', '^Inst php' ~ (php_version | regex_escape) ~ '(-| )')
+        | list | length > 0
+
     - name: The extension the scenario asked for is loaded
       ansible.builtin.command: php -m
       register: modules
