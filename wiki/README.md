@@ -129,3 +129,4 @@ python3 scripts/wiki-after-archive.py <change>  # после архивации 
   областью «Directory: wiki».
 - **GitHub** — читается прямо в репозитории, со ссылками.
 - **Терминал** — `rg -l '<слово>' wiki/` быстрее любого интерфейса.
+
