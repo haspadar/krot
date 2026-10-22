@@ -33,7 +33,7 @@ Krot держит машины проектов-потребителей: про
 | [PostgreSQL](operations/postgresql.md) | мажорная версия, `pg_stat_statements`, рестарт против reload |
 | [Диск — онлайн-discard корня](operations/disk.md) | ручка `common_root_discard`, почему не разовая правка, замер |
 | [Cloudflare-замок](operations/cloudflare.md) | 80/443 только с CF, real-IP, закрытые сайты |
-| [Обновление PHP](operations/php-updates.md) | сам не обновляется; срочный патч, откат, чем доказывается, что дошёл |
+| [Обновление PHP](operations/php-updates.md) | по умолчанию не обновляется; срочный патч, откат, чем доказывается, что дошёл |
 | [Docker на хосте проекта](operations/docker.md) | что ставит роль и где кончается её зона |
 | [Счётчик посещаемости](operations/analytics-counter.md) | почему свой, а не арендованный; сборка на машине, петля, `APP_SECRET` |
 | [Отправка страниц поисковикам](operations/search-engine-indexing.md) | юнит на проект и движок, схема `krot_index` в базе проекта, что красит ночь; дневные числа индекса Яндекса и Bing |
