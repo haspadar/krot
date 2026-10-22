@@ -2,7 +2,7 @@
 kind: guide
 title: Коллекция и её границы
 owner: haspadar
-verified: 2026-09-29
+verified: 2026-10-22
 roles: []
 ---
 
@@ -160,5 +160,6 @@ ansible-lint      # профиль production — строжайший
 
 CI (`.github/workflows/lint.yml`) гоняет оба на каждый PR — плюс `ansible-galaxy collection build`,
 `wiki-lint`, `secret-lint`, сверку `wiki/index/` с источниками и `coverage.py`. Сценарии molecule
-идут отдельными job'ами, по одному на сценарий; обязательны для мержа `lint` и `molecule`, и второе
+идут отдельными job'ами, по одному на сценарий (на PR — только достижимые от изменённых файлов,
+остальные — на `main`, по расписанию и вручную); обязательны для мержа `lint` и `molecule`, и второе
 имя держит job-агрегатор — [operations/testing-roles.md](../operations/testing-roles.md).
