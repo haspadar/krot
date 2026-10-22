@@ -374,11 +374,13 @@
            else 'after the property exists' if site_preflight_ga4_access is skipped
            else 'pending (' ~ site_preflight_ga4_access.reader ~ ' gets Viewer)' if site_preflight_ga4_access.changed
            else 'done' }}
-      # The collecting key owns the Search Console property, or the launch will make it one.
+      # The collecting key owns the Search Console property, or the launch will make it one: at
+      # once when the launching key owns the domain, after the launch verifies it otherwise.
       search console collector access: >-
         {{ 'off (' ~ site_search_console_off_reason | trim ~ ')' if site_preflight_gsc_access is skipped
            else 'done' if site_preflight_gsc_access.owner
-           else 'pending (' ~ site_preflight_gsc_access.reader ~ ' becomes owner)' }}
+           else 'pending (' ~ site_preflight_gsc_access.reader ~ ' becomes owner'
+                ~ (')' if site_preflight_gsc_access.grantable else ' once the domain is verified)') }}
       certificate: >-
         {{ 'done' if site_preflight_pair.results | selectattr('stat.exists') | selectattr('stat.size', 'gt', 0)
            | list | length == 2 else 'pending' }}

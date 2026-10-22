@@ -56,6 +56,8 @@
     domain: "{{ site_domain }}"
     service_account: "{{ site_google_service_account }}"
     reader_service_account: "{{ site_search_console_reader_service_account }}"
+    wait_attempts: "{{ site_search_wait_attempts }}"
+    wait_delay: "{{ site_search_wait_delay }}"
     token_uri: "{{ site_google_token_uri }}"
     api_url: "{{ site_google_api_url }}"
   delegate_to: localhost
