@@ -25,6 +25,8 @@ description:
     alerts from its first check.
   - The type of a monitor cannot be changed in place; a monitor of the other
     type is replaced only when asked to.
+  - The setup page check identifies itself with User-Agent C(Krot site monitor setup).
+    It does not change the User-Agent used by UptimeRobot's own checks.
   - In check mode nothing is written.
 options:
   url:
@@ -188,7 +190,8 @@ def assigned(monitor):
 
 def page_has(url, word):
     try:
-        page = open_url(url, method="GET", timeout=30, follow_redirects="all").read()
+        page = open_url(url, method="GET", timeout=30, follow_redirects="all",
+                        http_agent="Krot site monitor setup").read()
     except Exception as error:  # the page is the site, not the API: any failure means "cannot tell"
         raise Unreachable("Could not read %s to look for the keyword: %s" % (url, error))
     return word in page.decode("utf-8", "replace")

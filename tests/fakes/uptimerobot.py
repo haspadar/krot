@@ -68,8 +68,11 @@ class FakeUptimeRobot:
 class FakePage:
     """The watched site's front page."""
 
-    def __init__(self, text):
+    def __init__(self, text, required_user_agent=None):
         self.text = text
+        self.required_user_agent = required_user_agent
 
     def handle(self, request):
+        if self.required_user_agent and request.headers.get("User-Agent") != self.required_user_agent:
+            return 403, "Unidentified page check"
         return 200, self.text
