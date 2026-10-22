@@ -2,7 +2,7 @@
 kind: runbook
 title: Запустить сайт
 owner: haspadar
-verified: 2026-10-19
+verified: 2026-10-22
 roles: [site, site_preflight, site_dns_zone, site_domain, site_tls, site_dns_records, site_database, site_analytics, site_serve_precheck, site_serve_check, site_monitor, site_search, site_check]
 ---
 
@@ -40,7 +40,7 @@ nginx, PostgreSQL, Umami. Роли сайта машину не настраив
 | 13 | *проект: verify* | блокеры, которые знает только проект (партнёрские ссылки и прочее) |
 | 14 | *проект: open* | снять закрытие сайта |
 | 15 | `site_monitor` | UptimeRobot, после открытия — иначе первая тревога о закрытом сайте |
-| 16 | `site_search` | sitemap без авторизации, потом Google, Яндекс, Bing |
+| 16 | `site_search` | sitemap без авторизации, потом Google (с владением ключа сбора), Яндекс, Bing |
 | 17 | `site_check` | смоук снаружи: apex и www отвечают через Cloudflare |
 
 Перечень переменных с умолчаниями — `roles/site/defaults/main.yml`: роль `site` без задач держит
@@ -184,6 +184,66 @@ API `accessBindings`, он есть только в v1alpha) и перечиты
 - В сухом прогоне preflight строка `ga4 collector access` называет `pending (<адрес> gets Viewer)`
   или `done`; у нового свойства — `after the property exists`.
 
+**Search Console читают ключом сбора, и запуск не кончается, пока этот ключ не владелец.**
+Свойство Search Console (`sc-domain:<домен>`) подтверждает ключ запуска
+(`site_google_service_account`), а читают его два задания машины ключом проекта: `collecting`
+(задание `gsc`, `searchAnalytics`) и `indexing` (движок `google`: URL Inspection и Indexing API).
+Indexing API принимает страницы только от **владельца** свойства, поэтому мерой служит уровень
+`siteOwner`, а не «читается».
+
+Дыра, которую это закрывает. Пока ключ запуска и ключ сбора совпадали, ключ, подтвердивший домен,
+им и владел. Сайт, запущенный ключом другого Google-аккаунта, оставался во владении только у того
+аккаунта: в октябре 2026 у трёх сайтов одного проекта сбор и отправка страниц получали 403 каждую
+ночь, а запуск рапортовал успех. Проба 22.10.2026 ключом сбора: на трёх сайтах `sites.get` — 404
+`is not a verified Search Console site in this account`, `searchAnalytics` — 403 `User does not
+have sufficient permission`; на всех остальных сайтах проекта тот же ключ — `siteOwner`.
+
+Почему подход GA4 сюда раньше не дошёл: change `2026-10-15-grant-traffic-key-ga4-access` чинил
+замеченный симптом — 403 у сбора трафика — и брал только свойство GA4. Шаг поиска о ключе сбора
+не знал вовсе: `gsc_site` делит владение лишь с людьми из `site_search_console_owners`, а сбор
+Search Console и отправка страниц падают ночными юнитами, а не ежечасно, и всплыли позже.
+
+Как устроено (с 11.0.0):
+
+- `site_search` после подтверждения домена вызывает `gsc_access`: спрашивает `sites.get` ключом
+  сбора; `siteOwner` — ничего не пишет. Иначе ключом запуска добавляет ключ сбора во владельцы
+  домена (Site Verification `webResource`, список пишется целиком, прежние владельцы остаются),
+  ключом сбора добавляет свойство в его Search Console и перечитывает до `siteOwner`.
+- Выдача — только на слова Google о нехватке прав (404 «not a verified Search Console site», 403
+  «sufficient permission»). Выключенный API, неверный адрес, иной отказ — падение с причиной
+  Google и без записи.
+- Ключ запуска не владелец домена или владение не проявилось → падение с адресом ключа сбора и
+  ручным шагом (Search Console → Settings → Users and permissions → Add user, Owner).
+- Ключ сбора, совпавший с ключом запуска, во владельцы не добавляется: он уже там после
+  подтверждения.
+- `site_search_console_reader_service_account` обязателен, пока `google` в `site_search_engines`;
+  preflight останавливает запуск без него и тем же модулем в `--check` спрашивает Google о ключе
+  ещё до первой записи. У нового сайта ответ — «нет такого свойства», но ключ при этом доказал,
+  что подписывается и API ему отвечает.
+- Google нельзя выключить молча: без `google` в списке preflight требует
+  `site_search_console_off_reason` и печатает её в строке `search console collector access`.
+  Иначе строка — `done` или `pending (<адрес> becomes owner)`.
+- Выдача остаётся в конце запуска, после подтверждения домена: до него владеть нечем. Падение
+  выдачи поэтому случается уже на открытом сайте — громко, с ручным шагом, а повтор запуска
+  доделывает только недостающее.
+
+## Проверить уже запущенные сайты
+
+Сайты, запущенные до 11.0.0, могли остаться с той же дырой. Плейбук коллекции спрашивает
+Search Console о списке доменов и ничего не пишет:
+
+```bash
+ansible-playbook haspadar.krot.search_console_access -e @<файл>
+```
+
+В файле — `search_console_domains` (список), `site_search_console_reader_service_account` и
+`site_google_service_account`, те же значения, что у запуска. Отчёт называет по домену: `owned`,
+`NOT owned …: the launching key can grant it` или ручной шаг; прогон падает, пока хоть один домен
+не во владении ключа сбора или не проверен (отказ Google тоже называется). С
+`-e search_console_access_grant=true` ключ запуска делает ключ сбора владельцем там, где владеет
+сам, — тот же шаг, что в запуске. Сайт, запущенный ключом другого аккаунта, требует ключа именно
+этого аккаунта в `site_google_service_account`.
+
 ## Где план отступил и почему
 
 План запуска согласовывали сессии двух проектов-потребителей 2026-09-26. Отступления, которые видны при
@@ -209,6 +269,9 @@ DoH, Umami, Google, Яндекс, Bing, UptimeRobot) и связан так же
 под прогон, который его прислал, и `verify.yml` требует у пробного — ни одного. Повторный прогон
 может слать только sitemap: его отправка повторяется намеренно. Устройство тестов —
 [Тесты ролей](../operations/testing-roles.md).
+
+Плейбук `search_console_access` гоняется настоящим `ansible-playbook` против той же подделки
+(`tests/unit/playbooks`): проверяются отчёт, код выхода и отсутствие записей без флага выдачи.
 
 Модули проверяются pytest против той же подделки, поднятой в потоке; грабли каждого API —
 в change `openspec/changes/archive/2026-09-26-site-launch/design.md`.
