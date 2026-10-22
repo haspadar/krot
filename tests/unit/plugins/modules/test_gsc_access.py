@@ -176,7 +176,41 @@ def test_switched_off_site_verification_fails_without_granting(run, serve, token
     google.disabled_scopes = {VERIFY_SCOPE}
     server = serve(google)
     result = run("gsc_access", args(server, tokens, "besitz.de"))
-    assert (server.writes(), result["failed"]) == ([], True)
+    assert (server.writes(), "has not been used" in result["msg"]) == ([], True)
+
+
+def test_collector_refused_in_searchanalytics_words_is_granted(run, serve, tokens):
+    google = seeded()
+    google.unknown_site_status = 403
+    result = run("gsc_access", args(serve(google), tokens, "besitz.de"))
+    assert (result.get("failed", False), result["granted"]) == (False, True)
+
+
+def test_owners_read_refused_in_other_words_writes_nothing(run, serve, tokens):
+    google = seeded()
+
+    def replaced(request, path, email):
+        return refused(403, "The caller does not have permission", "PERMISSION_DENIED")
+
+    google.verification = replaced
+    server = serve(google)
+    result = run("gsc_access", args(server, tokens, "besitz.de"))
+    assert (server.writes(), "not a verified owner" in result["msg"]) == ([], False)
+
+
+def test_owner_google_drops_on_the_write_fails_the_run(run, serve, tokens):
+    google = seeded(owners=[EMAIL, OPERATOR])
+    original = google.verification
+
+    def replaced(request, path, email):
+        answer = original(request, path, email)
+        if request.method == "PUT":
+            google.resources["dns://besitz.de"].remove(OPERATOR)
+        return answer
+
+    google.verification = replaced
+    result = run("gsc_access", args(serve(google), tokens, "besitz.de"))
+    assert (result["failed"], "every owner it had" in result["msg"]) == (True, True)
 
 
 @pytest.mark.parametrize("answer", [None, {}, {"siteUrl": "sc-domain:anders.de", "permissionLevel": "siteOwner"},

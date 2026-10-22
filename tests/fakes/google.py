@@ -113,6 +113,9 @@ class FakeGoogle:
         self.owner_lag = 0
         # sites.add answered 403 this many times before it is accepted.
         self.add_refusals = 0
+        # What sites.get answers for a property the account does not have: 404, or the 403
+        # searchAnalytics answers in the same case.
+        self.unknown_site_status = 404
         # sc-domain:<domain> -> submitted sitemap URLs, and every submission.
         self.sitemaps = {}
         self.submissions = []
@@ -268,6 +271,9 @@ class FakeGoogle:
             if site not in sites or (email != self.email and self.owner_lag):
                 if site in sites:
                     self.owner_lag -= 1
+                if self.unknown_site_status == 403:
+                    return refused(403, "User does not have sufficient permission for site '%s'." % site,
+                                   "PERMISSION_DENIED")
                 return refused(404, "'%s' is not a verified Search Console site in this account." % site,
                                "NOT_FOUND")
             return 200, {"siteUrl": site, "permissionLevel": sites[site]}

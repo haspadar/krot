@@ -25,7 +25,9 @@ description:
     (the Search Console API switched off in the collecting key's project, a wrong address) fails
     as it is, with Google's reason, and nothing is written.
   - The owners list is written whole with the existing owners kept, because the call replaces
-    the list. Nobody is ever removed.
+    the list, and read back to prove every one of them is still there. Google offers no call that
+    adds one owner, so an owner someone else adds in the instant between this read and this write
+    would be dropped; M(haspadar.krot.gsc_site) writes the list the same way.
   - A collecting key that is the launching key is never added to anything; it only adds the
     property to its own Search Console when the verification left it out.
   - Needs the Search Console and Site Verification APIs enabled for the keys' projects, and the
@@ -144,8 +146,10 @@ def owners(verification, resource, domain):
     try:
         answer = call(verification, "GET", resource)
     except Refused as error:
-        # A domain this key has not verified answers 404, or 403 as Google often does.
-        if error.status in (403, 404):
+        # A domain this key does not own: 403 "You are not an owner of this site.", for a domain
+        # someone else verified and for one nobody did alike (measured 2026-10-22). A switched-off
+        # API or a wrong address is not that, and propagates with Google's reason.
+        if error.status in (403, 404) and "not an owner" in str(error).lower():
             return None
         raise
     found = answer.get("owners") if isinstance(answer, dict) else None
@@ -185,7 +189,7 @@ def main():
     manual = ("Make %s an owner of %s: Search Console > Settings > Users and permissions > Add user, "
               "permission Owner, signed in as a verified owner of the domain; then run again."
               % (reader.email, site))
-    granted = False
+    granted = added = False
 
     try:
         console = reader.http(p["api_url"], CONSOLE_SCOPE)
@@ -210,14 +214,14 @@ def main():
                            owners=listed + [reader.email]))
             granted = True
             after = owners(verification, resource, domain)
-            if after is None or reader.email not in after:
-                module.fail_json(msg="Google accepted %s as an owner of %s but does not list it. %s"
+            if after is None or any(owner not in after for owner in listed + [reader.email]):
+                module.fail_json(msg="Google accepted %s as an owner of %s but does not list it with "
+                                     "every owner it had. %s"
                                      % (reader.email, domain, manual), changed=True, granted=True,
                                  reader=reader.email)
 
         attempts = max(p["wait_attempts"], 1)
         now = first
-        added = False
         for attempt in range(attempts):
             if attempt:
                 time.sleep(p["wait_delay"])
@@ -238,7 +242,7 @@ def main():
                 % (reader.email, site, attempts, p["wait_delay"], now or "none", manual),
             changed=granted or added, granted=granted, reader=reader.email)
     except (Unreachable, Refused) as error:
-        module.fail_json(msg=str(error), changed=granted, granted=granted, reader=reader.email)
+        module.fail_json(msg=str(error), changed=granted or added, granted=granted, reader=reader.email)
 
 
 if __name__ == "__main__":
