@@ -229,6 +229,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.13"
+
+      # The selector reads roles and scenarios as YAML rather than guessing at
+      # their text; nothing else is needed, so this is not worth a cache.
+      - name: Install PyYAML
+        run: pip install pyyaml
+
       - name: Choose the scenarios
         id: find
         env:
@@ -238,9 +247,10 @@ jobs:
         run: |
           if [ "$EVENT" = pull_request ]; then
             # --no-renames lists both ends of a rename: moving a file out of a
-            # role changes that role as much as moving one in.
+            # role changes that role as much as moving one in. --base lets the
+            # script see variables the change removed, and so who read them.
             choice=$(git diff --name-only --no-renames "$BASE...$HEAD" \
-              | python3 scripts/molecule-select.py)
+              | python3 scripts/molecule-select.py --base "$BASE")
           else
             choice=$(python3 scripts/molecule-select.py --all)
           fi
