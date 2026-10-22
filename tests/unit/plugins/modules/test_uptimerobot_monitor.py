@@ -1,3 +1,6 @@
+import ssl
+import subprocess
+
 from fakes.uptimerobot import KEY, FakePage, FakeUptimeRobot
 
 
@@ -64,6 +67,45 @@ def test_keyword_monitor_is_case_sensitive(run, serve):
     page = serve(FakePage("<h1>Profile</h1>"))
     run("uptimerobot_monitor", keyword_args(serve(robot), page, "profile.de (Profile)", "Profile"))
     assert robot.monitors[0]["keywordCaseType"] == "CaseSensitive"
+
+
+def test_identified_setup_check_can_create_keyword_monitor(run, serve):
+    robot = FakeUptimeRobot()
+    page = serve(FakePage("Anzeigen", required_user_agent="Krot site monitor setup"))
+    run("uptimerobot_monitor", keyword_args(serve(robot), page, "anzeigen.de (Profile)", "Anzeigen"))
+    assert [m["keywordValue"] for m in robot.monitors] == ["Anzeigen"]
+
+
+def test_page_check_identifies_itself_after_redirect(run, serve):
+    target = serve(FakePage("Eintrag"))
+    source = serve(FakePage("Weiterleitung"))
+    source.outages = [(302, {"Location": target.url + "/liste/"})]
+    run("uptimerobot_monitor", keyword_args(serve(FakeUptimeRobot()), source, "liste.de (Profile)", "Eintrag"))
+    assert [(r.path, r.headers.get("User-Agent")) for r in source.requests + target.requests] == [
+        ("/", "Krot site monitor setup"), ("/liste/", "Krot site monitor setup")]
+
+
+def test_forbidden_page_with_keyword_still_blocks_writes(run, serve):
+    robot = serve(FakeUptimeRobot())
+    page = serve(FakePage("Kontakt"))
+    page.outages = [(403, {}, b"Kontakt")]
+    result = run("uptimerobot_monitor", keyword_args(robot, page, "gesperrt.de (Profile)", "Kontakt"))
+    assert (result.get("failed"), robot.writes()) == (True, [])
+
+
+def test_untrusted_tls_page_blocks_writes(run, serve, tmp_path):
+    certificate, key = tmp_path / "certificate.pem", tmp_path / "key.pem"
+    subprocess.run(["openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-days", "1",
+                    "-subj", "/CN=localhost", "-keyout", str(key), "-out", str(certificate)],
+                   check=True, capture_output=True)
+    context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+    context.load_cert_chain(certificate, key)
+    page = serve(FakePage("Verzeichnis"))
+    page.httpd.socket = context.wrap_socket(page.httpd.socket, server_side=True)
+    robot = serve(FakeUptimeRobot())
+    result = run("uptimerobot_monitor", args(robot, "zertifikat.de (Profile)",
+                 url=page.url.replace("http:", "https:") + "/", type="keyword", keyword="Verzeichnis"))
+    assert (result.get("failed"), robot.writes()) == (True, [])
 
 
 def test_word_missing_from_the_page_blocks_creation(run, serve):
