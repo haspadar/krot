@@ -6,5 +6,7 @@ roles/*/files/*.key
 # Local operator overrides, never shared.
 inventory/host_vars/*.local.yml
 CLAUDE.md
+AGENTS.md
+.claude/
 docs/
 __pycache__/

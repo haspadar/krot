@@ -1,0 +1,5 @@
+# Agent instructions that live outside git.
+/AGENTS.md
+
+# Path to the shared project memory for Claude Code.
+/.claude/settings.local.json
