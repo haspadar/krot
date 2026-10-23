@@ -163,6 +163,17 @@ def test_page_that_is_no_sitemap_is_not_asked_again(site):
     assert len(fetch.asked) == 1
 
 
+def test_answer_past_the_ceiling_is_not_asked_again(site):
+    asked = []
+
+    def oversized(method, url, **kwargs):
+        asked.append(url)
+        raise web.TooLarge("%s %s: answered more than %d bytes" % (method, url, web.MAX_BYTES))
+
+    Sitemap(oversized).pages(site.url("/sitemap.xml"))
+    assert len(asked) == 1
+
+
 def test_failure_names_the_status(site):
     sitemap = Sitemap()
     sitemap.pages(site.url("/sitemap.xml"))

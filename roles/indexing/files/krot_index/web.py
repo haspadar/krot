@@ -22,6 +22,10 @@ class Unreachable(Exception):
     """Nobody answered: DNS, a refused connection, a timeout. Not the same as a "no"."""
 
 
+class TooLarge(Unreachable):
+    """An answer past MAX_BYTES: the site's own, so asking again would only fetch it again."""
+
+
 class _NoRedirects(HTTPRedirectHandler):
     # A sitemap that redirects is not the address the engines were handed, and a
     # redirect followed quietly reads a login page as the site. Refused here, it
@@ -75,7 +79,7 @@ def call(method, url, headers=None, body=None, form=None, timeout=60):
 def _bounded(answer, method, url):
     raw = answer.read(MAX_BYTES + 1)
     if len(raw) > MAX_BYTES:
-        raise Unreachable("%s %s: answered more than %d bytes" % (method, shown(url), MAX_BYTES))
+        raise TooLarge("%s %s: answered more than %d bytes" % (method, shown(url), MAX_BYTES))
     return raw
 
 

@@ -19,8 +19,8 @@ changing a default that affects production) bump major.
   deploy. `gsc_site` with `verify` now reads the key's Search Console site list first, in check
   mode too, and preflight calls it so. No new input: the launch needed that API already
 - **`indexing` reads a cut-off sitemap file once more, and says why a sitemap was unread.**
-  A file nobody answered (timeout, reset, DNS) is asked a second time at once; a status or a
-  body that is no sitemap is the site's answer and is not. The night's line names the reason
+  A file nobody answered (timeout, reset, DNS) is asked a second time at once; a status, a
+  body that is no sitemap and one past 50 MB are the site's answer and are not. The night's line names the reason
   (`could not read the sitemap: <address> answered 404`, `… timed out (asked twice)`), the
   address without its query. One unread site still turns the unit red while the other sites of
   the night are offered, as before. The units run with `PYTHONUNBUFFERED=1`, so stdout lines

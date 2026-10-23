@@ -21,6 +21,12 @@ def test_refusal_whose_body_stalls_is_unreachable(site):
         web.call("GET", site.url("/"), timeout=0.3)
 
 
+def test_answer_past_the_ceiling_is_too_large(site, monkeypatch):
+    monkeypatch.setattr(web, "MAX_BYTES", 3)
+    with pytest.raises(web.TooLarge):
+        web.call("GET", site.url("/"), timeout=5)
+
+
 def test_failure_text_leaves_the_query_out(site):
     address = site.url(KEYED)
     site.close()

@@ -139,6 +139,8 @@ class Sitemap:
         """
         try:
             return self.fetch("GET", url)
+        except web.TooLarge as failure:
+            raise Unreadable(str(failure))
         except web.Unreachable:
             pass
         try:
