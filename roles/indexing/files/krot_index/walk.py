@@ -67,7 +67,10 @@ class Walk:
         name = self.engine.slug
         if offer.states is None:
             # Not "nothing to do": the next move is the opposite one.
-            self.warn(domain, "could not read the sitemap — nothing was asked or offered")
+            # With the reason: a cut-off read, a 404 and a page that is no sitemap need
+            # different people, and the line alone could not tell them apart.
+            self.warn(domain, "could not read the sitemap: %s — nothing was asked or offered"
+                      % (self.sitemap.failure or "no reason given"))
             return
         for state, count in offer.states.items():
             self.say(domain, "%-9s %d" % (state, count))

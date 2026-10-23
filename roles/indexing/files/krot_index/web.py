@@ -22,6 +22,10 @@ class Unreachable(Exception):
     """Nobody answered: DNS, a refused connection, a timeout. Not the same as a "no"."""
 
 
+class TooLarge(Unreachable):
+    """An answer past MAX_BYTES: the site's own, so asking again would only fetch it again."""
+
+
 class _NoRedirects(HTTPRedirectHandler):
     # A sitemap that redirects is not the address the engines were handed, and a
     # redirect followed quietly reads a login page as the site. Refused here, it
@@ -43,7 +47,7 @@ def call(method, url, headers=None, body=None, form=None, timeout=60):
     # Only the web: a sitemap index names the next address itself, and one
     # naming file:///etc/… or ftp:// would otherwise be opened by this program.
     if urlsplit(url).scheme not in ("http", "https"):
-        raise Unreachable("%s %s: only http and https are fetched" % (method, _shown(url)))
+        raise Unreachable("%s %s: only http and https are fetched" % (method, shown(url)))
     headers = dict(headers or {})
     data = None
     if body is not None:
@@ -68,18 +72,18 @@ def call(method, url, headers=None, body=None, form=None, timeout=60):
         # ValueError: an address urllib cannot even parse. Both are "nobody
         # answered usefully", and escaping as themselves they would end the walk
         # over every site instead of this one request.
-        text = (str(failure) or type(failure).__name__).replace(url, _shown(url))
-        raise Unreachable("%s %s: %s" % (method, _shown(url), text))
+        text = (str(failure) or type(failure).__name__).replace(url, shown(url))
+        raise Unreachable("%s %s: %s" % (method, shown(url), text))
 
 
 def _bounded(answer, method, url):
     raw = answer.read(MAX_BYTES + 1)
     if len(raw) > MAX_BYTES:
-        raise Unreachable("%s %s: answered more than %d bytes" % (method, _shown(url), MAX_BYTES))
+        raise TooLarge("%s %s: answered more than %d bytes" % (method, shown(url), MAX_BYTES))
     return raw
 
 
-def _shown(url):
+def shown(url):
     """The address as a message may carry it: without its query.
 
     ⚠️ Bing wants its key in the query string, and urllib's own text for a

@@ -287,9 +287,13 @@
       register: site_preflight_monitor
       when: site_monitor.enabled | default(false)
 
+    # verify, as site_search asks it, so the check also reads Search Console with the launching
+    # key: the token and owners alone ask Site Verification, and a key whose project has the
+    # Search Console API off passed here and failed after the deploy.
     - name: Google
       haspadar.krot.gsc_site:
         domain: "{{ site_domain }}"
+        verify: true
         service_account: "{{ site_google_service_account }}"
         token_uri: "{{ site_google_token_uri }}"
         api_url: "{{ site_google_api_url }}"

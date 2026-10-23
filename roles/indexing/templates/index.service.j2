@@ -12,6 +12,9 @@ Type=oneshot
 User={{ indexing_user }}
 EnvironmentFile={{ indexing_config_dir }}/{{ project }}.env
 Environment=PYTHONPATH={{ indexing_program_dir }}
+# Unbuffered: piped to the journal, stdout is block-buffered and every "offered" line got the
+# second the program exited, while stderr kept its real time.
+Environment=PYTHONUNBUFFERED=1
 # A site that hangs must not hold the unit: the timer would keep firing into a
 # unit still active and the engine would stop being offered, green.
 TimeoutStartSec={{ indexing_timeouts[engine] }}

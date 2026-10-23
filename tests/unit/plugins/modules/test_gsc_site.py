@@ -65,6 +65,30 @@ def test_disabled_api_fails_with_googles_reason(run, serve, tokens):
     assert "not been used in project" in result["msg"]
 
 
+# The launch's preflight asks this in check mode on a domain nobody verified yet. Site
+# Verification answers the key, Search Console in its project is off: the check must say so,
+# or the launch writes its zone, certificate and deploy and fails on the verification step.
+def test_check_of_a_new_domain_fails_when_search_console_is_off_for_the_key(run, serve, tokens):
+    google = FakeGoogle()
+    google.disabled_for = {EMAIL: {CONSOLE_SCOPE}}
+    result = run("gsc_site", args(serve(google), tokens, "konsole.de", verify=True), check=True)
+    assert (result.get("failed"), "not been used in project" in result["msg"]) == (True, True), result
+
+
+def test_check_of_a_new_domain_with_search_console_off_writes_nothing(run, serve, tokens):
+    google = FakeGoogle()
+    google.disabled_for = {EMAIL: {CONSOLE_SCOPE}}
+    server = serve(google)
+    run("gsc_site", args(server, tokens, "konsole.de", verify=True), check=True)
+    # The token request is a POST that writes nothing; check mode asks it on purpose.
+    assert [r for r in server.writes() if r.path != "/siteVerification/v1/token"] == []
+
+
+def test_check_of_a_new_domain_with_both_apis_on_says_verification_is_due(run, serve, tokens):
+    result = run("gsc_site", args(serve(FakeGoogle()), tokens, "frisch.de", verify=True), check=True)
+    assert (result.get("failed", False), result["changed"], result["verified"]) == (False, True, False), result
+
+
 def test_verification_adds_the_domain_property(run, serve, tokens):
     google = FakeGoogle()
     run("gsc_site", args(serve(google), tokens, "eigentum.de", verify=True))
