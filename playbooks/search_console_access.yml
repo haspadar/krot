@@ -18,12 +18,21 @@
 # wherever it is an owner itself — the step the launch takes — and the rest stay in the
 # report with the manual step. A domain launched with another account's key needs that
 # account's key here. --check still wins: with it nothing is written, flag or not.
+#
+# No -e ansible_become=false is needed from a project whose ansible.cfg or inventory turns
+# become on: the play turns it off.
 - name: Check the collecting key owns each site's Search Console property
   hosts: localhost
   connection: local
   gather_facts: false
   vars:
     search_console_access_grant: false
+    # Every step talks to Google from the controller. A consumer that turns become on for its
+    # machines would otherwise ask for sudo here, on the operator's own computer. A variable
+    # rather than the become keyword: an ansible_become in the inventory's group_vars/all
+    # reaches the implicit localhost and beats the keyword, and a play variable beats both it
+    # and ansible.cfg (measured with ansible-core 2.21).
+    ansible_become: false
   tasks:
     # For the Google addresses and their defaults, the ones a launch uses.
     - name: Load the site variables

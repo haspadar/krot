@@ -11,9 +11,9 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **1**, заархивировано — **44**.
+В работе — **2**, заархивировано — **44**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **18** из 45: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **18** из 46: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
@@ -22,7 +22,8 @@ roles: []
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
 | [`2026-10-09-serve-site-passport`](../../openspec/changes/2026-10-09-serve-site-passport/proposal.md) | **влит, не заархивирован** | [#89](https://github.com/haspadar/krot/pull/89) | Роль `site_passport`: сайт сам сообщает свою страну и профиль |
-| [`identify-monitor-page-probes`](../../openspec/changes/archive/2026-10-23-identify-monitor-page-probes/proposal.md) | 2026-10-23 | — | Identify the monitor's setup page check |
+| [`2026-10-23-search-console-access-without-become`](../../openspec/changes/2026-10-23-search-console-access-without-become/proposal.md) | **в работе** | — | Аудит Search Console идёт без become, а ранний отказ по правам разобран |
+| [`identify-monitor-page-probes`](../../openspec/changes/archive/2026-10-23-identify-monitor-page-probes/proposal.md) | 2026-10-23 | [#111](https://github.com/haspadar/krot/pull/111) | Identify the monitor's setup page check |
 | [`require-search-console-access-at-launch`](../../openspec/changes/archive/2026-10-22-require-search-console-access-at-launch/proposal.md) | 2026-10-22 | [#110](https://github.com/haspadar/krot/pull/110) | Запуск сайта не заканчивается, пока сборщик не владеет свойством Search Console |
 | [`tune-ci-for-small-changes`](../../openspec/changes/archive/2026-10-22-tune-ci-for-small-changes/proposal.md) | 2026-10-22 | [#106](https://github.com/haspadar/krot/pull/106) | Типовая небольшая правка проходит быстрее: CI гоняет только достижимые сценарии |
 | [`upgrade-php-on-demand`](../../openspec/changes/archive/2026-10-22-upgrade-php-on-demand/proposal.md) | 2026-10-22 | — | Роль php умеет поднять PHP до свежего патча по требованию |

@@ -5,6 +5,22 @@ changing a default that affects production) bump major.
 
 ## Unreleased
 
+## 11.0.1
+
+### Fixed
+
+- **`haspadar.krot.search_console_access` no longer asks for sudo on the controller.** A
+  consumer whose `ansible.cfg` (or inventory `group_vars/all`) turns `become` on had to pass
+  `-e ansible_become=false`; the play now sets `ansible_become: false` itself, which beats both.
+  The flag is no longer needed and still harmless
+- `uptimerobot_monitor`'s keyword page check identifies itself with User-Agent
+  `Krot site monitor setup`, so a page behind Cloudflare that refuses an anonymous client
+  (403, error 1010) can still get a keyword monitor. UptimeRobot's own checks are unchanged
+
+Nothing to change in a consuming project's inventory: raise the pin. The launch's Search Console
+gate is unchanged — what `site_preflight` can and cannot learn about the keys' rights before the
+first write is written up in the wiki runbook for launching a site
+
 ## 11.0.0
 
 ### Changed (breaking)

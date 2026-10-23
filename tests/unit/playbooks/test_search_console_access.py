@@ -32,13 +32,16 @@ def playbook(tmp_path, tokens):
     collections.mkdir(parents=True)
     os.symlink(ROOT, collections / "krot")
 
-    def run(server, domains, flags=(), **extra):
+    def run(server, domains, flags=(), config=None, **extra):
         variables = dict(search_console_domains=domains,
                          site_google_service_account=service_account(tokens.uri),
                          site_search_console_reader_service_account=service_account(tokens.uri, COLLECTOR),
                          site_google_token_uri=tokens.uri, site_google_api_url=server.url, **extra)
         path = tmp_path / "vars.json"
         path.write_text(json.dumps(variables))
+        if config:
+            # Read from the working directory, as a consumer's ansible.cfg is.
+            (tmp_path / "ansible.cfg").write_text(config)
         env = dict(os.environ, ANSIBLE_COLLECTIONS_PATH=str(tmp_path / "collections"),
                    ANSIBLE_LOCALHOST_WARNING="False", ANSIBLE_NOCOLOR="1")
         done = subprocess.run([sys.executable, "-m", "ansible.cli.playbook", PLAYBOOK, "-e", "@" + str(path)]
@@ -107,6 +110,25 @@ def test_grant_leaves_domains_it_cannot_grant_failing(serve, playbook):
     google = seeded()
     code, _ = playbook(serve(google), ["fremd.de"], search_console_access_grant=True)
     assert (code != 0, google.resources["dns://fremd.de"]) == (True, ["fremd@x.iam.gserviceaccount.com"])
+
+
+# A consumer's ansible.cfg turns become on for every play; the playbook only talks to Google
+# from the controller and must not ask for sudo there. The escalation program here always
+# fails, so a play that escalates fails whether or not sudo would have let it through.
+def test_become_in_the_consumers_config_is_not_used(serve, playbook):
+    config = "[privilege_escalation]\nbecome = True\nbecome_method = sudo\nbecome_exe = /usr/bin/false\n"
+    code, out = playbook(serve(seeded()), ["gehoert.de"], config=config)
+    assert code == 0, out
+
+
+# group_vars/all reaches the implicit localhost too, and there it beats a play's become keyword.
+def test_become_in_the_consumers_inventory_is_not_used(serve, playbook, tmp_path):
+    (tmp_path / "inventory" / "group_vars").mkdir(parents=True)
+    (tmp_path / "inventory" / "hosts.yml").write_text("machines:\n  hosts:\n    maschine:\n")
+    (tmp_path / "inventory" / "group_vars" / "all.yml").write_text(
+        "ansible_become: true\nansible_become_exe: /usr/bin/false\n")
+    code, out = playbook(serve(seeded()), ["gehoert.de"], flags=["-i", str(tmp_path / "inventory" / "hosts.yml")])
+    assert code == 0, out
 
 
 def test_no_domains_fails_the_run(serve, playbook):

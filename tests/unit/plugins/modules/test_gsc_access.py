@@ -127,6 +127,20 @@ def test_launching_key_that_does_not_own_the_domain_writes_nothing(run, serve, t
     assert server.writes() == []
 
 
+# The launch's own order on a domain another account verified: preflight's probe cannot grant,
+# site_search verifies with the launching key's TXT proof, and the grant after it goes through.
+# This is why "cannot grant" in preflight is a step still to do, not a launch that will fail.
+def test_domain_another_account_holds_is_granted_once_the_launching_key_verifies_it(run, serve, tokens):
+    google = seeded(owners=["fremd@x.iam.gserviceaccount.com"])
+    server = serve(google)
+    probe = run("gsc_access", args(server, tokens, "besitz.de"), check=True)
+    run("gsc_site", dict(domain="besitz.de", verify=True, service_account=service_account(tokens.uri),
+                         token_uri=tokens.uri, api_url=server.url))
+    result = run("gsc_access", args(server, tokens, "besitz.de"))
+    assert (probe["grantable"], result["owner"], google.resources["dns://besitz.de"]) == (
+        False, True, ["fremd@x.iam.gserviceaccount.com", EMAIL, COLLECTOR])
+
+
 def test_ownership_that_reaches_search_console_late_is_waited_for(run, serve, tokens, pauses):
     google = seeded()
     google.owner_lag = 2
