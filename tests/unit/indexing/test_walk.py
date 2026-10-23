@@ -11,10 +11,13 @@ class Sitemaps:
     def __init__(self, served):
         self.served = served
         self.read = []
+        self.failure = None
 
     def pages(self, url, domain=None, cards_path=None, cards_sitemap=None):
         self.read.append(url)
-        return self.served.get(url)
+        pages = self.served.get(url)
+        self.failure = "GET %s: timed out (asked twice)" % url if pages is None else None
+        return pages
 
 
 SITES = [
@@ -65,6 +68,20 @@ def test_spent_day_needs_nobody():
 def test_unreadable_site_needs_somebody():
     runner, _, _, _ = walk(FakeEngine(), served={"https://vorwahl.at/sitemap.xml": None})
     assert runner.over(SITES) == 1
+
+
+def test_unreadable_site_names_the_reason():
+    runner, _, _, err = walk(FakeEngine(), served={"https://vorwahl.at/sitemap.xml": None})
+    runner.over(SITES)
+    assert "could not read the sitemap: GET https://vorwahl.at/sitemap.xml: timed out (asked twice)" in err.getvalue()
+
+
+# One site's outage needs a person; the sites after it are still offered that night.
+def test_unreadable_site_does_not_stop_the_walk():
+    engine = FakeEngine()
+    runner, _, _, _ = walk(engine, served={"https://rufnummer.de/sitemap.xml": None})
+    runner.over(SITES)
+    assert engine.inspected == ["https://vorwahl.at/"]
 
 
 def test_every_site_leaves_a_night_row():

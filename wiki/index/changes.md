@@ -22,7 +22,7 @@ roles: []
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
 | [`2026-10-09-serve-site-passport`](../../openspec/changes/2026-10-09-serve-site-passport/proposal.md) | **влит, не заархивирован** | [#89](https://github.com/haspadar/krot/pull/89) | Роль `site_passport`: сайт сам сообщает свою страну и профиль |
-| [`2026-10-23-search-console-access-without-become`](../../openspec/changes/2026-10-23-search-console-access-without-become/proposal.md) | **в работе** | — | Аудит Search Console идёт без become, а ранний отказ по правам разобран |
+| [`2026-10-23-search-console-access-without-become`](../../openspec/changes/2026-10-23-search-console-access-without-become/proposal.md) | **в работе** | — | Хвосты 11.0.0: аудит без become, ранний отказ по правам, обрыв чтения sitemap |
 | [`identify-monitor-page-probes`](../../openspec/changes/archive/2026-10-23-identify-monitor-page-probes/proposal.md) | 2026-10-23 | [#111](https://github.com/haspadar/krot/pull/111) | Identify the monitor's setup page check |
 | [`require-search-console-access-at-launch`](../../openspec/changes/archive/2026-10-22-require-search-console-access-at-launch/proposal.md) | 2026-10-22 | [#110](https://github.com/haspadar/krot/pull/110) | Запуск сайта не заканчивается, пока сборщик не владеет свойством Search Console |
 | [`tune-ci-for-small-changes`](../../openspec/changes/archive/2026-10-22-tune-ci-for-small-changes/proposal.md) | 2026-10-22 | [#106](https://github.com/haspadar/krot/pull/106) | Типовая небольшая правка проходит быстрее: CI гоняет только достижимые сценарии |

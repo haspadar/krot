@@ -29,7 +29,8 @@ description:
     Google did not list it before.
   - Needs the Search Console and Site Verification APIs enabled for the key's
     project, and the cryptography library on the machine running the module.
-  - In check mode nothing is written.
+  - In check mode nothing is written. With O(verify) it still reads the account's Search
+    Console site list, so a check proves Search Console answers the key before a launch writes.
 options:
   domain:
     description: The domain, without scheme or subdomain.
@@ -254,6 +255,11 @@ def main():
                       verified=google.verified())
 
         if p["verify"]:
+            # Read before anything is written, on a domain not verified yet too: the steps
+            # below need Search Console to answer this key, and the token and owners above
+            # ask Site Verification only. Without it a check run passed a key whose project
+            # has the Search Console API off, and the launch failed here after its deploy.
+            level = google.permission()
             if not result["verified"]:
                 if module.check_mode:
                     module.exit_json(changed=True, **result)
@@ -262,7 +268,8 @@ def main():
                                      changed=changed, **result)
                 changed = True
                 result["verified"] = True
-            if google.permission() != "siteOwner":
+                level = google.permission()
+            if level != "siteOwner":
                 if module.check_mode:
                     module.exit_json(changed=True, **result)
                 call(google.console, "PUT", google.property)

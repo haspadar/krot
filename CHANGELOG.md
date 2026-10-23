@@ -13,13 +13,26 @@ changing a default that affects production) bump major.
   consumer whose `ansible.cfg` (or inventory `group_vars/all`) turns `become` on had to pass
   `-e ansible_become=false`; the play now sets `ansible_become: false` itself, which beats both.
   The flag is no longer needed and still harmless
+- **`site_preflight` asks Search Console with the launching key before the first write.** It
+  asked Site Verification only, so a launching key whose Cloud project has the Search Console API
+  switched off passed the check and failed the launch at the domain verification, after the
+  deploy. `gsc_site` with `verify` now reads the key's Search Console site list first, in check
+  mode too, and preflight calls it so. No new input: the launch needed that API already
+- **`indexing` reads a cut-off sitemap file once more, and says why a sitemap was unread.**
+  A file nobody answered (timeout, reset, DNS) is asked a second time at once; a status or a
+  body that is no sitemap is the site's answer and is not. The night's line names the reason
+  (`could not read the sitemap: <address> answered 404`, `… timed out (asked twice)`), the
+  address without its query. One unread site still turns the unit red while the other sites of
+  the night are offered, as before. The units run with `PYTHONUNBUFFERED=1`, so stdout lines
+  carry their real time in the journal
 - `uptimerobot_monitor`'s keyword page check identifies itself with User-Agent
   `Krot site monitor setup`, so a page behind Cloudflare that refuses an anonymous client
   (403, error 1010) can still get a keyword monitor. UptimeRobot's own checks are unchanged
 
-Nothing to change in a consuming project's inventory: raise the pin. The launch's Search Console
-gate is unchanged — what `site_preflight` can and cannot learn about the keys' rights before the
-first write is written up in the wiki runbook for launching a site
+Nothing to change in a consuming project's inventory: raise the pin, then run the `indexing`
+role on the machine so the program and the units are replaced. What `site_preflight` can
+and cannot learn about the keys' rights before the first write is written up in the wiki runbook
+for launching a site
 
 ## 11.0.0
 

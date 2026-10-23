@@ -259,6 +259,13 @@ Search Console и отправка страниц падают ночными ю
 | ключ сбора уже владелец | тот же `sites.get` | строка `done` |
 | ключ запуска владеет доменом (`grantable`) | `gsc_access` и `gsc_site` в `--check`: Site Verification `webResource` ключом запуска | — это и есть право выдать |
 | Site Verification API ключа запуска включён, токен выдаётся | `gsc_site` в `--check`: `token` и `webResource` | preflight, с причиной Google |
+| Search Console API ключа запуска включён | `gsc_site` в `--check` с `verify: true`: `sites.list` ключом запуска (с 11.0.1) | preflight, с причиной Google |
+
+Последняя строка появилась 23.10.2026 по находке ревью: до 11.0.1 preflight звал `gsc_site` без
+`verify`, тот спрашивал только Site Verification, и ключ запуска из проекта Google Cloud с
+выключенным Search Console API проходил preflight, а падал на подтверждении домена — уже после
+деплоя. Подделка держит этот случай отдельным выключением API для одного ключа
+(`disabled_for`), потому что ключ запуска и ключ сбора бывают из разных проектов.
 
 `grantable: false` на запуске — **не нехватка прав**, а шаг, который запуск сделает сам: ключ
 запуска кладёт свою TXT-запись (рядом с чужими — `cloudflare_record` не трогает другие TXT того же

@@ -133,6 +133,9 @@ class FakeGoogle:
         # A status for the verification call alone, the token request still working.
         self.verification_refused_with = None
         self.disabled_scopes = set()
+        # The same for one key alone: account -> scopes switched off in that key's project, as
+        # when the launching and the collecting key live in different Cloud projects.
+        self.disabled_for = {}
         self.accounts = {"301144", "402255"}
         self.page_size = 200
         self.forgets_owners = False
@@ -195,11 +198,11 @@ class FakeGoogle:
         bearer = request.headers.get("Authorization", "")
         if not bearer.startswith("Bearer tok|%s|" % scope):
             return refused(401, "Request had invalid authentication credentials.", "UNAUTHENTICATED")
-        if scope in self.disabled_scopes:
-            return refused(403, "The API has not been used in project 1234 before or it is disabled.",
-                           "PERMISSION_DENIED")
         # The account the token was signed for: the last field of the token.
         email = bearer.split("|")[-1]
+        if scope in self.disabled_scopes or scope in self.disabled_for.get(email, ()):
+            return refused(403, "The API has not been used in project 1234 before or it is disabled.",
+                           "PERMISSION_DENIED")
         if path.startswith("/siteVerification"):
             return self.verification(request, path, email)
         if path.startswith("/webmasters"):
