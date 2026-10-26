@@ -119,6 +119,7 @@ class FakeGoogle:
         self.unowned_status = 404
         # A status for the verification call alone, the token request still working.
         self.verification_refused_with = None
+        self.forgets_owners = False
         self.disabled_scopes = set()
         # The same for one key alone: account -> scopes switched off in that key's project, as
         # when the launching and the collecting key live in different Cloud projects.
