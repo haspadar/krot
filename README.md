@@ -158,7 +158,7 @@ Jobs are declared by the inventory, and the role expands each into a `krot-<name
 cron_project: shop           # [a-z0-9]+, required once cron_jobs is not empty
 cron_jobs:
   - name: traffic
-    description: Visitor figures for every site, copied out of Analytics
+    description: Visitor figures for every site, copied out of Umami
     command: bin/console app:traffic
     schedule: hourly
     working_directory: /var/www/app/current

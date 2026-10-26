@@ -15,7 +15,7 @@ roles: [cron]
 cron_project: shop           # [a-z0-9]+, обязателен, как только cron_jobs не пуст
 cron_jobs:
   - name: traffic
-    description: Visitor figures for every site, copied out of Analytics
+    description: Visitor figures for every site, copied out of Umami
     command: bin/console app:traffic
     schedule: hourly
     working_directory: /var/www/app/current
