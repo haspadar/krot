@@ -17,7 +17,6 @@
     - name: Hand it to the launch
       ansible.builtin.set_fact:
         site_google_service_account: "{{ site_launch_setup.json.service_account }}"
-        site_ga4_reader_service_account: "{{ site_launch_setup.json.reader_service_account }}"
         site_search_console_reader_service_account: "{{ site_launch_setup.json.reader_service_account }}"
       no_log: true
 

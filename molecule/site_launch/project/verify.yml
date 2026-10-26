@@ -10,6 +10,5 @@
   ansible.builtin.assert:
     that:
       - (project_counters.content | b64decode | from_json).umami_website_id | length > 0
-      - (project_counters.content | b64decode | from_json).ga4_measurement_id | length > 0
     fail_msg: "The site would open without its counters."
     quiet: true

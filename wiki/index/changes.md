@@ -2,7 +2,7 @@
 kind: index
 title: Changes
 owner: generated
-verified: 2026-10-23
+verified: 2026-10-26
 roles: []
 ---
 
@@ -11,9 +11,9 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **46**.
+В работе — **1**, заархивировано — **46**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **18** из 46: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **19** из 47: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
@@ -21,6 +21,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
+| [`2026-10-26-remove-google-analytics`](../../openspec/changes/2026-10-26-remove-google-analytics/proposal.md) | **в работе** | — | Remove Google Analytics from site launches |
 | [`identify-monitor-page-probes`](../../openspec/changes/archive/2026-10-23-identify-monitor-page-probes/proposal.md) | 2026-10-23 | [#111](https://github.com/haspadar/krot/pull/111) | Identify the monitor's setup page check |
 | [`search-console-access-without-become`](../../openspec/changes/archive/2026-10-23-search-console-access-without-become/proposal.md) | 2026-10-23 | — | Хвосты 11.0.0: аудит без become, ранний отказ по правам, обрыв чтения sitemap |
 | [`require-search-console-access-at-launch`](../../openspec/changes/archive/2026-10-22-require-search-console-access-at-launch/proposal.md) | 2026-10-22 | [#110](https://github.com/haspadar/krot/pull/110) | Запуск сайта не заканчивается, пока сборщик не владеет свойством Search Console |

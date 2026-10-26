@@ -1,5 +1,16 @@
 # Changelog
 
+## 12.0.0
+
+### Breaking changes
+
+- Removed Google Analytics provisioning and checks from site launches: `ga4_property`,
+  `ga4_access`, `site_ga4_*`, GA4 time zone/currency defaults and GA4 result identifiers
+- Kept `site_analytics` for Umami only; consumers must remove GA inputs, GA result readers
+  and tracking snippets from their own applications
+- Left existing external Analytics accounts and historical data untouched; Search Console,
+  indexing and Cloudflare remain supported
+
 Versions follow [semver](https://semver.org/). Breaking role changes (renaming a variable,
 changing a default that affects production) bump major.
 

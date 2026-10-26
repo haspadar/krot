@@ -81,15 +81,11 @@ provisioner:
         site_umami_api_url: http://krot-site-fakes:8080/umami/counter
         site_google_token_uri: http://127.0.0.1:47180/google-token/token
         site_google_api_url: http://127.0.0.1:47180/google
-        site_ga4_api_url: http://127.0.0.1:47180/google
-        site_ga4_access_api_url: http://127.0.0.1:47180/google
-        site_ga4_data_api_url: http://127.0.0.1:47180/google/data
         site_yandex_api_url: http://127.0.0.1:47180/yandex
         site_bing_api_url: http://127.0.0.1:47180/bing
         site_uptimerobot_api_url: http://127.0.0.1:47180/uptimerobot
 
-        site_ga4_account_id: "301144"
-        site_analytics: {umami: true, ga4: true, country: de}
+        site_analytics: {umami: true}
         site_monitor: {enabled: true, keyword: Anzeigen, path: /profil/}
         site_search_console_owners: [operator@krot-launch.de]
         site_search_wait_delay: 1

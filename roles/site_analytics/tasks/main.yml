@@ -1,8 +1,7 @@
 ---
 # Counters for the site. The ids come back as the fact site_analytics_results; the
 # project's own site_results_writer puts them where its application reads them.
-# This role writes nothing of the project's — except, in Google, the one access the
-# network's collector needs to read the property it was just given.
+# This role writes nothing of the project's.
 
 - name: Register the site in Umami
   # On the machine itself, where Umami listens on 127.0.0.1 — no tunnel, and
@@ -15,59 +14,7 @@
   when: site_analytics.umami | default(true)
   register: site_analytics_umami
 
-- name: Refuse to guess the time zone
-  ansible.builtin.assert:
-    that: site_analytics_zone | length > 0
-    fail_msg: >-
-      No time zone for GA4: site_analytics.country is '{{ site_analytics.country | default('') }}',
-      which this role does not map. Set site_analytics_time_zone.
-    quiet: true
-  when: site_analytics.ga4 | default(false)
-
-- name: Register the site in GA4
-  haspadar.krot.ga4_property:
-    domain: "{{ site_domain }}"
-    account_id: "{{ site_ga4_account_id }}"
-    time_zone: "{{ site_analytics_zone }}"
-    currency_code: "{{ site_analytics_currency }}"
-    service_account: "{{ site_google_service_account }}"
-    token_uri: "{{ site_google_token_uri }}"
-    api_url: "{{ site_ga4_api_url }}"
-  delegate_to: localhost
-  run_once: true
-  become: false
-  vars:
-    ansible_python_interpreter: "{{ ansible_playbook_python }}"
-  when: site_analytics.ga4 | default(false)
-  register: site_analytics_ga4
-
-# The property is made by the launching key and read, every night, by the collecting
-# one. When they are different keys the collector is refused (403) on the first
-# night — a failure that reads as the collector's, a day after the launch reported
-# success. So the launch ends the way the collector begins: by reading the property.
-- name: Make sure the collecting key reads the GA4 property
-  haspadar.krot.ga4_access:
-    property_id: "{{ site_analytics_ga4.property_id }}"
-    service_account: "{{ site_google_service_account }}"
-    reader_service_account: "{{ site_ga4_reader_service_account }}"
-    token_uri: "{{ site_google_token_uri }}"
-    api_url: "{{ site_ga4_access_api_url }}"
-    data_api_url: "{{ site_ga4_data_api_url }}"
-  delegate_to: localhost
-  run_once: true
-  become: false
-  vars:
-    ansible_python_interpreter: "{{ ansible_playbook_python }}"
-  # A dry run of a new site has no property yet, hence no id to ask about.
-  when:
-    - site_analytics.ga4 | default(false)
-    - site_analytics_ga4.property_id | default('') | length > 0
-
 - name: Hand the ids to the project
   ansible.builtin.set_fact:
-    site_analytics_results: >-
-      {{ (site_analytics_results | default({})) | combine({
-           'umami_website_id': site_analytics_umami.website_id | default(''),
-           'ga4_property_id': site_analytics_ga4.property_id | default(''),
-           'ga4_measurement_id': site_analytics_ga4.measurement_id | default('')
-         }) }}
+    site_analytics_results:
+      umami_website_id: "{{ site_analytics_umami.website_id | default('') }}"
