@@ -3,10 +3,10 @@
 """Google's APIs as the site-launch modules need them: a service account's
 token, and one place that reads Google's refusals.
 
-Google has no plain API key for Search Console or the Analytics Admin API.
+Google has no plain API key for Search Console or Site Verification.
 Every call carries a bearer token, and a service account earns one by signing a
 claim with its private key and trading the signature for the token. The same
-account serves both products, each under its own scope, so tokens are asked for
+account serves both APIs, each under its own scope, so tokens are asked for
 per scope and kept for the rest of the module's run.
 
 The signing itself lives in google_jwt.py, which krot-index shares on the

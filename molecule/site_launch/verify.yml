@@ -138,23 +138,6 @@
       vars:
         collector: collector@krot-launch.iam.gserviceaccount.com
 
-    - name: GA4 holds one property with one web stream, counted in the site's own time zone
-      ansible.builtin.assert:
-        that:
-          - state.google.properties | selectattr('displayName', 'equalto', domain) | list | length == 1
-          - (state.google.properties | selectattr('displayName', 'equalto', domain) | first).timeZone == 'Europe/Berlin'
-          - state.google.streams | dict2items | map(attribute='value') | flatten | list | length == 1
-        quiet: true
-
-    - name: The collecting key was given Viewer on the new property, and nothing else
-      ansible.builtin.assert:
-        that:
-          - state.google.bindings | length == 1
-          - state.google.bindings[0][1] == 'collector@krot-launch.iam.gserviceaccount.com'
-          - state.google.bindings[0][2] == ['predefinedRoles/viewer']
-          - state.google.access[state.google.bindings[0][0]] | dict2items | length == 2
-        quiet: true
-
     - name: Bing holds the site verified, with the sitemap
       ansible.builtin.assert:
         that:
@@ -200,5 +183,4 @@
       ansible.builtin.assert:
         that:
           - (counters.content | b64decode | from_json).umami_website_id == (state.umami | first).id
-          - (counters.content | b64decode | from_json).ga4_measurement_id | length > 0
         quiet: true

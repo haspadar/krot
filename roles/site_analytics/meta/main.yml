@@ -2,7 +2,7 @@
 galaxy_info:
   author: haspadar
   description: >-
-    Registers the site in Umami and, optionally, GA4, and hands back their ids.
+    Registers the site in Umami and hands back its id.
   license: MIT
   min_ansible_version: "2.15"
   platforms:
