@@ -2,7 +2,7 @@
 kind: index
 title: Роли коллекции
 owner: generated
-verified: 2026-10-26
+verified: 2026-10-31
 roles: []
 ---
 
@@ -22,7 +22,7 @@ roles: []
 | [`cron`](../../roles/cron/) | 10 | [operations/cron-jobs.md](../operations/cron-jobs.md), [operations/logging.md](../operations/logging.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`deploy`](../../roles/deploy/) | 6 | [operations/deploy.md](../operations/deploy.md) |
 | [`deploy_keys`](../../roles/deploy_keys/) | 2 | [operations/deploy.md](../operations/deploy.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
-| [`docker`](../../roles/docker/) | 3 | [operations/docker.md](../operations/docker.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
+| [`docker`](../../roles/docker/) | 3 | [operations/docker.md](../operations/docker.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`fail2ban`](../../roles/fail2ban/) | 5 | [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`firewall`](../../roles/firewall/) | 9 | [operations/cloudflare.md](../operations/cloudflare.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`indexing`](../../roles/indexing/) | 5 | [operations/search-engine-indexing.md](../operations/search-engine-indexing.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
