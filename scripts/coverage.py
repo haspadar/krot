@@ -35,7 +35,6 @@ TASK_LINE = re.compile(r"^\s*- name:", re.M)
 UNCOVERED = {
     "deploy": "runs Deployer from the control machine, not on the host",
     "deploy_keys": "needs real private repositories",
-    "docker": "installs Docker inside a container",
 }
 
 # Roles that will get a scenario, in the order they are being written. Separate
@@ -78,8 +77,8 @@ EXTRA_SCENARIOS = {
 #
 # These two cannot be moved that way. Deleting a scenario, or gutting the roles
 # it covers, drops covered_tasks below the floor; adding tasks anywhere does not.
-MIN_COVERED_ROLES = 26
-MIN_COVERED_TASKS = 434
+MIN_COVERED_ROLES = 27
+MIN_COVERED_TASKS = 440
 
 
 def count_tasks(role: Path) -> int:

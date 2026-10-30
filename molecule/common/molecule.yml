@@ -40,13 +40,6 @@ provisioner:
         # container's: a value that matches either end would be reached without
         # the role doing anything.
         common_timezone: Asia/Tbilisi
-        # Trimmed to three, because this scenario is not testing apt. One of
-        # them (fd-find) installs its binary under a different name, which is
-        # the part of this list worth a check.
-        common_base_packages:
-          - fd-find
-          - jq
-          - ncdu
         common_unattended_upgrades: true
 
 scenario:

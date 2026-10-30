@@ -2,7 +2,7 @@
 kind: runbook
 title: Поднять машину с нуля
 owner: haspadar
-verified: 2026-10-23
+verified: 2026-10-31
 roles: [backup, bootstrap, common, cron, deploy_keys, docker, fail2ban, firewall, indexing, nginx, php, postgresql, umami]
 ---
 
@@ -10,6 +10,11 @@ roles: [backup, bootstrap, common, cron, deploy_keys, docker, fail2ban, firewall
 
 Порядок для голого VPS. Шаги 1-2 выполняются **один раз** и под root; дальше машина обслуживается
 обычным прогоном от оператора.
+
+Роль `common` ставит `acl` в базовом наборе: Ansible использует `setfacl`, когда
+непривилегированный оператор выполняет модуль от другого сервисного пользователя.
+При переопределении `common_base_packages` сохраняйте `acl`, если нужен такой переход.
+Установка пакета не меняет существующие ACL файлов.
 
 ## 1. Bootstrap под root
 

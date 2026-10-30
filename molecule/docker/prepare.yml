@@ -1,0 +1,19 @@
+---
+- name: Prepare
+  hosts: all
+  gather_facts: false
+  tasks:
+    - name: Wait for systemd
+      ansible.builtin.raw: systemctl is-system-running --wait || true
+      changed_when: false
+
+    - name: Gather facts
+      ansible.builtin.setup:
+
+    - name: Install repository support on a fresh host
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - python3-debian
+        update_cache: true
+        state: present

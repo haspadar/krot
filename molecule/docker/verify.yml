@@ -1,0 +1,61 @@
+---
+- name: Verify
+  hosts: all
+  tasks:
+    - name: Docker accepts the installed configuration
+      ansible.builtin.command: /usr/bin/dockerd --validate --config-file=/etc/docker/daemon.json
+      changed_when: false
+
+    - name: The daemon answers after the role handler
+      ansible.builtin.command: docker info --format '{{ "{{.LoggingDriver}}" }}'
+      register: docker_info
+      changed_when: false
+      failed_when: docker_info.stdout | trim != 'json-file'
+
+    - name: Read the installed configuration before testing rejection
+      ansible.builtin.slurp:
+        src: /etc/docker/daemon.json
+      register: docker_before
+
+    - name: The requested log limits reached the configuration
+      ansible.builtin.assert:
+        that:
+          - (docker_before.content | b64decode | from_json)['log-opts']['max-size'] == '23m'
+          - (docker_before.content | b64decode | from_json)['log-opts']['max-file'] == '5'
+
+    - name: Refuse an invalid rendered replacement
+      block:
+        - name: Try to install malformed Docker configuration
+          ansible.builtin.include_role:
+            name: docker
+          vars:
+            docker_users: []
+            docker_log_max_size: 'broken"'
+            docker_log_max_file: 5
+      rescue:
+        - name: Only the template validation failure is expected
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == 'Cap container log growth'
+              - "'failed to validate' in ansible_failed_result.msg"
+
+        - name: Record that the invalid configuration was rejected
+          ansible.builtin.set_fact:
+            docker_invalid_rejected: true
+
+    - name: Invalid configuration must fail before replacement
+      ansible.builtin.assert:
+        that: docker_invalid_rejected | default(false)
+
+    - name: Read the configuration after rejection
+      ansible.builtin.slurp:
+        src: /etc/docker/daemon.json
+      register: docker_after
+
+    - name: Rejection preserved the previous file
+      ansible.builtin.assert:
+        that: docker_after.content == docker_before.content
+
+    - name: The existing daemon still answers after rejection
+      ansible.builtin.command: docker info
+      changed_when: false

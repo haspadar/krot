@@ -63,9 +63,39 @@
       changed_when: false
       failed_when: "'install ok installed' not in pkg.stdout"
       loop:
+        - acl
         - fd-find
         - jq
         - ncdu
+
+    - name: Install the unprivileged become probe
+      ansible.builtin.copy:
+        src: become-probe.yml
+        dest: /tmp/krot-become-probe.yml
+        mode: "0644"
+
+    - name: An unprivileged operator can share a module with a service account
+      ansible.builtin.command:
+        argv:
+          - sudo
+          - -H
+          - -u
+          - acl-operator
+          - ansible-playbook
+          - -i
+          - localhost,
+          - -c
+          - local
+          - /tmp/krot-become-probe.yml
+      environment:
+        ANSIBLE_PIPELINING: "false"
+        ANSIBLE_SHELL_ALLOW_WORLD_READABLE_TEMP: "false"
+      changed_when: false
+
+    - name: Remove the probe playbook
+      ansible.builtin.file:
+        path: /tmp/krot-become-probe.yml
+        state: absent
 
     - name: The fd-find binary is present under the name Debian gives it
       ansible.builtin.stat:
