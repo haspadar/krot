@@ -1,0 +1,12 @@
+---
+- name: Probe unprivileged Ansible module sharing
+  hosts: all
+  gather_facts: false
+  become: true
+  become_user: acl-reader
+  tasks:
+    - name: A real module runs as the target service account
+      ansible.builtin.command: id -un
+      register: probe_user
+      changed_when: false
+      failed_when: probe_user.stdout != 'acl-reader'

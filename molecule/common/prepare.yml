@@ -83,3 +83,25 @@
       ansible.builtin.apt:
         update_cache: true
         cache_valid_time: 3600
+
+    - name: Start without ACL tools as on a fresh minimal host
+      ansible.builtin.apt:
+        name: acl
+        state: absent
+
+    - name: Create an unprivileged account for the ACL probe
+      ansible.builtin.user:
+        name: acl-reader
+        create_home: true
+
+    - name: Create an unprivileged Ansible operator
+      ansible.builtin.user:
+        name: acl-operator
+        create_home: true
+
+    - name: Allow the probe operator to become only the probe reader
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/krot-acl-probe
+        content: "acl-operator ALL=(acl-reader) NOPASSWD: ALL\n"
+        mode: "0440"
+        validate: /usr/sbin/visudo -cf %s

@@ -18,6 +18,8 @@ common_timezone: Europe/Minsk
 # another package in Debian. No alias is set here — what a login shell offers is
 # the operator's business, not the machine's.
 common_base_packages:
+  # Ansible shares temporary modules when becoming an unprivileged account.
+  - acl
   - btop
   - ca-certificates
   - curl
