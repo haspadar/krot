@@ -57,6 +57,24 @@ def build(name, key):
     raise ValueError(name)
 
 
+def offered(config, name, out):
+    """The project's sites that are offered to this engine, the others named as skipped.
+
+    A site lists its own `engines` where its account at an engine is not the project's key's: walking it
+    would be refused every night, and a red that repeats over a decision already taken stops being read
+    before a revoked key produces one. Absent, a site is offered to every engine of the project.
+    One line per skipped site, so a site left out is as audible as one walked.
+    """
+    chosen = []
+    for site in config.get("sites", []):
+        if name in site.get("engines", config.get("engines", [])):
+            chosen.append(site)
+        else:
+            print("%s %s: skipped — the inventory does not offer this site to %s" % (name, site.get("domain"), name),
+                  file=out)
+    return chosen
+
+
 def main(argv=None, connect=None, engines=None, out=None, err=None):
     parser = argparse.ArgumentParser(prog="krot-index")
     parser.add_argument("--config", required=True)
@@ -101,9 +119,9 @@ def main(argv=None, connect=None, engines=None, out=None, err=None):
         print("krot-index: database %s cannot be reached: %s" % (config["database"], failure), file=err)
         return FAILED
 
-    sites = config.get("sites", [])
+    sites = offered(config, name, out or sys.stdout)
     if not sites:
-        print("krot-index: %s declares no sites" % config.get("project"), file=err)
+        print("krot-index: %s declares no site for %s" % (config.get("project"), name), file=err)
         return FAILED
     # Before any site is walked: a typo found on the third site would leave the
     # first two offered and the rest not, and the night half-done.

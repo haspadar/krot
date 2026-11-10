@@ -201,3 +201,20 @@ def test_a_missing_key_is_red_and_the_engine_is_not_built(config, monkeypatch):
 def test_a_project_declaring_neither_counted_engine_is_refused(config, keys):
     code, _, err = run(config(["google", "indexnow"]), Checked(), {})
     assert (code, "declares neither" in err) == (1, True)
+
+
+def test_a_site_that_leaves_an_engine_out_is_not_read_for_it_and_is_named(config, keys):
+    store = Checked()
+    sites = [dict(SITES[0], engines=["yandex"]), SITES[1]]
+    bing = FakeCounting({"nordseite.be": [(DAY, 7, None)]})
+    yandex = FakeCounting({"abendseite.de": [(DAY, 1, None)], "nordseite.be": [(DAY, 2, None)]})
+    code, out, _ = run(config(["bing", "yandex"], sites), store, {"bing": bing, "yandex": yandex})
+    assert (code, [domain for domain, _ in bing.asked], "bing abendseite.de: skipped" in out) == (
+        0, ["nordseite.be"], True)
+
+
+def test_an_engine_that_no_site_uses_is_red(config, keys):
+    sites = [dict(site, engines=["yandex"]) for site in SITES]
+    yandex = FakeCounting({"abendseite.de": [], "nordseite.be": []})
+    code, _, err = run(config(["bing", "yandex"], sites), Checked(), {"bing": FakeCounting({}), "yandex": yandex})
+    assert (code, "declares no site for bing" in err) == (1, True)

@@ -2,7 +2,7 @@
 kind: runbook
 title: Поднять машину с нуля
 owner: haspadar
-verified: 2026-10-31
+verified: 2026-11-10
 roles: [backup, bootstrap, common, cron, deploy_keys, docker, fail2ban, firewall, indexing, nginx, php, postgresql, umami]
 ---
 

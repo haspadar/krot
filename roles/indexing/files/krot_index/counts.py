@@ -17,7 +17,7 @@ import os
 import sys
 
 from krot_index import night, store as stores
-from krot_index.cli import FAILED, KEYS, OK, build
+from krot_index.cli import FAILED, KEYS, OK, build, offered
 
 # The engines that publish a figure for a site, in the order they are read.
 COUNTED = ("bing", "yandex")
@@ -117,7 +117,12 @@ def main(argv=None, connect=None, engines=None, out=None, err=None, store=None):
             print("krot-index-counts: the %s key could not be used: %s" % (name, failure), file=err)
             failed += 1
             continue
-        failed += over(engine, name, sites, store, today, out, err)
+        offer = offered(config, name, out)
+        if not offer:
+            print("krot-index-counts: %s declares no site for %s" % (config.get("project"), name), file=err)
+            failed += 1
+            continue
+        failed += over(engine, name, offer, store, today, out, err)
     return OK if failed == 0 else FAILED
 
 
