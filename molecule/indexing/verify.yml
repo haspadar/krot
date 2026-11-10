@@ -197,6 +197,22 @@
       changed_when: false
       failed_when: "'indexnow molecule.test: could not read the sitemap' not in indexing_journal.stdout"
 
+    - name: A site left out of the engine is named, not walked
+      ansible.builtin.assert:
+        that:
+          - "'indexnow skipped.test: skipped' in indexing_journal.stdout"
+          - "'indexnow skipped.test: could not read' not in indexing_journal.stdout"
+        quiet: true
+
+    - name: The site left out has no row
+      community.postgresql.postgresql_query:
+        login_db: molecule_site
+        query: SELECT count(*) AS rows FROM krot_index.index_run WHERE site = 'skipped.test'
+      become: true
+      become_user: postgres
+      register: indexing_skipped_rows
+      failed_when: indexing_skipped_rows.query_result[0].rows != 0
+
     - name: The night's row was written as the program's account
       community.postgresql.postgresql_query:
         login_db: molecule_site

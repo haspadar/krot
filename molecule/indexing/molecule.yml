@@ -57,6 +57,12 @@ provisioner:
               - domain: molecule.test
                 sitemap_url: http://127.0.0.1:9/sitemap.xml
                 cards_path: '^/card/'
+              # Offered to Bing and Google only: IndexNow's night must name it as skipped
+              # and leave no row for it. The sitemap is unreadable too, so a night that
+              # walked it anyway would write one.
+              - domain: skipped.test
+                sitemap_url: http://127.0.0.1:9/sitemap.xml
+                engines: [bing, google]
 
 scenario:
   test_sequence:

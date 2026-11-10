@@ -28,6 +28,12 @@
 #                sitemap_url:   read over HTTP, as a search engine reads it.
 #                cards_path:    optional regex on a page's path marking a card.
 #                cards_sitemap: optional regex on the sitemap file's address.
+#                engines:       optional, a non-empty subset of the project's engines the
+#                               site is offered to; absent, all of them. For a site whose
+#                               account at an engine is not the one the project's key
+#                               belongs to: walked, it would be refused every night. The
+#                               site is named in the engine's journal as skipped, and an
+#                               engine that no site uses is refused.
 indexing_projects: {}
 
 # Projects to take off this machine: their units and key files go. ⚠️ Only by

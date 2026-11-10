@@ -52,6 +52,48 @@
   loop_control:
     label: "{{ item.0.name }} {{ item.1.domain | default('<unnamed>') }}"
 
+# A site's own `engines` narrows the project's: the site is left out of the units of the rest.
+# Refused when it is not a list, is empty, repeats an engine or names one the project does not
+# declare — each reads as a decision and would be a silent one — and when an engine of the
+# project is offered to no site, whose unit would run over nothing and turn red every night.
+- name: Assert each site's engines are a subset of its project's
+  ansible.builtin.assert:
+    that:
+      - item.1.engines is not defined or item.1.engines is sequence
+      - item.1.engines is not defined or item.1.engines is not string
+      - item.1.engines is not defined or item.1.engines | length > 0
+      - item.1.engines is not defined or item.1.engines | unique | length == item.1.engines | length
+      - item.1.engines is not defined or item.1.engines | difference(item.0.engines) | length == 0
+    fail_msg: >-
+      A site of {{ item.0.name }} lists engines that are not a non-empty list of distinct engines
+      out of the project's own ({{ item.0.engines | join(', ') }}). Leave the field out to offer the
+      site to all of them.
+    quiet: true
+  loop: "{{ indexing_plans | subelements('sites') }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1.domain | default('<unnamed>') }}"
+
+- name: Assert every declared engine is offered to a site
+  ansible.builtin.assert:
+    that:
+      - indexing_offered | length > 0
+    fail_msg: >-
+      {{ item.0.name }} declares {{ item.1 }} but every site's engines leave it out. Drop the
+      engine from the project, or let a site use it.
+    quiet: true
+  vars:
+    indexing_offered: >-
+      {%- set found = [] -%}
+      {%- for site in item.0.sites -%}
+      {%- if item.1 in site.engines | default(item.0.engines) -%}
+      {%- set _ = found.append(site.domain) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ found }}
+  loop: "{{ indexing_plans | subelements('engines') }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1 }}"
+
 # ⚠️ A key per declared engine, never an engine per present key: an empty lookup
 # would otherwise read as a decision not to offer, and the night would be green.
 # The short keys also go into an EnvironmentFile=, whose own quoting rules would

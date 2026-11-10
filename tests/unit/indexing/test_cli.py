@@ -107,6 +107,30 @@ def test_broken_pattern_is_red_before_any_site(tmp_path, key):
     assert (code, "cards_path of rufnummer.de" in said) == (cli.FAILED, True)
 
 
+def test_a_site_is_offered_to_every_engine_of_the_project_unless_it_lists_its_own():
+    config = {"engines": ["google", "bing"],
+              "sites": [{"domain": "a.test"}, {"domain": "b.test", "engines": ["google"]}]}
+    assert [site["domain"] for site in cli.offered(config, "bing", io.StringIO())] == ["a.test"]
+
+
+def test_a_site_left_out_of_an_engine_is_named_in_its_journal():
+    config = {"engines": ["google", "bing"], "sites": [{"domain": "b.test", "engines": ["google"]}]}
+    out = io.StringIO()
+    cli.offered(config, "bing", out)
+    assert out.getvalue() == "bing b.test: skipped — the inventory does not offer this site to bing\n"
+
+
+def test_an_engine_that_no_site_is_offered_to_is_red(tmp_path, monkeypatch):
+    path = tmp_path / "first.json"
+    path.write_text(json.dumps({"project": "first", "database": "first", "engines": ["indexnow", "bing"],
+                                "sites": [{"domain": "b.test", "sitemap_url": "https://b.test/s.xml",
+                                           "engines": ["indexnow"]}]}))
+    monkeypatch.setenv("KROT_INDEX_BING_KEY", "bing-key")
+    code, said = run(["--config", str(path), "--engine", "bing"], connect=Answering(),
+                     engines=lambda name, key: object())
+    assert (code, "declares no site for bing" in said) == (cli.FAILED, True)
+
+
 def test_unreachable_database_is_red(config, key):
     code, said = run(["--config", config, "--engine", "google"], connect=Unreachable(),
                      engines=lambda name, key: object())
