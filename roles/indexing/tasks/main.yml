@@ -177,13 +177,16 @@
 - name: Assert every Bing account's key can ride in an environment file
   ansible.builtin.assert:
     that:
+      # The value as the inventory gave it: a null, a boolean or a number turned into text would read
+      # as 'None', 'True' or '7' and pass as a key.
+      - indexing_account_key is string
       - indexing_account_key is match('^[A-Za-z0-9._~+/=-]+\Z')
     fail_msg: >-
-      {{ item.0.name }}: the key of Bing account {{ item.1 }} is empty or holds characters an
-      environment file cannot carry.
+      {{ item.0.name }}: the key of Bing account {{ item.1 }} is not a string, is empty or holds
+      characters an environment file cannot carry.
     quiet: true
   vars:
-    indexing_account_key: "{{ indexing_projects[item.0.name].bing_accounts[item.1] | default('') | string }}"
+    indexing_account_key: "{{ indexing_projects[item.0.name].bing_accounts[item.1] }}"
   loop: "{{ indexing_plans | subelements('bing_accounts') }}"
   loop_control:
     label: "{{ item.0.name }} {{ item.1 }}"
