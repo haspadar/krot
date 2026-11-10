@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **1**, заархивировано — **49**.
+В работе — **0**, заархивировано — **50**.
 
 Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **20** из 50: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
@@ -21,7 +21,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
-| [`2026-11-10-bing-key-per-account`](../../openspec/changes/2026-11-10-bing-key-per-account/proposal.md) | **в работе** | — | One Bing key per account |
+| [`bing-key-per-account`](../../openspec/changes/archive/2026-11-10-bing-key-per-account/proposal.md) | 2026-11-10 | — | One Bing key per account |
 | [`declare-site-engines`](../../openspec/changes/archive/2026-11-10-declare-site-engines/proposal.md) | 2026-11-10 | [#117](https://github.com/haspadar/krot/pull/117) | Declare the engines a site is offered to |
 | [`fresh-host-provisioning`](../../openspec/changes/archive/2026-10-31-fresh-host-provisioning/proposal.md) | 2026-10-31 | — | Reliable fresh host provisioning |
 | [`remove-google-analytics`](../../openspec/changes/archive/2026-10-26-remove-google-analytics/proposal.md) | 2026-10-26 | [#115](https://github.com/haspadar/krot/pull/115) | Remove Google Analytics from site launches |
