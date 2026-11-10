@@ -1,5 +1,17 @@
 # Changelog
 
+## 12.1.0
+
+### Added
+
+- **A site in `indexing_projects` may carry `engines`**, a non-empty subset of the project's own.
+  The engine units and the daily counts leave the site out of an engine it does not list, naming
+  it in the journal as skipped and keeping the exit code. For a site whose account at an engine is
+  not the one the project's key belongs to: walked, it was refused every night, which turned the
+  units red and, for Bing, cut the allowance planned for the sites walked after it. The role
+  refuses a list that is not a unique subset of the project's engines, and an engine of the
+  project that no site uses. Absent, behaviour is unchanged
+
 ## 12.0.0
 
 ### Breaking changes

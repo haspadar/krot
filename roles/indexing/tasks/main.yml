@@ -60,7 +60,7 @@
   ansible.builtin.assert:
     that:
       - item.1.engines is not defined or item.1.engines is sequence
-      - item.1.engines is not defined or item.1.engines is not string
+      - item.1.engines is not defined or (item.1.engines is not string and item.1.engines is not mapping)
       - item.1.engines is not defined or item.1.engines | length > 0
       - item.1.engines is not defined or item.1.engines | unique | length == item.1.engines | length
       - item.1.engines is not defined or item.1.engines | difference(item.0.engines) | length == 0
