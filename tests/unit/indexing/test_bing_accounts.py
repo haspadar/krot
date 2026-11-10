@@ -152,6 +152,29 @@ def test_an_account_whose_key_cannot_be_used_is_red_without_quoting_it(tmp_path,
         cli.FAILED, False, True, 1)
 
 
+def test_a_row_that_cannot_be_written_stops_the_night_before_the_next_account(tmp_path, keys, monkeypatch):
+    class Failing(Walked):
+        def over(self, sites):
+            Walked.walks.append((self.engine, [site["domain"] for site in sites]))
+            raise RuntimeError("permission denied for table page_index")
+
+    monkeypatch.setattr(cli, "Walk", Failing)
+    code, said = night(write(tmp_path, [OWN, KEPT]), lambda name, key: key)
+    assert (code, "stopped" in said, Walked.walks) == (cli.FAILED, True, [("own-key", ["own.test"])])
+
+
+def test_a_key_that_cannot_be_used_is_red_for_the_counts_without_stopping_the_other_account(tmp_path, keys):
+    own = Counting({"own.test": [(DAY, 3, None)]})
+
+    def build(name, key):
+        if key == "account-key":
+            raise ValueError("not a key")
+        return own
+
+    code, said = reading(write(tmp_path, [OWN, KEPT]), build)
+    assert (code, "account kogutaone" in said, own.asked) == (1, True, ["own.test"])
+
+
 def test_the_counts_read_each_account_with_its_own_key_and_only_its_sites(tmp_path, keys):
     own = Counting({"own.test": [(DAY, 3, None)]})
     account = Counting({"kept.test": [(DAY, 9, None)]})

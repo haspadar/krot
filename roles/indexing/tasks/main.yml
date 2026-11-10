@@ -213,7 +213,8 @@
       {%- if engine == 'google' -%}
       {%- set key = ((key | from_json) if key is string else key).client_email | default('') -%}
       {%- endif -%}
-      {%- if (key | string | trim) | length > 0 -%}
+      {#- Bing's own key is absent where every Bing site is in an account; the others were asserted present. -#}
+      {%- if engine != 'bing' or (key | string | trim) | length > 0 -%}
       {%- set _ = seen.append(engine ~ ':' ~ (key | string | trim)) -%}
       {%- endif -%}
       {%- endfor -%}
