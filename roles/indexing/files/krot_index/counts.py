@@ -17,7 +17,7 @@ import os
 import sys
 
 from krot_index import night, store as stores
-from krot_index.cli import FAILED, KEYS, OK, build, offered
+from krot_index.cli import FAILED, OK, accounts, build, key_variable, offered
 
 # The engines that publish a figure for a site, in the order they are read.
 COUNTED = ("bing", "yandex")
@@ -105,24 +105,29 @@ def main(argv=None, connect=None, engines=None, out=None, err=None, store=None):
 
     failed = 0
     for name in names:
-        key = os.environ.get(KEYS[name], "")
-        if not key:
-            print("krot-index-counts: %s is empty — the unit's env file has no key for %s" % (KEYS[name], name),
-                  file=err)
-            failed += 1
-            continue
-        try:
-            engine = (engines or build)(name, key)
-        except (OSError, ValueError) as failure:
-            print("krot-index-counts: the %s key could not be used: %s" % (name, failure), file=err)
-            failed += 1
-            continue
         offer = offered(config, name, out)
         if not offer:
             print("krot-index-counts: %s declares no site for %s" % (config.get("project"), name), file=err)
             failed += 1
             continue
-        failed += over(engine, name, offer, store, today, out, err)
+        # A Bing account is one key and one engine, as in the night: a red key of one account does not
+        # stop the others from being read.
+        for account, group in accounts(name, offer):
+            variable = key_variable(name, account)
+            key = os.environ.get(variable, "")
+            which = "%s account %s" % (name, account) if account else name
+            if not key:
+                print("krot-index-counts: %s is empty — the unit's env file has no key for %s" % (variable, which),
+                      file=err)
+                failed += 1
+                continue
+            try:
+                engine = (engines or build)(name, key)
+            except (OSError, ValueError) as failure:
+                print("krot-index-counts: the %s key could not be used: %s" % (which, failure), file=err)
+                failed += 1
+                continue
+            failed += over(engine, name, group, store, today, out, err)
     return OK if failed == 0 else FAILED
 
 

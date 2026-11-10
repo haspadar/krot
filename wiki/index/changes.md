@@ -11,9 +11,9 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **49**.
+В работе — **0**, заархивировано — **50**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **20** из 49: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **20** из 50: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
@@ -21,7 +21,8 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
-| [`declare-site-engines`](../../openspec/changes/archive/2026-11-10-declare-site-engines/proposal.md) | 2026-11-10 | — | Declare the engines a site is offered to |
+| [`bing-key-per-account`](../../openspec/changes/archive/2026-11-10-bing-key-per-account/proposal.md) | 2026-11-10 | — | One Bing key per account |
+| [`declare-site-engines`](../../openspec/changes/archive/2026-11-10-declare-site-engines/proposal.md) | 2026-11-10 | [#117](https://github.com/haspadar/krot/pull/117) | Declare the engines a site is offered to |
 | [`fresh-host-provisioning`](../../openspec/changes/archive/2026-10-31-fresh-host-provisioning/proposal.md) | 2026-10-31 | — | Reliable fresh host provisioning |
 | [`remove-google-analytics`](../../openspec/changes/archive/2026-10-26-remove-google-analytics/proposal.md) | 2026-10-26 | [#115](https://github.com/haspadar/krot/pull/115) | Remove Google Analytics from site launches |
 | [`identify-monitor-page-probes`](../../openspec/changes/archive/2026-10-23-identify-monitor-page-probes/proposal.md) | 2026-10-23 | [#111](https://github.com/haspadar/krot/pull/111) | Identify the monitor's setup page check |

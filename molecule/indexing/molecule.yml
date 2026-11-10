@@ -43,6 +43,9 @@ provisioner:
             engines: [indexnow, bing, google]
             # secret-lint: allow — made-up keys, never leave the container.
             bing_key: molecule-bing
+            # A second Bing Webmaster account with a key of its own: its site is asked with it.
+            bing_accounts:
+              acct: molecule-bing-acct  # secret-lint: allow — made-up
             indexnow_secret: molecule-indexnow  # secret-lint: allow
             # A dict, as a lookup of a JSON note arrives; no real key in it.
             google_service_account:
@@ -63,6 +66,12 @@ provisioner:
               - domain: skipped.test
                 sitemap_url: http://127.0.0.1:9/sitemap.xml
                 engines: [bing, google]
+              # In the second Bing account and offered to Bing alone: the counts unit must read it
+              # with that account's key, and no other engine may leave a row for it.
+              - domain: account.test
+                sitemap_url: http://127.0.0.1:9/sitemap.xml
+                engines: [bing]
+                bing_account: acct
 
 scenario:
   test_sequence:

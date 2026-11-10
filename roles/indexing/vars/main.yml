@@ -67,7 +67,10 @@ indexing_plans: >-
   {%- for project, spec in indexing_projects.items() -%}
   {%- set engines = spec.engines | default([]) -%}
   {%- set counted = engines | select('in', indexing_counted_engines) | list -%}
+  {%- set accounts = spec.bing_accounts | default({}) -%}
   {%- set _ = plans.append({'name': project,
+                            'bing_accounts_is_mapping': accounts is mapping,
+                            'bing_accounts': (accounts.keys() | list) if accounts is mapping else [],
                             'database': spec.database | default(''),
                             'reader': spec.reader | default(''),
                             'engines': engines,

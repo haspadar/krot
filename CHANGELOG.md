@@ -1,5 +1,21 @@
 # Changelog
 
+## 12.2.0
+
+### Added
+
+- **A Bing key per account in `indexing`.** `indexing_projects.<project>.bing_accounts` maps an
+  account name (`[a-z0-9]+`) to that account's Bing key, and a site names its account in
+  `bing_account`. The Bing night and the daily counts ask each account's sites with its own key
+  and engine, so the allowance question, its cut-off after three silent sites and the throttle
+  belong to the account, not the whole project; a missing key of one account turns the unit red
+  but the other accounts are still walked. The env file gets `KROT_INDEX_BING_KEY_<ACCOUNT>`.
+  The role refuses an account name or key that cannot ride in the env file, an account no site
+  names, a site naming an account the project lacks or one not offered to Bing, `bing_accounts`
+  without `bing`, a missing `bing_key` while a Bing site has no account, and one key used twice.
+  `bing_key` is no longer needed when every Bing site is in an account. Without the new fields
+  behaviour is unchanged
+
 ## 12.1.0
 
 ### Added

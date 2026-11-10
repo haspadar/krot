@@ -94,8 +94,57 @@
   loop_control:
     label: "{{ item.0.name }} {{ item.1 }}"
 
+# Bing accounts: a site that lives in another Bing Webmaster account names it, and the project
+# holds that account's key under `bing_accounts`. Every shape that would read as a decision and
+# be a silent one is refused: a name the unit's variable cannot carry, an account that no
+# site uses (a key left on the machine for nothing), a site naming an account the project
+# does not hold or one it is not offered to Bing under.
+- name: Assert each project's Bing accounts are named and bound to Bing
+  ansible.builtin.assert:
+    that:
+      - item.bing_accounts_is_mapping
+      - item.bing_accounts | length == 0 or 'bing' in item.engines
+      - item.bing_accounts | select('string') | list | length == item.bing_accounts | length
+      - item.bing_accounts | reject('match', '^[a-z0-9]+\Z') | list | length == 0
+    fail_msg: >-
+      {{ item.name }}: bing_accounts must be a mapping of account name ([a-z0-9]+) to key, and only
+      for a project that declares bing.
+    quiet: true
+  loop: "{{ indexing_plans }}"
+  loop_control:
+    label: "{{ item.name }}"
+
+- name: Assert each site names a Bing account its project holds
+  ansible.builtin.assert:
+    that:
+      - item.1.bing_account is not defined
+        or (item.1.bing_account is string and item.1.bing_account in item.0.bing_accounts
+            and 'bing' in item.1.engines | default(item.0.engines))
+    fail_msg: >-
+      A site of {{ item.0.name }} ({{ item.1.domain | default('<unnamed>') }}) names a bing_account that
+      the project's bing_accounts ({{ item.0.bing_accounts | join(', ') | default('none', true) }}) does not
+      hold, or is not offered to bing.
+    quiet: true
+  loop: "{{ indexing_plans | subelements('sites') }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1.domain | default('<unnamed>') }}"
+
+- name: Assert every Bing account is used by a site
+  ansible.builtin.assert:
+    that:
+      - item.1 in item.0.sites | selectattr('bing_account', 'defined') | map(attribute='bing_account') | list
+    fail_msg: >-
+      {{ item.0.name }} holds a key for the Bing account {{ item.1 }} but no site names it. Drop the
+      account from the project, or let a site use it.
+    quiet: true
+  loop: "{{ indexing_plans | subelements('bing_accounts') }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1 }}"
+
 # ⚠️ A key per declared engine, never an engine per present key: an empty lookup
 # would otherwise read as a decision not to offer, and the night would be green.
+# Bing's own key is the exception only where no site is offered to it under the
+# project's key: every Bing site in an account, nothing left that would use it.
 # The short keys also go into an EnvironmentFile=, whose own quoting rules would
 # quietly mangle anything outside this alphabet. The only task that reads keys
 # in a loop, hence no_log; the project and engine are in fail_msg.
@@ -103,6 +152,7 @@
   ansible.builtin.assert:
     that:
       - item.1 == 'google' or indexing_short_key is match('^[A-Za-z0-9._~+/=-]+\Z')
+        or (item.1 == 'bing' and indexing_short_key == '' and not indexing_default_bing_site)
       - item.1 != 'google' or indexing_projects[item.0.name].google_service_account | default('') | length > 0
     fail_msg: >-
       {{ item.0.name }} declares {{ item.1 }} but {{ indexing_key_fields[item.1] }}
@@ -110,7 +160,34 @@
     quiet: true
   vars:
     indexing_short_key: "{{ indexing_projects[item.0.name][indexing_key_fields[item.1]] | default('') | string }}"
+    # Whether some site is offered to Bing under the project's own key, not an account's.
+    indexing_default_bing_site: >-
+      {%- set found = [] -%}
+      {%- for site in item.0.sites -%}
+      {%- if 'bing' in site.engines | default(item.0.engines) and site.bing_account is not defined -%}
+      {%- set _ = found.append(site.domain) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ found | length > 0 }}
   loop: "{{ indexing_plans | subelements('engines') }}"
+  loop_control:
+    label: "{{ item.0.name }} {{ item.1 }}"
+  no_log: true
+
+- name: Assert every Bing account's key can ride in an environment file
+  ansible.builtin.assert:
+    that:
+      # The value as the inventory gave it: a null, a boolean or a number turned into text would read
+      # as 'None', 'True' or '7' and pass as a key.
+      - indexing_account_key is string
+      - indexing_account_key is match('^[A-Za-z0-9._~+/=-]+\Z')
+    fail_msg: >-
+      {{ item.0.name }}: the key of Bing account {{ item.1 }} is not a string, is empty or holds
+      characters an environment file cannot carry.
+    quiet: true
+  vars:
+    indexing_account_key: "{{ indexing_projects[item.0.name].bing_accounts[item.1] }}"
+  loop: "{{ indexing_plans | subelements('bing_accounts') }}"
   loop_control:
     label: "{{ item.0.name }} {{ item.1 }}"
   no_log: true
@@ -124,19 +201,27 @@
     that:
       - indexing_shared | length == indexing_shared | unique | length
     fail_msg: >-
-      Two projects on this machine share a Google service account, a Bing key or a
-      Yandex token. Each project needs its own: the allowance belongs to the key.
+      Two projects on this machine, or two Bing accounts, share a Google service account, a
+      Bing key or a Yandex token. Each needs its own: the allowance belongs to the key.
     quiet: true
   vars:
     indexing_shared: >-
       {%- set seen = [] -%}
       {%- for project, spec in indexing_projects.items() -%}
       {%- for engine in spec.engines | default([]) if engine in ['google', 'bing', 'yandex'] -%}
-      {%- set key = spec[indexing_key_fields[engine]] -%}
+      {%- set key = spec.get(indexing_key_fields[engine], '') -%}
       {%- if engine == 'google' -%}
       {%- set key = ((key | from_json) if key is string else key).client_email | default('') -%}
       {%- endif -%}
+      {#- Bing's own key is absent where every Bing site is in an account; the others were asserted present. -#}
+      {%- if engine != 'bing' or (key | string | trim) | length > 0 -%}
       {%- set _ = seen.append(engine ~ ':' ~ (key | string | trim)) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {#- A Bing account's key is its allowance, as the project's own is: two accounts, or an account
+          and a project, on one key would spend one allowance twice. -#}
+      {%- for account, key in (spec.bing_accounts | default({})).items() -%}
+      {%- set _ = seen.append('bing:' ~ (key | string | trim)) -%}
       {%- endfor -%}
       {%- endfor -%}
       {{ seen }}
