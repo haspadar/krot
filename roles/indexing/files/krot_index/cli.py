@@ -75,6 +75,31 @@ def offered(config, name, out):
     return chosen
 
 
+def key_variable(name, account=None):
+    """The environment variable holding an engine's key, for a Bing account the account's own.
+
+    Only Bing has accounts: its allowance and throttle belong to the key, and a site
+    in another Webmaster account is asked with that account's key.
+    """
+    if account and name == "bing":
+        return "%s_%s" % (KEYS[name], account.upper())
+    return KEYS[name]
+
+
+def accounts(name, sites):
+    """[(account, sites)] in the order the accounts first appear; account is None for the project's own key.
+
+    One group is one key and, for Bing, one engine: its allowance question, the cut-off after three
+    sites it cannot answer, and the throttle are the account's, so a site in another account must
+    not spend the first one's tries.
+    """
+    groups = {}
+    for site in sites:
+        account = (site.get("bing_account") or None) if name == "bing" else None
+        groups.setdefault(account, []).append(site)
+    return list(groups.items())
+
+
 def main(argv=None, connect=None, engines=None, out=None, err=None):
     parser = argparse.ArgumentParser(prog="krot-index")
     parser.add_argument("--config", required=True)
@@ -97,16 +122,32 @@ def main(argv=None, connect=None, engines=None, out=None, err=None):
         print("krot-index: %s is not among %s's engines — the role should not have installed this unit"
               % (name, config.get("project")), file=err)
         return FAILED
-    key = os.environ.get(KEYS[name], "")
-    if not key:
-        print("krot-index: %s is empty — the unit's env file has no key for %s" % (KEYS[name], name), file=err)
+    out = out or sys.stdout
+    sites = offered(config, name, out)
+    if not sites:
+        print("krot-index: %s declares no site for %s" % (config.get("project"), name), file=err)
         return FAILED
 
-    try:
-        engine = (engines or build)(name, key)
-    except (OSError, ValueError) as failure:
-        # Never quoting the key: a malformed one is still mostly a key.
-        print("krot-index: the %s key could not be used: %s" % (name, failure), file=err)
+    # A group whose key is missing or unusable is red but does not stop the others: one account's
+    # revoked key must not keep another account's pages from going out.
+    failed = 0
+    runnable = []
+    for account, group in accounts(name, sites):
+        variable = key_variable(name, account)
+        key = os.environ.get(variable, "")
+        if not key:
+            print("krot-index: %s is empty — the unit's env file has no key for %s%s"
+                  % (variable, name, " account %s" % account if account else ""), file=err)
+            failed += 1
+            continue
+        try:
+            runnable.append((account, group, (engines or build)(name, key)))
+        except (OSError, ValueError) as failure:
+            # Never quoting the key: a malformed one is still mostly a key.
+            print("krot-index: the %s key%s could not be used: %s"
+                  % (name, " of account %s" % account if account else "", failure), file=err)
+            failed += 1
+    if not runnable:
         return FAILED
 
     try:
@@ -119,28 +160,27 @@ def main(argv=None, connect=None, engines=None, out=None, err=None):
         print("krot-index: database %s cannot be reached: %s" % (config["database"], failure), file=err)
         return FAILED
 
-    sites = offered(config, name, out or sys.stdout)
-    if not sites:
-        print("krot-index: %s declares no site for %s" % (config.get("project"), name), file=err)
-        return FAILED
     # Before any site is walked: a typo found on the third site would leave the
     # first two offered and the rest not, and the night half-done.
-    for site in sites:
-        for field in ("cards_path", "cards_sitemap"):
-            try:
-                re.compile(site.get(field) or "")
-            except re.error as failure:
-                print("krot-index: %s of %s is not a pattern: %s" % (field, site.get("domain"), failure), file=err)
-                return FAILED
+    for _, group, _ in runnable:
+        for site in group:
+            for field in ("cards_path", "cards_sitemap"):
+                try:
+                    re.compile(site.get(field) or "")
+                except re.error as failure:
+                    print("krot-index: %s of %s is not a pattern: %s" % (field, site.get("domain"), failure),
+                          file=err)
+                    return FAILED
 
-    try:
-        failed = Walk(engine, store, Sitemap(), out=out, err=err, sleep=time.sleep).over(sites)
-    except Exception as failure:
-        # A page row that could not be written: stopping is the point. That row
-        # is what keeps the page out of tomorrow's offer, and carrying on would
-        # spend the allowance on repeats every night after.
-        print("krot-index: %s stopped: %s" % (name, failure), file=err)
-        return FAILED
+    for _, group, engine in runnable:
+        try:
+            failed += Walk(engine, store, Sitemap(), out=out, err=err, sleep=time.sleep).over(group)
+        except Exception as failure:
+            # A page row that could not be written: stopping is the point. That row
+            # is what keeps the page out of tomorrow's offer, and carrying on would
+            # spend the allowance on repeats every night after.
+            print("krot-index: %s stopped: %s" % (name, failure), file=err)
+            return FAILED
     return OK if failed == 0 else FAILED
 
 

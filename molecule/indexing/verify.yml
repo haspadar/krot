@@ -89,7 +89,8 @@
     - name: It names the declared engines' keys and no other
       ansible.builtin.assert:
         that:
-          - "'KROT_INDEX_BING_KEY=molecule-bing' in indexing_env_text"
+          - "'KROT_INDEX_BING_KEY=molecule-bing\n' in indexing_env_text"
+          - "'KROT_INDEX_BING_KEY_ACCT=molecule-bing-acct\n' in indexing_env_text"
           - "'KROT_INDEX_INDEXNOW_SECRET=' ~ indexing_made_up in indexing_env_text"
           - "'KROT_INDEX_GOOGLE_KEY_FILE=/etc/krot-index/molecule.google.json' in indexing_env_text"
           - "'client_email' not in indexing_env_text"
@@ -264,7 +265,10 @@
       ansible.builtin.command: journalctl -u krot-index-molecule-counts.service --no-pager -n 20
       register: indexing_counts_journal
       changed_when: false
-      failed_when: "'bing molecule.test:' not in indexing_counts_journal.stdout"
+      failed_when: >-
+        'bing molecule.test:' not in indexing_counts_journal.stdout
+        or 'bing account.test:' not in indexing_counts_journal.stdout
+        or 'KROT_INDEX_BING_KEY_ACCT is empty' in indexing_counts_journal.stdout
 
     # The write the unit makes once an engine answers, made the way the unit makes it: by the
     # program's own code, as its own account, over peer. A refused grant or a table owned by
