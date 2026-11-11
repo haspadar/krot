@@ -110,7 +110,7 @@ def main(argv=None, connect=None, engines=None, out=None, err=None, store=None):
             print("krot-index-counts: %s declares no site for %s" % (config.get("project"), name), file=err)
             failed += 1
             continue
-        # A Bing account is one key and one engine, as in the night: a red key of one account does not
+        # A named account is one key and one engine, as in the night: a red key of one account does not
         # stop the others from being read.
         for account, group in accounts(name, offer):
             variable = key_variable(name, account)

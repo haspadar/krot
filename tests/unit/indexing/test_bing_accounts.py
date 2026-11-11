@@ -109,7 +109,7 @@ def test_sites_are_grouped_by_the_account_they_name():
         (None, ["own.test"]), ("kogutaone", ["kept.test", "also.test"])]
 
 
-def test_only_bing_has_accounts():
+def test_google_does_not_have_accounts():
     assert [account for account, _ in cli.accounts("google", [OWN, KEPT])] == [None]
 
 

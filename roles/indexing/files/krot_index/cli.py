@@ -76,12 +76,11 @@ def offered(config, name, out):
 
 
 def key_variable(name, account=None):
-    """The environment variable holding an engine's key, for a Bing account the account's own.
+    """The environment variable holding an engine's key, for a named account the account's own.
 
-    Only Bing has accounts: its allowance and throttle belong to the key, and a site
-    in another Webmaster account is asked with that account's key.
+    Bing and Yandex sites in another Webmaster account use that account's key.
     """
-    if account and name == "bing":
+    if account and name in ("bing", "yandex"):
         return "%s_%s" % (KEYS[name], account.upper())
     return KEYS[name]
 
@@ -95,7 +94,7 @@ def accounts(name, sites):
     """
     groups = {}
     for site in sites:
-        account = (site.get("bing_account") or None) if name == "bing" else None
+        account = (site.get(name + "_account") or None) if name in ("bing", "yandex") else None
         groups.setdefault(account, []).append(site)
     return list(groups.items())
 

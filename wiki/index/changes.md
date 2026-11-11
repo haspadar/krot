@@ -2,7 +2,7 @@
 kind: index
 title: Changes
 owner: generated
-verified: 2026-11-10
+verified: 2026-11-11
 roles: []
 ---
 
@@ -11,9 +11,9 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **50**.
+В работе — **0**, заархивировано — **51**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **20** из 50: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **21** из 51: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
@@ -21,6 +21,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
+| [`yandex-accounts`](../../openspec/changes/archive/2026-11-11-yandex-accounts/proposal.md) | 2026-11-11 | — | Select the existing Yandex account for each site |
 | [`bing-key-per-account`](../../openspec/changes/archive/2026-11-10-bing-key-per-account/proposal.md) | 2026-11-10 | — | One Bing key per account |
 | [`declare-site-engines`](../../openspec/changes/archive/2026-11-10-declare-site-engines/proposal.md) | 2026-11-10 | [#117](https://github.com/haspadar/krot/pull/117) | Declare the engines a site is offered to |
 | [`fresh-host-provisioning`](../../openspec/changes/archive/2026-10-31-fresh-host-provisioning/proposal.md) | 2026-10-31 | — | Reliable fresh host provisioning |
