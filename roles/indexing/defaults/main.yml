@@ -20,13 +20,17 @@
 #   yandex_token:      Yandex Webmaster OAuth token.  secret-lint: allow — a field's description
 #   indexnow_secret:   the project's secret; each site's key is derived from it.
 #              Each key is required exactly when its engine is declared; Bing's
-#              bing_key only while some Bing site uses no account (below).
+#              bing_key and Yandex's yandex_token only while a site of the engine
+#              uses no account (below).
 #   bing_accounts:     optional mapping of a Bing Webmaster account's name ([a-z0-9]+) to
 #              that account's API key, for sites that live in another account than the
 #              one bing_key belongs to. Bing's allowance, throttle and ownership belong to
 #              the key, so such a site is asked with its own account's key and the
 #              nights and counts treat each account as a key of its own. Every account
 #              must be named by a site, and two keys may not be the same.
+#   yandex_accounts:   optional mapping of a Yandex Webmaster account's name ([a-z0-9]+) to
+#              its OAuth token. Same rules as bing_accounts: existing ownership is
+#              selected, not changed; each account has its own engine for nights and counts.
 #   schedules: optional dict engine -> OnCalendar, over indexing_schedules. The key
 #              `counts` is the daily reading of the engines' figures for each site,
 #              which a project gets when it declares bing or yandex.
@@ -44,6 +48,8 @@
 #                bing_account:  optional, a name out of the project's bing_accounts: the
 #                               Bing account the site lives in. Absent, the site is asked
 #                               with bing_key. Refused on a site not offered to bing.
+#                yandex_account: optional, a name out of yandex_accounts, used only for Yandex.
+#                               Absent, yandex_token is used. Requires yandex in engines.
 indexing_projects: {}
 
 # Projects to take off this machine: their units and key files go. ⚠️ Only by
