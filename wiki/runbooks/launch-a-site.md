@@ -2,7 +2,7 @@
 kind: runbook
 title: Запустить сайт
 owner: haspadar
-verified: 2026-10-23
+verified: 2026-11-18
 roles: [site, site_preflight, site_dns_zone, site_domain, site_tls, site_dns_records, site_database, site_analytics, site_serve_precheck, site_serve_check, site_monitor, site_search, site_check]
 ---
 

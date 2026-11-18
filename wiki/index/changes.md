@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **1**, заархивировано — **51**.
+В работе — **0**, заархивировано — **52**.
 
 Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **22** из 52: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
@@ -21,7 +21,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
-| [`2026-11-18-passport-topic-tag`](../../openspec/changes/2026-11-18-passport-topic-tag/proposal.md) | **в работе** | — | Name the site by a topic tag, not by a profile from a closed list |
+| [`passport-topic-tag`](../../openspec/changes/archive/2026-11-18-passport-topic-tag/proposal.md) | 2026-11-18 | — | Name the site by a topic tag, not by a profile from a closed list |
 | [`yandex-accounts`](../../openspec/changes/archive/2026-11-11-yandex-accounts/proposal.md) | 2026-11-11 | — | Select the existing Yandex account for each site |
 | [`bing-key-per-account`](../../openspec/changes/archive/2026-11-10-bing-key-per-account/proposal.md) | 2026-11-10 | — | One Bing key per account |
 | [`declare-site-engines`](../../openspec/changes/archive/2026-11-10-declare-site-engines/proposal.md) | 2026-11-10 | [#117](https://github.com/haspadar/krot/pull/117) | Declare the engines a site is offered to |
