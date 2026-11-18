@@ -1,5 +1,33 @@
 # Changelog
 
+## 13.0.0
+
+### Breaking changes
+
+- Removed `site_passport_profiles`, the closed list of profiles. `site_passport_profile` is now
+  checked by a format, not against the list: a lower-case letter, then lower-case letters, digits
+  and hyphens, 32 characters at most (`site_passport_tag_pattern`). Every code the list held passes,
+  and a passport written under `profile` is byte for byte what it was. A consumer that overrode
+  the list now gets the format instead: a code outside it (`Dir`, `str_esc`) stops the role, and a
+  list narrowed to restrict one's own sites restricts nothing
+
+### Added
+
+- **`site_passport_topic`: a new site's passport says `topic`.** The role writes `{"country":…,
+  "topic":"<tag>",…}` for a site that names a topic, under the same format. Exactly one of
+  `site_passport_topic` and `site_passport_profile` is required: both or neither stops the role
+  before it writes anything. Only null and the empty string mean "not named"; `false`, `0`, `[]`
+  and `{}` are values and are refused
+
+## 12.3.0
+
+### Added
+
+- **A Yandex account per site in `indexing`.** `indexing_projects.<project>.yandex_accounts` maps an
+  account name to that account's OAuth token, and a site names its account in `yandex_account`.
+  Submissions and counts are grouped by account with no fallback to another account's token; the
+  tokens go only to the private env file. Without the new fields behaviour is unchanged
+
 ## 12.2.0
 
 ### Added

@@ -202,6 +202,10 @@
       loop_control:
         loop_var: origin
 
+    # The same dated passport under the new key, then back to the old one.
+    - name: Write and read back a topic on the dated passport
+      ansible.builtin.include_tasks: tasks/topic.yml
+
     # --- what the role refuses -------------------------------------------
 
     # Each run is one thing missing or wrong. The role has to stop on every
@@ -211,7 +215,20 @@
       loop:
         - {site_passport_country: "", site_passport_profile: str-esc}
         - {site_passport_country: KZ, site_passport_profile: ""}
-        - {site_passport_country: KZ, site_passport_profile: unknown}
+        # A tag that is not a tag, under either key
+        - {site_passport_country: KZ, site_passport_profile: Unknown}
+        - {site_passport_country: KZ, site_passport_profile: str_esc}
+        - {site_passport_country: KZ, site_passport_profile: 1dir}
+        - {site_passport_country: KZ, site_passport_profile: "dir\n"}
+        - {site_passport_country: KZ, site_passport_profile: "{{ 'a' * 33 }}"}
+        - {site_passport_country: KZ, site_passport_profile: 5}
+        - {site_passport_country: KZ, site_passport_profile: [dir]}
+        - {site_passport_country: KZ, site_passport_profile: "", site_passport_topic: Travel}
+        - {site_passport_country: KZ, site_passport_profile: "", site_passport_topic: "travel\n"}
+        - {site_passport_country: KZ, site_passport_profile: "", site_passport_topic: tour ism}
+        - {site_passport_country: KZ, site_passport_profile: "", site_passport_topic: "{{ 'a' * 33 }}"}
+        # Both keys, which are two answers to one question
+        - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_topic: travel}
         - {site_passport_country: kz, site_passport_profile: str-esc}
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_secret: ""}
         # secret-lint: allow — a deliberately short value
