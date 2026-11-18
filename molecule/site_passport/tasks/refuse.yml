@@ -11,6 +11,7 @@
         site_domain: "{{ case.site_domain | default('example.test') }}"  # noqa: var-naming[no-role-prefix]
         site_passport_country: "{{ case.site_passport_country | default('KZ') }}"
         site_passport_profile: "{{ case.site_passport_profile | default('str-esc') }}"
+        site_passport_topic: "{{ case.site_passport_topic | default('') }}"
         # secret-lint: allow — the scenario's throwaway value
         site_passport_secret: "{{ case.site_passport_secret | default('molecule-throwaway-secret-0123456789') }}"
         site_passport_launched: "{{ case.site_passport_launched | default(none) }}"

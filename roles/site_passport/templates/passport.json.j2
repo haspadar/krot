@@ -1,1 +1,1 @@
-{"country":"{{ site_passport_country }}","profile":"{{ site_passport_profile }}","launched":{{ 'null' if site_passport_launched is none else '"' ~ site_passport_launched ~ '"' }},"origin":{{ site_passport_origin | to_json }}}
+{"country":"{{ site_passport_country }}","{{ site_passport_tag_key }}":"{{ site_passport_tag }}","launched":{{ 'null' if site_passport_launched is none else '"' ~ site_passport_launched ~ '"' }},"origin":{{ site_passport_origin | to_json }}}

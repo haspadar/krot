@@ -11,7 +11,7 @@
     site_passport_host: >-
       {{ site_domain | lower | regex_replace('^www\.', '') | regex_replace('\.$', '') }}
 
-# Stopped before anything is written: a site without a country or a profile
+# Stopped before anything is written: a site without a country or a tag
 # would otherwise be served with a passport that says nothing, which is the
 # very thing the passport exists to prevent. The path is the only lock, so a
 # short secret is refused as well: a guessable secret makes the lock a formality.
@@ -20,15 +20,48 @@
     that:
       - site_passport_host is match('^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)+[a-z0-9]([a-z0-9-]*[a-z0-9])?$')
       - site_passport_country | string | regex_search('^[A-Z]{2}$') is not none
-      - site_passport_profile in site_passport_profiles
       - site_passport_secret | length >= site_passport_secret_min_length
     fail_msg: >-
       The passport of '{{ site_domain }}' cannot be written: it needs a plain
       DNS name as site_domain (now '{{ site_passport_host }}'),
-      site_passport_country (two capital letters, now '{{ site_passport_country }}'),
-      site_passport_profile (one of {{ site_passport_profiles | join(', ') }};
-      now '{{ site_passport_profile }}') and a site_passport_secret of at least
+      site_passport_country (two capital letters, now '{{ site_passport_country }}')
+      and a site_passport_secret of at least
       {{ site_passport_secret_min_length }} characters. A site is not deployed without them.
+    quiet: true
+
+# One tag says what the site is, under the key of the contract it was written
+# for: `topic` for a new site, `profile` for one whose passport already says so.
+# Both would be two answers to one question, neither would be none. Only null
+# and the empty string mean "not named": false, 0, [] and {} are values, and a
+# value that is not a tag is refused, not taken for an absent one.
+- name: See which of topic and profile the site names
+  ansible.builtin.set_fact:
+    site_passport_has_topic: "{{ site_passport_topic is not none and site_passport_topic != '' }}"
+    site_passport_has_profile: "{{ site_passport_profile is not none and site_passport_profile != '' }}"
+
+- name: Stop unless exactly one of topic and profile names the site
+  ansible.builtin.assert:
+    that:
+      - site_passport_has_topic != site_passport_has_profile
+    fail_msg: >-
+      The passport of '{{ site_domain }}' cannot be written: it needs exactly one of
+      site_passport_topic (a new site) and site_passport_profile (an older site's
+      passport), and it got {{ 'both' if site_passport_has_topic else 'neither' }}.
+    quiet: true
+
+- name: Take the tag and the key it is written under
+  ansible.builtin.set_fact:
+    site_passport_tag_key: "{{ 'topic' if site_passport_has_topic else 'profile' }}"
+    site_passport_tag: "{{ site_passport_topic if site_passport_has_topic else site_passport_profile }}"
+
+- name: Stop when the tag is not a tag
+  ansible.builtin.assert:
+    that:
+      - site_passport_tag | string | regex_search(site_passport_tag_pattern) is not none
+    fail_msg: >-
+      The passport of '{{ site_domain }}' cannot be written: site_passport_{{ site_passport_tag_key }}
+      is '{{ site_passport_tag }}', and a tag starts with a lower-case letter and goes on with
+      lower-case letters, digits and hyphens, 32 characters at most.
     quiet: true
 
 - name: Stop when the domain origin is not declared correctly
