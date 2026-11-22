@@ -1,5 +1,11 @@
 # Make overdue machine updates visible
 
+## Why
+
+Unattended upgrades can silently stop while the machine and its sites remain reachable.
+
+## What Changes
+
 An opt-in machine role will collect permitted unattended-origin updates and needrestart
 service requests hourly, exposing only a fresh cached summary at a secret HTTPS path.
 A keyword monitor will use the existing UptimeRobot module and its active contacts.
