@@ -18,7 +18,7 @@
         src: /var/lib/krot-updates/status.json
       register: status
 
-    - name: Collector produced a valid result without disclosing package names
+    - name: Collector produced a valid legacy text result
       ansible.builtin.assert:
         that:
           - (status.content | b64decode | from_json).message is match('^(ok|alert updates=[0-9]+ services=[0-9]+)$')
@@ -62,6 +62,33 @@
         url: http://127.0.0.1:8080/_health/updates
         status_code: 404
 
+    - name: Query JSON through the same private nginx path
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8080{{ (snippet.content | b64decode).split('location = ')[1].split(' ')[0] }}"
+        headers:
+          Accept: application/json
+        return_content: true
+      register: facts
+
+    - name: JSON exposes the full collected facts without replacing text
+      ansible.builtin.assert:
+        that:
+          - facts.content_type == 'application/json'
+          - facts.cache_control == 'no-store'
+          - facts.vary == 'Accept'
+          - not facts.json.stale
+          - not facts.json.collection_failed
+          - facts.json.collected_at is match('^.*Z$')
+          - facts.json.running_kernel | length > 0
+          - facts.json.reboot_required is boolean
+          - facts.json.reboot_packages == (status.content | b64decode | from_json).reboot_packages
+          - facts.json.restart_services == (status.content | b64decode | from_json).restart_services
+          - facts.json.pending_updates == (status.content | b64decode | from_json).pending_updates
+
+    - name: Print the actual scenario JSON for the consumer handoff
+      ansible.builtin.debug:
+        var: facts.json
+
     - name: Seed a stale formerly healthy result
       ansible.builtin.copy:
         dest: /var/lib/krot-updates/status.json
@@ -81,21 +108,10 @@
       changed_when: false
       failed_when: history.rc == 0
 
-    - name: Read the external monitor as listed by its API
+    - name: A stale result is also explicit in JSON
       ansible.builtin.uri:
-        url: http://127.0.0.1:47189/monitors
+        url: http://127.0.0.1:9854/
         headers:
-          Authorization: Bearer ur-key
-      delegate_to: localhost
-      register: monitors
-
-    - name: The keyword monitor has the private URL and an alert contact
-      ansible.builtin.assert:
-        that:
-          - monitors.json.data | length == 1
-          - monitors.json.data[0].keywordValue == 'ok'
-          - monitors.json.data[0].keywordType == 'ALERT_NOT_EXISTS'
-          - monitors.json.data[0].assignedAlertContacts | length > 0
-          - >-
-            monitors.json.data[0].url == 'https://machine.example.test'
-            ~ (snippet.content | b64decode).split('location = ')[1].split(' ')[0]
+          Accept: application/json
+      register: stale_json
+      failed_when: not stale_json.json.stale

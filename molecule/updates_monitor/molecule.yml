@@ -16,8 +16,6 @@ platforms:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup:rw
     pre_build_image: true
-    published_ports:
-      - "127.0.0.1:47189:47189"
 
 provisioner:
   name: ansible
@@ -32,11 +30,7 @@ provisioner:
     host_vars:
       krot-updates-monitor:
         updates_monitor_enabled: true
-        updates_monitor_public_url: https://machine.example.test
         updates_monitor_secret: molecule-private-updates-path-0123456789  # secret-lint: allow — throwaway
-        updates_monitor_register: true
-        updates_monitor_api_key: ur-key  # secret-lint: allow — fake only
-        updates_monitor_api_url: http://127.0.0.1:47189
 
 scenario:
   test_sequence:

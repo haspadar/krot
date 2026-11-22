@@ -1,5 +1,18 @@
 # Changelog
 
+## 15.0.0 — 2026-11-23
+
+- Removed UptimeRobot registration from updates_monitor; remove updates_monitor_register,
+  updates_monitor_api_key, updates_monitor_api_url and updates_monitor_name from inventory;
+  existing external monitors require manual removal
+- Stopped reading updates_monitor_public_url in the role; retain it when consumer code
+  still uses it to select the HTTPS vhost
+- Added raw JSON facts via Accept: application/json on the unchanged secret path;
+  package, service and kernel names are now exposed over HTTP to holders of that URL
+  (the cached snapshot remains locally readable by machine processes)
+- Kept legacy text responses and manual reboot/restart policy; JSON reports missing or
+  failed collection with null facts, and marks stale snapshots explicitly
+
 ## 14.0.0
 
 ### Breaking changes
