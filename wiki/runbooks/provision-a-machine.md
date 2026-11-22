@@ -2,7 +2,7 @@
 kind: runbook
 title: Поднять машину с нуля
 owner: haspadar
-verified: 2026-11-11
+verified: 2026-11-22
 roles: [backup, bootstrap, common, cron, deploy_keys, docker, fail2ban, firewall, indexing, nginx, php, postgresql, umami]
 ---
 
@@ -110,6 +110,12 @@ ansible-playbook site.yml
 
 Дальше машина обслуживается одним прогоном: база уже есть, и `site.yml` идёт целиком. Пароль
 роли берётся из той же записи хранилища, что и `umami_database_url` в инвентаре потребителя.
+
+После подключения `common` и `php` фоновые обновления должны видеть и Ubuntu security,
+и PPA ondrej. Проверка — `apt-config dump` и policy кандидата PHP; выключение только PPA
+задаётся `php_unattended_upgrades: false`. Перезапуск FPM пакетами возможен, автоматическая
+перезагрузка машины остаётся выключенной. Подробности и пробел в оповещениях —
+[обновление PHP](../operations/php-updates.md).
 
 Проект под Docker Compose:
 

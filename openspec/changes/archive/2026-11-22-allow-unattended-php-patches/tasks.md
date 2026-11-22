@@ -7,4 +7,4 @@
 - [x] Inspect monitoring and report a missing visible alert channel
 - [x] Update PHP documentation and release 13.1.0 metadata
 - [x] Complete independent reviews and checks
-- [ ] Archive this change in the implementation PR
+- [x] Archive this change in the implementation PR
