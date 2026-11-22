@@ -22,8 +22,7 @@ def age_pending(pending, previous, now, grace):
 def allowed_updates():
     import apt
     import apt_pkg
-    subprocess.run(['/usr/bin/apt-get', 'update', '-o', 'APT::Update::Error-Mode=any'],
-                   check=True, timeout=300, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    refresh_indexes()
     uu = runpy.run_path('/usr/bin/unattended-upgrade', run_name='krot_unattended')
     origins = uu['get_allowed_origins']()
     if not origins:
@@ -31,6 +30,20 @@ def allowed_updates():
     cache = apt.Cache()
     return pending_packages(cache, lambda ver: uu['is_in_allowed_origin'](ver, origins),
                             apt_pkg.version_compare)
+
+
+def refresh_indexes(run=subprocess.run, pause=time.sleep):
+    # APT's lists lock has no DPkg::Lock::Timeout equivalent. Retry transient
+    # apt-daily contention, but bound the whole collection below its unit timeout.
+    for delay in (5, 15, None):
+        try:
+            run(['/usr/bin/apt-get', 'update', '-o', 'APT::Update::Error-Mode=any'],
+                check=True, timeout=120, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return
+        except (subprocess.SubprocessError, OSError):
+            if delay is None:
+                raise
+            pause(delay)
 
 
 def pending_packages(cache, allowed, compare):

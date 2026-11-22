@@ -104,3 +104,26 @@ def test_only_newer_allowed_versions_of_installed_packages_are_pending():
     ]
     assert check.pending_packages(cache, lambda v: v.origin == 'security',
                                   lambda left, right: left - right) == {'curl', 'openssl'}
+
+
+class AptUpdate:
+    def __init__(self, failures):
+        self.failures = failures
+        self.succeeded = False
+
+    def __call__(self, *args, **kwargs):
+        if self.failures:
+            self.failures -= 1
+            raise check.subprocess.CalledProcessError(100, 'apt-get')
+        self.succeeded = True
+
+
+def test_transient_apt_lock_is_retried():
+    apt = AptUpdate(1)
+    check.refresh_indexes(run=apt, pause=lambda seconds: None)
+    assert apt.succeeded
+
+
+def test_persistent_apt_failure_is_not_hidden():
+    with pytest.raises(check.subprocess.CalledProcessError):
+        check.refresh_indexes(run=AptUpdate(9), pause=lambda seconds: None)

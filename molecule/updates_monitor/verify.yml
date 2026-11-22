@@ -55,7 +55,7 @@
       ansible.builtin.assert:
         that:
           - private.content | trim == (status.content | b64decode | from_json).message
-          - private.cache_control == 'no-store, no-store' or private.cache_control == 'no-store'
+          - private.cache_control == 'no-store'
 
     - name: Guessing a public path reveals nothing
       ansible.builtin.uri:
