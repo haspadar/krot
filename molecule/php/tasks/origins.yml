@@ -10,7 +10,7 @@
       - ${distro_id}:${distro_codename}-security
       - ${distro_id}ESMApps:${distro_codename}-apps-security
       - ${distro_id}ESM:${distro_codename}-infra-security
-    ppa_origins: ['LP-PPA-ondrej-php:${distro_codename}']
+    ppa_origins: ['deb.sury.org:${distro_codename}']
     expected_origins: "{{ ubuntu_origins + (expect_ppa | ternary(ppa_origins, [])) }}"
     actual_origins: >-
       {{ php_apt_config.stdout

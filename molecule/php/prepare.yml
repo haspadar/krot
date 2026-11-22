@@ -115,7 +115,47 @@
         executable: /bin/bash
         creates: /etc/apt/sources.list.d/krot-probe.list
 
-    # Nothing else is planted. Unlike postgresql, this role has no task that
-    # removes a legacy source, so there is no prior state for one to act on —
-    # and a file put here only to be looked at afterwards would test the
-    # scenario's own setup rather than the role.
+    - name: Configure the old role-managed PPA on the dirty machine
+      ansible.builtin.deb822_repository:
+        name: ondrej-ubuntu-php
+        types: deb
+        uris: https://ppa.launchpadcontent.net/ondrej/php/ubuntu
+        suites: noble
+        components: main
+        signed_by: "{{ lookup('ansible.builtin.file', 'files/ondrej-php.asc') }}"
+
+    - name: Plant the separate legacy PPA key for cleanup verification
+      ansible.builtin.copy:
+        src: files/ondrej-php.asc
+        dest: /etc/apt/keyrings/ondrej-ubuntu-php.asc
+        mode: "0644"
+
+    - name: Plant the duplicate source left by add-apt-repository
+      ansible.builtin.copy:
+        src: /etc/apt/sources.list.d/ondrej-ubuntu-php.sources
+        dest: /etc/apt/sources.list.d/ondrej-ubuntu-php-noble.sources
+        remote_src: true
+        mode: "0644"
+
+    - name: Install real PHP from the frozen PPA before migration
+      ansible.builtin.apt:
+        name: [php8.5-cli, php8.5-fpm, php8.5-pgsql, php8.5-sqlite3]
+        state: present
+        update_cache: true
+
+    - name: Record every installed branch package before migration
+      ansible.builtin.shell: |
+        set -o pipefail
+        dpkg-query -W -f='${Package} ${Version} ${db:Status-Abbrev}\n' \
+          | awk '$3 == "ii" && $1 ~ /^(lib|libapache2-mod-)?php8\.5(-|$)/ {print $1, $2}' \
+          > /srv/krot-probe/before-php
+        test -s /srv/krot-probe/before-php
+      args:
+        executable: /bin/bash
+        creates: /srv/krot-probe/before-php
+
+    - name: Stop FPM so converge must start it even after an existing install
+      ansible.builtin.service:
+        name: php8.5-fpm
+        state: stopped
+        enabled: false

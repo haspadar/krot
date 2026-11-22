@@ -1,14 +1,14 @@
 ---
 php_version: "8.5"
 
-# State on Ansible runs only: unattended-upgrades updates the PPA independently.
+# State on Ansible runs only: unattended-upgrades updates the Sury repository independently.
 # Set `latest` to bring every installed package of php_version to its candidate
 # during this run. Packages restart FPM as they install. Anything else is refused:
 # `absent` would remove PHP from a live machine.
 php_packages_state: present
 
-# Add the ondrej origin to common's Ubuntu security origins. Requires an enabled
-# unattended-upgrades setup (normally the common role). The PPA has no separate
+# Add the Sury origin to common's Ubuntu security origins. Requires an enabled
+# unattended-upgrades setup (normally the common role). The Sury repository has no separate
 # security pocket: this permits all its updates, including supporting packages.
 # Package-triggered FPM restarts are accepted; automatic reboots stay disabled.
 # false removes this role's allowance without changing Ubuntu's policy.

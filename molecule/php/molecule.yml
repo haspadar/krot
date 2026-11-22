@@ -3,7 +3,7 @@
 # rotation, two ini files and a pool.
 #
 # php_version is pinned to what the role defaults to. Overriding it would test
-# a version nothing in the network runs, and the ondrej repository is the part
+# a version nothing in the network runs, and the Sury repository is the part
 # most likely to break — pointing it somewhere else would hide that.
 driver:
   name: docker
@@ -46,7 +46,7 @@ provisioner:
         # is made visible by a probe package prepare builds (see there). The
         # step between two real patches was measured once with the previous
         # release's packages (wiki/research/2026-10-22-php-security-patch.md)
-        # and is not repeated, because the PPA drops superseded versions.
+        # and is not repeated, because the Sury repository drops superseded versions.
         # `present` runs nothing the install task does not already run under
         # `latest`; values to refuse are run by the refusal cases in verify.
         php_packages_state: latest

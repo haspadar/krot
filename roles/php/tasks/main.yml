@@ -7,20 +7,31 @@
       latest. apt would take absent and remove PHP from the machine.
     quiet: true
 
-# Ubuntu ships an older PHP than most projects target, so the ondrej PPA is what makes
-# {{ php_version }} available at all. The signing key is vendored (fingerprint
-# B8DC7E53946656EFBCE4C1DD71DAEAAB4AD4CAB6) rather than fetched at run time, so a
-# provision never depends on a keyserver being up or on what it hands back.
-- name: Add the ondrej PHP repository
+# Key published by the author: https://www.patreon.com/posts/dpa-new-signing-25451165
+# 15058500A0235D97F5D10063B188E2B695BD4743; verified against noble InRelease.
+# Vendoring avoids depending on a keyserver during provisioning.
+- name: Add the maintained Sury PHP repository
   ansible.builtin.deb822_repository:
-    name: ondrej-ubuntu-php
+    name: debsuryorg-php
     types: deb
-    uris: https://ppa.launchpadcontent.net/ondrej/php/ubuntu
+    uris: https://packages.sury.org/php/
     suites: "{{ ansible_facts['distribution_release'] }}"
     components: main
-    signed_by: "{{ lookup('ansible.builtin.file', 'ondrej-php.asc') }}"
+    signed_by: "{{ lookup('ansible.builtin.file', 'debsuryorg-php.asc') }}"
     state: present
   register: php_repo
+
+# Remove both add-apt-repository's codename source and the role's deb822 source
+# before refreshing APT: the frozen PPA changed Label and can block apt update.
+- name: Remove the frozen PHP PPA sources and standalone legacy key
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /etc/apt/sources.list.d/ondrej-ubuntu-php-{{ ansible_facts['distribution_release'] }}.sources
+    - /etc/apt/sources.list.d/ondrej-ubuntu-php.sources
+    - /etc/apt/keyrings/ondrej-ubuntu-php.asc
+  register: php_legacy_repo
 
 - name: Configure unattended PHP updates
   ansible.builtin.import_tasks: unattended.yml
@@ -29,10 +40,11 @@
   ansible.builtin.apt:
     name: "{{ php_extensions | map('regex_replace', '^', 'php' ~ php_version ~ '-') | list }}"
     state: present
+    fail_on_autoremove: true
     update_cache: true
     # Force a refresh when the repository was just added, otherwise the new
     # packages are not in the cache yet.
-    cache_valid_time: "{{ php_repo.changed | ternary(0, 3600) }}"
+    cache_valid_time: "{{ (php_repo.changed or php_legacy_repo.changed) | ternary(0, 3600) }}"
 
 # Every installed package of the branch (php_branch_package_pattern in vars),
 # not only php_extensions: each extension
@@ -53,6 +65,7 @@
          | list }}
     state: latest
     only_upgrade: true
+    fail_on_autoremove: true
     # The patch is what this run is for, so the cache is refreshed regardless
     # of age: an hour-old cache can predate the release.
     update_cache: true
