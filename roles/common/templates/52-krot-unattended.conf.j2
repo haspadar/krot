@@ -1,5 +1,6 @@
 {{ ansible_managed | comment('c') }}
-// Sorts after 50unattended-upgrades, so this file has the last word.
+// Replace 50unattended-upgrades' Ubuntu policy. Other roles may append origins
+// in later files.
 //
 // #clear first, because a block like the one below APPENDS. Allowed-Origins is
 // an apt list and `::` adds to it — without the clear, 50unattended-upgrades'

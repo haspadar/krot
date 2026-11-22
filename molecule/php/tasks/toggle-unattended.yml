@@ -1,0 +1,18 @@
+---
+- name: Change the PHP allowance through the role
+  ansible.builtin.include_role:
+    name: php
+    tasks_from: unattended
+  vars:
+    php_unattended_upgrades: "{{ toggle_ppa }}"
+
+# Reapplying common must not erase PHP's separately sorted allowance.
+- name: Reapply the Ubuntu security policy through common
+  ansible.builtin.include_role:
+    name: common
+    tasks_from: unattended
+
+- name: Check the merged policy after changing the flag
+  ansible.builtin.include_tasks: origins.yml
+  vars:
+    expect_ppa: "{{ toggle_ppa }}"

@@ -2,7 +2,7 @@
 kind: guide
 title: Тесты ролей
 owner: haspadar
-verified: 2026-10-31
+verified: 2026-11-22
 roles: [backup, bootstrap, common, cron, docker, fail2ban, firewall, nginx, php, postgresql, umami]
 ---
 
@@ -114,6 +114,21 @@ molecule destroy -s php      # убрать за собой
 сценарии: пресет systemd `disable` в `prepare` заставляет dpkg не трогать юнит, и тогда `enabled`
 в `verify` может взяться только от роли. Подробнее про этот класс отказов —
 [отказы, которые не видно](silent-failures.md).
+
+## Проверка источника обновлений PHP
+
+Сценарий `php` применяет настоящие задачи unattended-upgrades роли `common`, затем роль
+`php`. `apt-config dump` должен содержать ровно три Ubuntu-origin и PPA; после выключения
+`php_unattended_upgrades` — только Ubuntu, после восстановления — снова четыре. Повторный
+`common` выполняется при каждом переключении: его `#clear` не должен стереть PHP drop-in.
+
+Вторая проверка вызывает matcher установленного unattended-upgrades для реального PPA-origin
+кандидата `php8.5-common`. Проверять версию целиком нельзя: уже установленный кандидат
+имеет ещё локальный origin `now`, который matcher всегда разрешает. Поэтому проба требует
+непустой отбор PPA-origin, а затем проверяет разрешение именно этого origin.
+
+Мутант с заменой origin на `LP-PPA-wrong` 22.11.2026 дал отказ `verify` на точном списке
+источников; после восстановления прошли применение, идемпотентность и все проверки PHP.
 
 ## Сравнивать точно, а не подстрокой
 

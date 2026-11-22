@@ -1,0 +1,15 @@
+---
+- name: Allow the ondrej origin for unattended upgrades
+  ansible.builtin.template:
+    src: 53-krot-php-unattended.conf.j2
+    dest: /etc/apt/apt.conf.d/53-krot-php-unattended
+    owner: root
+    group: root
+    mode: "0644"
+  when: php_unattended_upgrades | bool
+
+- name: Remove the PHP allowance when unattended PHP updates are disabled
+  ansible.builtin.file:
+    path: /etc/apt/apt.conf.d/53-krot-php-unattended
+    state: absent
+  when: not (php_unattended_upgrades | bool)
