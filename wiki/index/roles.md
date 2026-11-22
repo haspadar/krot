@@ -2,7 +2,7 @@
 kind: index
 title: Роли коллекции
 owner: generated
-verified: 2026-11-22
+verified: 2026-11-23
 roles: []
 ---
 
@@ -44,4 +44,4 @@ roles: []
 | [`site_serve_precheck`](../../roles/site_serve_precheck/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_tls`](../../roles/site_tls/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`umami`](../../roles/umami/) | 18 | [operations/analytics-counter.md](../operations/analytics-counter.md), [operations/secrets.md](../operations/secrets.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
-| [`updates_monitor`](../../roles/updates_monitor/) | 10 | [operations/update-monitoring.md](../operations/update-monitoring.md) |
+| [`updates_monitor`](../../roles/updates_monitor/) | 5 | [operations/update-monitoring.md](../operations/update-monitoring.md) |

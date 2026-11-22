@@ -33,7 +33,7 @@ Krot держит машины проектов-потребителей: про
 | [PostgreSQL](operations/postgresql.md) | мажорная версия, `pg_stat_statements`, рестарт против reload |
 | [Диск — онлайн-discard корня](operations/disk.md) | ручка `common_root_discard`, почему не разовая правка, замер |
 | [Cloudflare-замок](operations/cloudflare.md) | 80/443 только с CF, real-IP, закрытые сайты |
-| [Мониторинг обновлений](operations/update-monitoring.md) | таймер, закрытый статус и оповещения UptimeRobot |
+| [Мониторинг обновлений](operations/update-monitoring.md) | таймер, закрытый статус и JSON-факты машины |
 | [Обновление PHP](operations/php-updates.md) | автоматические патчи packages.sury.org; срочный патч, откат, чем доказывается, что дошёл |
 | [Docker на хосте проекта](operations/docker.md) | что ставит роль и где кончается её зона |
 | [Счётчик посещаемости](operations/analytics-counter.md) | почему свой, а не арендованный; сборка на машине, петля, `APP_SECRET` |

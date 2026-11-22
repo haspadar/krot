@@ -1,5 +1,15 @@
 # Changelog
 
+## 15.0.0 — 2026-11-23
+
+- Removed UptimeRobot registration from updates_monitor; remove updates_monitor_register,
+  updates_monitor_api_key, updates_monitor_api_url, updates_monitor_name and
+  updates_monitor_public_url from inventory; existing external monitors require manual removal
+- Added raw JSON facts via Accept: application/json on the unchanged secret path;
+  package, service and kernel names are now disclosed to holders of that URL
+- Kept legacy text responses and manual reboot/restart policy; JSON reports missing or
+  failed collection with null facts, and marks stale snapshots explicitly
+
 ## 14.0.0
 
 ### Breaking changes
