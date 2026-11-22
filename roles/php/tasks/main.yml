@@ -22,6 +22,9 @@
     state: present
   register: php_repo
 
+- name: Configure unattended PHP updates
+  ansible.builtin.import_tasks: unattended.yml
+
 - name: Install PHP {{ php_version }}
   ansible.builtin.apt:
     name: "{{ php_extensions | map('regex_replace', '^', 'php' ~ php_version ~ '-') | list }}"

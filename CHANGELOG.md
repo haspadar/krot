@@ -1,5 +1,20 @@
 # Changelog
 
+## 13.1.0
+
+### Added
+
+- The `php` role now allows unattended updates from the ondrej PHP PPA by default
+  through `php_unattended_upgrades: true`, alongside common's Ubuntu security origins
+- Setting `php_unattended_upgrades: false` removes the PHP allowance without changing
+  Ubuntu's policy. An enabled unattended-upgrades setup is required, normally from `common`
+
+### Changed
+
+- PPA updates no longer require an Ansible run. The PPA has no separate security pocket,
+  so all its eligible updates are permitted, including supporting packages. Package scripts
+  may restart FPM; automatic reboots remain disabled by `common`
+
 ## 13.0.0
 
 ### Breaking changes

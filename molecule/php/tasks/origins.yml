@@ -1,0 +1,28 @@
+---
+- name: Read the merged apt configuration
+  ansible.builtin.command: apt-config dump
+  register: php_apt_config
+  changed_when: false
+
+- name: Only the intended origins are allowed and reboots remain disabled
+  vars:
+    ubuntu_origins:
+      - ${distro_id}:${distro_codename}-security
+      - ${distro_id}ESMApps:${distro_codename}-apps-security
+      - ${distro_id}ESM:${distro_codename}-infra-security
+    ppa_origins: ['LP-PPA-ondrej-php:${distro_codename}']
+    expected_origins: "{{ ubuntu_origins + (expect_ppa | ternary(ppa_origins, [])) }}"
+    actual_origins: >-
+      {{ php_apt_config.stdout
+         | regex_findall('(?m)^Unattended-Upgrade::Allowed-Origins:: "([^"]+)";') }}
+  ansible.builtin.assert:
+    that:
+      - actual_origins | sort == expected_origins | sort
+      - "'Unattended-Upgrade::Automatic-Reboot \"false\";' in php_apt_config.stdout"
+    quiet: true
+
+- name: Ask unattended upgrades whether the real PHP candidate is permitted
+  ansible.builtin.script:
+    cmd: files/allowed-origin.py {{ expect_ppa | ternary('enabled', 'disabled') }}
+    executable: /usr/bin/python3
+  changed_when: false

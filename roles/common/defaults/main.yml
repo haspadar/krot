@@ -32,8 +32,8 @@ common_base_packages:
   - rsync
   - unzip
 
-# Security updates only. Unattended feature upgrades on a machine serving live
-# sites buy nothing and can restart services at random.
+# Ubuntu security updates only. Other roles may append their own repository
+# origins in later apt drop-ins; this flag manages the base Ubuntu policy.
 common_unattended_upgrades: true
 
 # How much disk the systemd journal may hold. Unset, journald helps itself to

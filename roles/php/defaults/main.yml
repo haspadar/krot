@@ -1,13 +1,18 @@
 ---
 php_version: "8.5"
 
-# `present` leaves an installed PHP exactly where it is, security patch or not:
-# unattended-upgrades only takes Ubuntu's security pockets, and the ondrej PPA
-# is not one of them. Set `latest` for the run that should bring the packages up
-# to the newest patch of php_version — the package restarts FPM as it installs,
-# which is why it is not the default. Anything else is refused: `absent` would
-# be accepted by apt and remove PHP from a live machine.
+# State on Ansible runs only: unattended-upgrades updates the PPA independently.
+# Set `latest` to bring every installed package of php_version to its candidate
+# during this run. Packages restart FPM as they install. Anything else is refused:
+# `absent` would remove PHP from a live machine.
 php_packages_state: present
+
+# Add the ondrej origin to common's Ubuntu security origins. Requires an enabled
+# unattended-upgrades setup (normally the common role). The PPA has no separate
+# security pocket: this permits all its updates, including supporting packages.
+# Package-triggered FPM restarts are accepted; automatic reboots stay disabled.
+# false removes this role's allowance without changing Ubuntu's policy.
+php_unattended_upgrades: true
 
 # A PostgreSQL-backed PHP site: ext-pgsql for the database, ext-intl for
 # locale-aware output. Override the list per project.

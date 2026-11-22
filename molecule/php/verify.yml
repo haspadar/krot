@@ -12,6 +12,17 @@
     # read the role's vars would agree with any mistake in them.
     php_branch_package_pattern: "^(lib|libapache2-mod-)?php{{ php_version | regex_escape }}(-|$)"
   tasks:
+    - name: The default allows PHP alongside Ubuntu security updates
+      ansible.builtin.include_tasks: tasks/origins.yml
+      vars:
+        expect_ppa: true
+
+    - name: Disable then restore unattended PHP updates
+      ansible.builtin.include_tasks: tasks/toggle-unattended.yml
+      loop: [false, true]
+      loop_control:
+        loop_var: toggle_ppa
+
     # This means something only because prepare stopped the package from
     # enabling the unit — see the reasoning there. Left to itself, dpkg leaves
     # FPM `enabled` and this check passes whether the role ran or not, which is
