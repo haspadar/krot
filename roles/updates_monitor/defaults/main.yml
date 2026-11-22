@@ -1,0 +1,13 @@
+---
+updates_monitor_enabled: false
+# The consumer includes the snippet in this HTTPS origin's server block first.
+updates_monitor_public_url: ""
+updates_monitor_secret: ""
+updates_monitor_api_key: ""
+updates_monitor_api_url: https://api.uptimerobot.com/v3
+# Two-phase setup: collect/serve first, then include the snippet and register.
+updates_monitor_register: true
+updates_monitor_name: "{{ inventory_hostname }} (Updates)"
+updates_monitor_port: 9854
+updates_monitor_max_age: 172800
+updates_monitor_stale_after: 10800

@@ -61,6 +61,7 @@ ansible-playbook bootstrap.yml -u root -k
 | `firewall` | ufw; with `firewall_cloudflare_only` it admits 80/443 only from Cloudflare ranges and refreshes them on a weekly timer |
 | `fail2ban` | fail2ban with the `sshd` jail |
 | `php` | PHP-FPM from the ondrej PPA; unattended PPA updates by default, slowlog, access log with timings. A packaged `www.conf` on the same socket is renamed aside, since two pools cannot share one |
+| `updates_monitor` | Opt-in hourly unattended-origin update aging and needrestart checks, private cached HTTP status and a UptimeRobot keyword monitor |
 | `postgresql` | PostgreSQL from pgdg, csvlog with a slow-query log, `pg_stat_statements`. The server only, no databases |
 | `nginx` | nginx.conf, permissions, log retention, basic auth. Leaves per-site vhosts, log_format and real-IP alone |
 | `docker` | Docker + the compose plugin, a cap on container log growth |

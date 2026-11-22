@@ -1,5 +1,16 @@
 # Changelog
 
+## 13.2.0
+
+### Added
+
+- Added the opt-in `updates_monitor` machine role: hourly unattended-origin update aging,
+  needrestart service checks, a private cached HTTP summary and a UptimeRobot keyword monitor
+- Monitoring defaults to disabled because the consumer must choose its HTTPS vhost,
+  include the secret nginx location and supply credentials before registering a monitor
+- Collection failures and results older than three hours alert; pending packages alert
+  after 48 hours of continuous observation, without exposing package or service names
+
 ## 13.1.0
 
 ### Added

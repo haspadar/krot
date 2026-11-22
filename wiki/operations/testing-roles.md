@@ -264,7 +264,7 @@ PR не гоняет всю матрицу: `scripts/molecule-select.py` по с
 | `molecule/<s>/` | `s` |
 | `playbooks/<p>.yml` | сценарии, импортирующие `haspadar.krot.<p>` |
 | `plugins/modules/<m>.py` | сценарии, роли которых зовут `haspadar.krot.<m>` (только по полному имени; вызов короткой формой через `collections:` селектор не найдёт) |
-| `tests/fakes/` | сценарии, поднимающие эти подделки (сейчас `site_launch`) |
+| `tests/fakes/` | сценарии, поднимающие эти подделки (`site_launch` и `updates_monitor`) |
 | `galaxy.yml`, `requirements.yml`, `molecule/requirements.yml`, `.github/`, `plugins/module_utils/`, `meta/`, сам селектор, любой путь, не названный в скрипте | все |
 
 Замерено 2026-10-22 на пробных PR поверх ветки с селектором (прогоны 39760954772,

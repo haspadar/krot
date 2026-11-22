@@ -1,0 +1,11 @@
+{{ ansible_managed | comment }}
+[Unit]
+Description=Check unattended updates and pending service restarts
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/local/lib/krot-updates/check.py collect --grace {{ updates_monitor_max_age }}
+TimeoutStartSec=600
+UMask=0077
