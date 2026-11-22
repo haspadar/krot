@@ -1,0 +1,101 @@
+---
+- name: Verify the running machine monitor
+  hosts: all
+  tasks:
+    - name: Timer is enabled  # noqa command-instead-of-module — inspect enablement
+      ansible.builtin.command: systemctl is-enabled krot-updates-collect.timer
+      register: timer
+      changed_when: false
+      failed_when: timer.stdout != 'enabled'
+
+    - name: Collector succeeds with real APT and needrestart
+      ansible.builtin.systemd_service:
+        name: krot-updates-collect.service
+        state: started
+
+    - name: Read collected status
+      ansible.builtin.slurp:
+        src: /var/lib/krot-updates/status.json
+      register: status
+
+    - name: Collector produced a valid result without disclosing package names
+      ansible.builtin.assert:
+        that:
+          - (status.content | b64decode | from_json).message is match('^(ok|alert updates=[0-9]+ services=[0-9]+)$')
+
+    - name: Include the private location as the consumer would
+      ansible.builtin.copy:
+        dest: /etc/nginx/sites-enabled/updates-test
+        content: |
+          server {
+              listen 8080;
+              server_name machine.example.test;
+              include /etc/nginx/snippets/krot-updates.conf;
+              location / { return 404; }
+          }
+        mode: "0644"
+
+    - name: Reload the real consumer web server
+      ansible.builtin.service:
+        name: nginx
+        state: reloaded
+
+    - name: Read private nginx path without duplicating its formula
+      ansible.builtin.slurp:
+        src: /etc/nginx/snippets/krot-updates.conf
+      register: snippet
+
+    - name: Query the private endpoint
+      ansible.builtin.uri:
+        url: "http://127.0.0.1:8080{{ (snippet.content | b64decode).split('location = ')[1].split(' ')[0] }}"
+        return_content: true
+      register: private
+
+    - name: The endpoint serves the collector result
+      ansible.builtin.assert:
+        that:
+          - private.content | trim == (status.content | b64decode | from_json).message
+          - private.cache_control == 'no-store'
+
+    - name: Guessing a public path reveals nothing
+      ansible.builtin.uri:
+        url: http://127.0.0.1:8080/_health/updates
+        status_code: 404
+
+    - name: Seed a stale formerly healthy result
+      ansible.builtin.copy:
+        dest: /var/lib/krot-updates/status.json
+        content: '{"at": 1, "message": "ok"}'
+        mode: "0644"
+
+    - name: A stopped collector cannot leave a healthy HTTP response
+      ansible.builtin.uri:
+        url: http://127.0.0.1:9854/
+        return_content: true
+      register: stale
+      failed_when: stale.content | trim != 'alert stale'
+
+    - name: Private history stays unreadable to the HTTP service
+      ansible.builtin.command: runuser -u nobody -- cat /var/lib/krot-updates/pending.json
+      register: history
+      changed_when: false
+      failed_when: history.rc == 0
+
+    - name: Read the external monitor as listed by its API
+      ansible.builtin.uri:
+        url: http://127.0.0.1:47189/monitors
+        headers:
+          Authorization: Bearer ur-key
+      delegate_to: localhost
+      register: monitors
+
+    - name: The keyword monitor has the private URL and an alert contact
+      ansible.builtin.assert:
+        that:
+          - monitors.json.data | length == 1
+          - monitors.json.data[0].keywordValue == 'ok'
+          - monitors.json.data[0].keywordType == 'ALERT_NOT_EXISTS'
+          - monitors.json.data[0].assignedAlertContacts | length > 0
+          - >-
+            monitors.json.data[0].url == 'https://machine.example.test'
+            ~ (snippet.content | b64decode).split('location = ')[1].split(' ')[0]

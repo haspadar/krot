@@ -1,0 +1,94 @@
+---
+- name: Make the collection importable for the scenario
+  hosts: localhost
+  gather_facts: false
+  tasks:
+    - name: Make the namespace directory
+      ansible.builtin.file:
+        path: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/collections/ansible_collections/haspadar"
+        state: directory
+        mode: "0755"
+
+    - name: Link this checkout in as haspadar.krot
+      ansible.builtin.file:
+        src: "{{ lookup('env', 'MOLECULE_PROJECT_DIRECTORY') }}"
+        dest: "{{ lookup('env', 'MOLECULE_EPHEMERAL_DIRECTORY') }}/collections/ansible_collections/haspadar/krot"
+        state: link
+
+- name: Prepare
+  hosts: all
+  tasks:
+    - name: Wait for systemd
+      ansible.builtin.command: systemctl is-system-running --wait  # noqa command-instead-of-module — inspect boot state
+      register: boot
+      changed_when: false
+      failed_when: boot.rc not in [0, 1]
+
+    - name: Install the consumer web server
+      ansible.builtin.apt:
+        name: [nginx, curl]
+        state: present
+        update_cache: true
+
+    - name: Declare Ubuntu unattended origins for the probe
+      ansible.builtin.copy:
+        dest: /etc/apt/apt.conf.d/52probe-origins
+        content: 'Unattended-Upgrade::Allowed-Origins {"Ubuntu:noble-security";};'
+        mode: "0644"
+
+    - name: A default-disabled role writes no machine state
+      ansible.builtin.include_role:
+        name: updates_monitor
+      vars:
+        updates_monitor_enabled: false
+
+    - name: Check disabled role left no state
+      ansible.builtin.stat:
+        path: /var/lib/krot-updates
+      register: disabled_state
+
+    - name: Disabled really meant no files
+      ansible.builtin.assert:
+        that: not disabled_state.stat.exists
+
+    - name: Create the fake API directory
+      ansible.builtin.file:
+        path: /opt/updates-fake
+        state: directory
+        mode: "0755"
+
+    - name: Copy the shared API fake and its HTTP adapter
+      ansible.builtin.copy:
+        src: "{{ item.src }}"
+        dest: "/opt/updates-fake/{{ item.dest }}"
+        mode: "0644"
+      loop:
+        - {src: "../../tests/fakes/uptimerobot.py", dest: uptimerobot.py}
+        - {src: files/robot.py, dest: robot.py}
+
+    - name: Install the fake API unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/updates-fake.service
+        content: |
+          [Unit]
+          Description=Scenario API fake
+          [Service]
+          ExecStart=/usr/bin/python3 /opt/updates-fake/robot.py
+        mode: "0644"
+
+    - name: Start the fake API
+      ansible.builtin.systemd_service:
+        name: updates-fake.service
+        state: started
+        daemon_reload: true
+
+    - name: Wait for the delegated API route
+      ansible.builtin.uri:
+        url: http://127.0.0.1:47189/alert-contacts
+        headers:
+          Authorization: Bearer ur-key
+      delegate_to: localhost
+      register: api_route
+      retries: 20
+      delay: 1
+      until: api_route.status == 200

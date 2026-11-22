@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-Всего **29**. Источник — `roles/`. Роль отвечает на вопрос «что ставится на машину»; страница вики — «как с этим работать и что кусается».
+Всего **30**. Источник — `roles/`. Роль отвечает на вопрос «что ставится на машину»; страница вики — «как с этим работать и что кусается».
 
 | Роль | Ручек в `defaults` | Объясняет страница |
 |---|---|---|
@@ -44,3 +44,4 @@ roles: []
 | [`site_serve_precheck`](../../roles/site_serve_precheck/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_tls`](../../roles/site_tls/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`umami`](../../roles/umami/) | 18 | [operations/analytics-counter.md](../operations/analytics-counter.md), [operations/secrets.md](../operations/secrets.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
+| [`updates_monitor`](../../roles/updates_monitor/) | 10 | [operations/update-monitoring.md](../operations/update-monitoring.md) |
