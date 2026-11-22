@@ -310,3 +310,7 @@ base branch policy prohibits the merge» при `mergeable=MERGEABLE`.
 Проба мониторинга использует его `pending_packages` и настоящий matcher unattended-upgrades
 на кандидате Sury, имитируя более старую установленную версию; проверяет включение и выключение
 разрешения. Она не подменяет полный сценарий `updates_monitor` для таймера и HTTP.
+
+Мутант роли с отключённой очисткой старого PPA 22.11.2026 прошёл converge и
+идемпотентность, но упал в verify на существующем `ondrej-ubuntu-php-noble.sources`.
+Обычный сценарий на той же ревизии прошёл все семь шагов.

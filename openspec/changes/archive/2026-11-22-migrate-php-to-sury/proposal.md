@@ -5,7 +5,7 @@
 The author froze the ondrej/php PPA and moved Ubuntu packages to packages.sury.org.
 Allowing the frozen origin leaves PHP without automatic patches.
 
-## Agreed outcome
+## What Changes
 
 The php role will configure the signed packages.sury.org/php repository, remove both
 legacy PPA sources and its role-managed key, and permit deb.sury.org for unattended

@@ -11,7 +11,7 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **1**, заархивировано — **54**.
+В работе — **0**, заархивировано — **55**.
 
 Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **23** из 55: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
@@ -21,8 +21,8 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
-| [`2026-11-22-migrate-php-to-sury`](../../openspec/changes/2026-11-22-migrate-php-to-sury/proposal.md) | **в работе** | — | Resume PHP patch delivery from the maintained repository |
 | [`allow-unattended-php-patches`](../../openspec/changes/archive/2026-11-22-allow-unattended-php-patches/proposal.md) | 2026-11-22 | [#121](https://github.com/haspadar/krot/pull/121) | Allow unattended PHP patches |
+| [`migrate-php-to-sury`](../../openspec/changes/archive/2026-11-22-migrate-php-to-sury/proposal.md) | 2026-11-22 | — | Resume PHP patch delivery from the maintained repository |
 | [`monitor-overdue-updates`](../../openspec/changes/archive/2026-11-22-monitor-overdue-updates/proposal.md) | 2026-11-22 | [#122](https://github.com/haspadar/krot/pull/122) | Make overdue machine updates visible |
 | [`passport-topic-tag`](../../openspec/changes/archive/2026-11-18-passport-topic-tag/proposal.md) | 2026-11-18 | — | Name the site by a topic tag, not by a profile from a closed list |
 | [`yandex-accounts`](../../openspec/changes/archive/2026-11-11-yandex-accounts/proposal.md) | 2026-11-11 | — | Select the existing Yandex account for each site |
