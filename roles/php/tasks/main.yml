@@ -23,7 +23,7 @@
 
 # Remove both add-apt-repository's codename source and the role's deb822 source
 # before refreshing APT: the frozen PPA changed Label and can block apt update.
-- name: Remove the frozen PHP PPA sources and role-managed key
+- name: Remove the frozen PHP PPA sources and standalone legacy key
   ansible.builtin.file:
     path: "{{ item }}"
     state: absent

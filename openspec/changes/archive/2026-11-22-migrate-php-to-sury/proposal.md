@@ -8,7 +8,7 @@ Allowing the frozen origin leaves PHP without automatic patches.
 ## What Changes
 
 The php role will configure the signed packages.sury.org/php repository, remove both
-legacy PPA sources and its role-managed key, and permit deb.sury.org for unattended
+legacy PPA sources and its standalone legacy key, and permit deb.sury.org for unattended
 updates with the existing flag. Installed PHP must survive without downgrades;
 php_version and php_packages_state retain their meanings. The update monitor must
 observe the new allowed origin. Production machines are read-only for this task.

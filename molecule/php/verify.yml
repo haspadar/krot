@@ -25,7 +25,7 @@
         executable: /bin/bash
       changed_when: false
 
-    - name: Both frozen PPA sources and its role-managed key are gone
+    - name: Both frozen PPA sources and its standalone legacy key are gone
       ansible.builtin.stat:
         path: "{{ item }}"
       register: legacy_source
