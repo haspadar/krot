@@ -56,8 +56,8 @@ held/kept-back, pinned и phased пакеты; blacklist не исключает
 `krot-updates-http.service` от nobody слушает только `127.0.0.1:9854` (порт меняется
 `updates_monitor_port`). Запрос читает готовый `/var/lib/krot-updates/status.json`,
 не запускает APT или needrestart. После `updates_monitor_stale_after` (три часа) результат
-отказывает, даже если прежнее значение было `ok`. Отсутствующий, повреждённый или будущий
-результат тоже не даёт `ok`. Ошибка коллектора публикуется как `alert collection-failed`.
+отказывает, даже если прежнее значение было `ok`. Текстовый ответ при отсутствующем, повреждённом или будущем
+снимке тоже не даёт `ok`. Ошибка коллектора публикуется как `alert collection-failed`.
 
 ## Защита и эксплуатация
 
@@ -67,7 +67,9 @@ held/kept-back, pinned и phased пакеты; blacklist не исключает
 nginx и HTTP-читатель отдают `Cache-Control: no-store`. Запросы на угаданный общий путь
 не попадают в location. Текстовый ответ содержит только `ok`, `alert updates=N services=N` либо
 категорию отказа. Запрос с заголовком `Accept: application/json` на тот же точный
-секретный путь возвращает `Content-Type: application/json` и `Vary: Accept`:
+секретный путь возвращает `Content-Type: application/json` и `Vary: Accept`.
+Нулевой/некорректный q и предпочтение text/plain или text/* сохраняют текстовый ответ;
+без явного application/json (в том числе с одним */*) ответ текстовый:
 
 ```bash
 curl --header 'Accept: application/json' 'https://<origin><secret-path>'
@@ -97,8 +99,8 @@ curl --header 'Accept: application/json' 'https://<origin><secret-path>'
 повреждённый или прежнего формата снимок не выдаётся за здоровый: факты `null`,
 `collection_failed=true`; без достоверного времени также `collected_at=null`, `stale=true`.
 
-Имена пакетов, сервисов и ядра с версии 15.0.0 раскрываются держателю секретного URL
-только через этот путь с JSON-заголовком. Нельзя публиковать URL или включать его в логи.
+Имена пакетов, сервисов и ядра с версии 15.0.0 передаются наружу по HTTP
+только через секретный путь с JSON-заголовком. Нельзя публиковать URL или включать его в логи.
 Локальный снимок доступен процессам машины (0644), история возраста остаётся root-only.
 Администратор HTTPS-вхоста тоже видит секретный URL, как при паспорте сайта.
 

@@ -138,6 +138,26 @@ def cached_json(path, stale_after, now):
         return payload
 
 
+def accepts_json(header):
+    # Only explicit JSON requests opt in; honour exclusions and text preference.
+    quality = {}
+    for representation in header.lower().split(','):
+        media, *parameters = representation.split(';')
+        score = 1.0
+        for parameter in parameters:
+            key, _, value = parameter.partition('=')
+            if key.strip() == 'q':
+                try:
+                    score = float(value.strip())
+                except ValueError:
+                    score = 0.0
+        score = score if 0 <= score <= 1 else 0.0
+        media = media.strip()
+        quality[media] = max(quality.get(media, 0), score)
+    text = quality.get('text/plain', quality.get('text/*', quality.get('*/*', 0)))
+    return quality.get('application/json', 0) > 0 and quality['application/json'] >= text
+
+
 class Handler(http.server.BaseHTTPRequestHandler):
     def __init__(self, *args, stale_after, **kwargs):
         self.stale_after = stale_after
@@ -147,8 +167,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path != '/':
             self.send_error(404)
             return
-        wants_json = any(part.split(';', 1)[0].strip().lower() == 'application/json'
-                         for part in self.headers.get('Accept', '').split(','))
+        wants_json = accepts_json(self.headers.get('Accept', ''))
         now = time.time()
         value = (json.dumps(cached_json(ROOT / 'status.json', self.stale_after, now)) if wants_json
                  else cached(ROOT / 'status.json', self.stale_after, now))

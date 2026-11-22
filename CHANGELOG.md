@@ -6,7 +6,8 @@
   updates_monitor_api_key, updates_monitor_api_url, updates_monitor_name and
   updates_monitor_public_url from inventory; existing external monitors require manual removal
 - Added raw JSON facts via Accept: application/json on the unchanged secret path;
-  package, service and kernel names are now disclosed to holders of that URL
+  package, service and kernel names are now exposed over HTTP to holders of that URL
+  (the cached snapshot remains locally readable by machine processes)
 - Kept legacy text responses and manual reboot/restart policy; JSON reports missing or
   failed collection with null facts, and marks stale snapshots explicitly
 

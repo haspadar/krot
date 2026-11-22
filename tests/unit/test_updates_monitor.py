@@ -58,7 +58,7 @@ class NeedrestartResult:
     stdout = 'NEEDRESTART-VER: 3.6\nNEEDRESTART-SVC: php-fpm.service\n'
 
 
-def test_collection_reports_service_debt_without_names(tmp_path, monkeypatch):
+def test_collection_keeps_legacy_text_service_count(tmp_path, monkeypatch):
     monkeypatch.setattr(check, 'ROOT', tmp_path)
     monkeypatch.setattr(check, 'allowed_updates', lambda: set())
     monkeypatch.setattr(check.subprocess, 'run', lambda *args, **kwargs: NeedrestartResult())
@@ -177,3 +177,16 @@ def test_collection_reads_reboot_markers_kernel_and_service_names(tmp_path, monk
         'reboot_required': True,
         'reboot_packages': ['libc6', 'linux-image-6.8.0-149-generic', 'linux-base'],
         'running_kernel': '6.8.0-147-generic', 'restart_services': ['php-fpm.service'], 'pending_updates': 0}
+
+
+@pytest.mark.parametrize('header,expected', [
+    ('', False), ('*/*', False), ('application/json', True),
+    ('application/json;q=0', False), ('application/json;q=garbage', False),
+    ('application/json;q=NaN', False), ('application/json;q=2', False),
+    ('text/plain, application/json;q=0.1', False),
+    ('text/*, application/json;q=0.4', False),
+    ('application/json;q=0.8, text/plain;q=0.2', True),
+    ('Application/JSON; charset=utf-8', True),
+])
+def test_only_acceptable_explicit_json_opts_into_names(header, expected):
+    assert check.accepts_json(header) is expected

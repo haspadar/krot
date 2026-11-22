@@ -14,5 +14,6 @@ keyword monitors duplicate that responsibility. Restarts and reboots remain manu
   and the same overdue update count used in text alerts
 - Failed or unavailable collection returns null facts rather than healthy empty values;
   stale successful facts retain their collection timestamp and carry stale=true
-- Document that package/service/kernel names become visible to holders of the secret URL
+- Document that package/service/kernel names become visible over HTTP to holders of the secret URL;
+  the snapshot remains locally readable by machine processes
 - Release a major version because external monitor registration is removed
