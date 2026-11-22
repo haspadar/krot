@@ -80,7 +80,7 @@ Ansible and Deployer overlap in exactly one place: Ansible creates the `km` user
 | `common` | hostname, timezone, base packages, unattended security upgrades, a cap on the systemd journal | all |
 | `firewall` | ufw; the Cloudflare lock and a weekly range refresh | all |
 | `fail2ban` | fail2ban with the `sshd` jail | all |
-| `php` | PHP-FPM from the ondrej PPA; unattended PPA updates by default, slowlog, access log with timings | PHP projects |
+| `php` | PHP-FPM from packages.sury.org; unattended Sury updates by default, slowlog, access log with timings | PHP projects |
 | `postgresql` | PostgreSQL from pgdg, csvlog, `pg_stat_statements`. The server only | PHP projects |
 | `nginx` | nginx.conf, permissions, log retention, basic auth | PHP projects |
 | `docker` | Docker + the compose plugin, a cap on container log growth | Docker projects |

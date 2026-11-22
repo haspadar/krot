@@ -2,7 +2,7 @@
 galaxy_info:
   author: haspadar
   description: >-
-    PHP-FPM from the ondrej PPA, logging in a shape a log shipper can consume.
+    PHP-FPM from the Sury repository, logging in a shape a log shipper can consume.
   license: MIT
   min_ansible_version: "2.15"
   platforms:

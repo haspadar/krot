@@ -1,5 +1,21 @@
 # Changelog
 
+## 14.0.0
+
+### Breaking changes
+
+- Changed the default PHP package source to `https://packages.sury.org/php/` because
+  the author froze the ondrej/php PPA; the PHP branch and existing variables stay unchanged
+- Removed both legacy PPA deb822 sources and the role-managed PPA key before refreshing APT
+- Allowed `deb.sury.org:${distro_codename}` through the existing unattended flag and drop-in;
+  the update monitor follows that policy automatically
+
+### Changed
+
+- Vendored the Sury signing key verified against the author's published fingerprint
+- Refused package transactions that require removals; migration does not request downgrades
+- Documented migration and rollback in the PHP update guide
+
 ## 13.2.0
 
 ### Added

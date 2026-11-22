@@ -112,7 +112,7 @@ ansible-playbook site.yml
 роли берётся из той же записи хранилища, что и `umami_database_url` в инвентаре потребителя.
 
 После подключения `common` и `php` фоновые обновления должны видеть и Ubuntu security,
-и PPA ondrej. Проверка — `apt-config dump` и policy кандидата PHP; выключение только PPA
+и packages.sury.org. Проверка — `apt-config dump` и policy кандидата PHP; выключение только PHP-origin
 задаётся `php_unattended_upgrades: false`. Перезапуск FPM пакетами возможен, автоматическая
 перезагрузка машины остаётся выключенной. Подробности и пробел в оповещениях —
 [обновление PHP](../operations/php-updates.md).

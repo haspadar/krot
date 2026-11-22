@@ -12,6 +12,35 @@
     # read the role's vars would agree with any mistake in them.
     php_branch_package_pattern: "^(lib|libapache2-mod-)?php{{ php_version | regex_escape }}(-|$)"
   tasks:
+    - name: Every previously installed PHP package survives at the same or newer version
+      ansible.builtin.shell: |
+        set -eu
+        while read -r package before; do
+          after=$(dpkg-query -W -f='${Version}' "$package")
+          status=$(dpkg-query -W -f='${db:Status-Abbrev}' "$package")
+          test "$status" = 'ii '
+          dpkg --compare-versions "$after" ge "$before"
+        done < /srv/krot-probe/before-php
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Both frozen PPA sources and its role-managed key are gone
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      register: legacy_source
+      failed_when: legacy_source.stat.exists
+      loop:
+        - /etc/apt/sources.list.d/ondrej-ubuntu-php-noble.sources
+        - /etc/apt/sources.list.d/ondrej-ubuntu-php.sources
+        - /etc/apt/keyrings/ondrej-ubuntu-php.asc
+
+    - name: Install the actual monitor implementation for its origin integration probe
+      ansible.builtin.copy:
+        src: ../../roles/updates_monitor/files/check.py
+        dest: /srv/krot-probe/updates-check.py
+        mode: "0644"
+
     - name: The default allows PHP alongside Ubuntu security updates
       ansible.builtin.include_tasks: tasks/origins.yml
       vars:

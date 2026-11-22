@@ -1,5 +1,5 @@
 ---
-- name: Allow the ondrej origin for unattended upgrades
+- name: Allow the Sury origin for unattended upgrades
   ansible.builtin.template:
     src: 53-krot-php-unattended.conf.j2
     dest: /etc/apt/apt.conf.d/53-krot-php-unattended

@@ -1,5 +1,5 @@
 {{ ansible_managed | comment('c') }}
 // Append after common's 52-krot-unattended clears the Ubuntu defaults.
-// The PPA does not publish a separate security pocket. Allow all its updates;
+// The Sury repository does not publish a separate security pocket. Allow all its updates;
 // package scripts can restart FPM. This does not enable automatic reboots.
-Unattended-Upgrade::Allowed-Origins:: "LP-PPA-ondrej-php:${distro_codename}";
+Unattended-Upgrade::Allowed-Origins:: "deb.sury.org:${distro_codename}";
