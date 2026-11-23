@@ -491,9 +491,10 @@ yamllint .        # YAML formatting
 ansible-lint      # the production profile — the strictest one
 ```
 
-CI (`.github/workflows/lint.yml`) runs both on every PR, alongside the collection build,
-`wiki-lint`, `secret-lint`, a check that `wiki/index/` still matches its sources, and
-`coverage.py`. The role tests are separate jobs — see below.
+CI (`.github/workflows/lint.yml`) runs both on every PR and every push to `main`, alongside the
+collection build, the unit tests, `wiki-lint`, `secret-lint`, a check that `wiki/index/` still
+matches its sources, and `coverage.py`. Molecule scenarios do not run on a PR: the whole matrix runs
+weekly and on demand, and a role is checked locally before it is merged — see below.
 
 ### Running the role tests
 
@@ -507,7 +508,9 @@ pip install molecule 'molecule-plugins[docker]' ansible-core
 ansible-galaxy collection install -r molecule/requirements.yml
 ansible-galaxy collection install -r requirements.yml
 
-molecule test --all          # every scenario in turn, locally; CI does not run this
+scripts/molecule-fast.py             # before merging: the scenarios the branch reaches, short sequence
+scripts/molecule-fast.py --full      # the same scenarios with the full `molecule test`
+molecule test --all          # every scenario in turn, locally; CI runs them weekly and on demand
 molecule test -s php         # one scenario
 molecule converge -s php     # run the role and leave the container up
 molecule verify -s php       # re-run just the checks against it
