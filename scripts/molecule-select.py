@@ -70,6 +70,7 @@ INERT_SCRIPTS = {
     "coverage.py",
     "forbidden_names.py",
     "module-docs.py",
+    "molecule-fast.py",
     "names-lint.py",
     "secret-lint.py",
     "wiki-after-archive.py",
