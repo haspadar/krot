@@ -95,8 +95,8 @@ python3 scripts/wiki-after-archive.py <change>  # после архивации 
 Рядом, тем же job'ом `lint`, гоняется то, что не про вики: `secret-lint.py` (те же шаблоны секретов,
 но по всему, что отслеживает git), `coverage.py` (у какой роли есть сценарий), юнит-тесты модулей
 (`tests/unit`, pytest против поддельных сервисов) и `module-docs.py` (справка каждого модуля
-разбирается `ansible-doc`). Сценарии molecule — отдельные job'ы, устройство описано в
-[operations/testing-roles.md](operations/testing-roles.md).
+разбирается `ansible-doc`). Сценарии molecule в PR не идут (раз в неделю и вручную — полной матрицей), роль перед мержем
+проверяется локально; подробности — [operations/testing-roles.md](operations/testing-roles.md).
 
 Проверка индекса смотрит `git status --porcelain`, а не `git diff --exit-code`: индекс, выпавший
 из-под контроля версий, возвращается генератором как untracked-файл, которого `git diff` не видит
