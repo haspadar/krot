@@ -113,7 +113,7 @@ jobs:
             hashFiles('.github/workflows/lint.yml') }}
 
       - name: Install linters
-        run: pip install ansible-lint yamllint pytest psycopg2-binary
+        run: pip install ansible-lint yamllint pytest pytest-xdist psycopg2-binary
 
       # Keyed on the hash of requirements.yml, so changing a dependency
       # invalidates the cache, and there are no restore-keys — an exact match or
@@ -151,8 +151,20 @@ jobs:
       # and a new job would have to be added to main's protection by hand — until
       # someone did, red unit tests would not stop a merge. ansible-lint above
       # brings ansible-core, which is all the modules need.
+      #
+      # Two runs, because most of the 1000-odd tests start ansible-playbook and
+      # are independent — measured 134s serially — while three files share one
+      # database (one schema, dropped and recreated per test), and cannot run
+      # beside each other. The parallel run leaves those files out, the second
+      # runs only them. A new file that uses the database belongs in `db` below.
       - name: Module unit tests
-        run: python3 -m pytest tests/unit -q -p no:cacheprovider
+        run: |
+          db="tests/unit/collecting/test_gsc_store.py
+          tests/unit/collecting/test_collect_store.py
+          tests/unit/indexing/test_store.py"
+          python3 -m pytest tests/unit -q -p no:cacheprovider -n auto \
+            $(for f in $db; do echo "--ignore=$f"; done)
+          python3 -m pytest $db -q -p no:cacheprovider
 
       # DOCUMENTATION is YAML inside a Python string: yamllint skips .py files and
       # pytest never parses it, so a broken one reaches main unseen — it did once.

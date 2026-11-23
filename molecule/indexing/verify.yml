@@ -397,6 +397,13 @@
 
     # A night 6.x started, still reading the old name when the upgrade comes:
     # renamed under it, psql fails and the file stays empty.
+    #
+    # Forty seconds: the role polls every thirty, so the night has to outlast
+    # the first poll (it is reached within seconds of the role starting) and the
+    # second one, which makes three attempts and a minute of waiting. It was a
+    # hundred and fifty, which bought nothing the shorter night does not — a role
+    # that did not wait would still rename under a psql that has not yet run,
+    # and the file would still stay empty.
     - name: A night of the project still running when the role comes
       ansible.builtin.command:
         argv:
@@ -408,7 +415,7 @@
           - --
           - sh
           - -c
-          - sleep 150; psql -d molecule_site -tAc 'SELECT count(*) FROM krot.index_run' > /tmp/slow-night
+          - sleep 40; psql -d molecule_site -tAc 'SELECT count(*) FROM krot.index_run' > /tmp/slow-night
       changed_when: true
 
     - name: Run the role over it
