@@ -28,26 +28,22 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
-import re
+import os
 import shutil
 import subprocess
 import sys
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 # Every molecule command begins by reinstalling this collection into
-# ~/.ansible/collections (deleting it first), and two doing it at once break each
-# other: measured with five scenarios started together, three died in the
-# first five seconds on a missing directory. Starts are therefore one at a time;
-# the lock is let go as soon as molecule reports it is past that and executing.
-STARTING = threading.Lock()
-ANSI = re.compile(r"\x1b\[[0-9;]*m")
-STARTED = re.compile(r"➜\s+\w+:\s+Executing")
+# ~/.ansible/collections, deleting it first, so two scenarios at once break each
+# other (measured: five started together, three died in the first seconds on a
+# missing directory). Each scenario therefore gets an ANSIBLE_HOME of its own and
+# nothing is shared but the container runtime.
+HOMES = Path("/tmp/krot-molecule-home")
 SELECT = ROOT / "scripts" / "molecule-select.py"
-
 
 
 def scenarios_on_disk(root: Path = ROOT) -> list[str]:
@@ -77,7 +73,8 @@ def choose(listing: str, names: list[str]) -> list[str]:
         unknown = sorted(set(names) - existing)
         if unknown:
             raise SystemExit("unknown scenario: " + ", ".join(unknown))
-        return names
+        # In order, once each: the same scenario twice would race on one container.
+        return list(dict.fromkeys(names))
     return json.loads(listing)["scenarios"]
 
 
@@ -103,7 +100,13 @@ def selector_python() -> str:
 
 def selection(base_ref: str) -> str:
     """The selector's answer for what differs from `base_ref`, committed or not."""
-    base = git("merge-base", base_ref, "HEAD").strip()
+    try:
+        base = git("merge-base", base_ref, "HEAD").strip()
+    except subprocess.CalledProcessError:
+        try:
+            base = git("merge-base", "origin/" + base_ref, "HEAD").strip()
+        except subprocess.CalledProcessError:
+            raise SystemExit(f"no `{base_ref}` to compare with: pass --base <ref>")
     changed = git("diff", "--name-only", "--no-renames", base).splitlines()
     changed += git("ls-files", "--others", "--exclude-standard").splitlines()
     if not changed:
@@ -117,39 +120,32 @@ def selection(base_ref: str) -> str:
     return out.stdout
 
 
-def run_command(command: list[str], log) -> int:
-    """One molecule command, its output into `log`, holding STARTING until the
-    command is past its collection install."""
-    STARTING.acquire()
-    held = True
-    try:
-        process = subprocess.Popen(
-            command, cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, errors="replace",
-        )
-        for line in process.stdout:
-            log.write(line)
-            if held and STARTED.search(ANSI.sub("", line)):
-                STARTING.release()
-                held = False
-        return process.wait()
-    finally:
-        if held:
-            STARTING.release()
+def run_command(command: list[str], log, scenario: str) -> int:
+    """One molecule command, its output into `log`, in the scenario's own home."""
+    home = HOMES / scenario
+    home.mkdir(parents=True, exist_ok=True)
+    return subprocess.run(
+        command, cwd=ROOT, stdout=log, stderr=subprocess.STDOUT,
+        env={**os.environ, "ANSIBLE_HOME": str(home)},
+    ).returncode
 
 
 def run_one(scenario: str, full: bool, keep: bool, idempotence: bool, logdir: Path) -> tuple[str, bool, float]:
     started = time.monotonic()
-    logdir.mkdir(parents=True, exist_ok=True)
     ok = True
-    with (logdir / f"{scenario}.log").open("w") as log:
-        for command in sequence(scenario, full, keep, idempotence):
-            log.write("$ " + " ".join(command) + "\n")
-            log.flush()
-            if run_command(command, log):
-                ok = False
-                # The container is left up on purpose: that is what the log is about.
-                break
+    try:
+        logdir.mkdir(parents=True, exist_ok=True)
+        with (logdir / f"{scenario}.log").open("w") as log:
+            for command in sequence(scenario, full, keep, idempotence):
+                log.write("$ " + " ".join(command) + "\n")
+                log.flush()
+                if run_command(command, log, scenario):
+                    ok = False
+                    # The container is left up on purpose: that is what the log is about.
+                    break
+    except OSError as error:  # molecule not installed, log directory not writable
+        print(f"{scenario}: {error}", file=sys.stderr)
+        ok = False
     return scenario, ok, time.monotonic() - started
 
 
@@ -165,6 +161,8 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--logs", default="/tmp/krot-molecule", help="where per-scenario logs go")
     args = parser.parse_args(argv)
 
+    if args.full and args.keep:
+        parser.error("--keep has no effect on --full: molecule test always destroys")
     chosen = choose("" if args.scenarios else selection(args.base), args.scenarios)
     if not chosen:
         print("nothing reaches a scenario: lint alone covers this change")

@@ -71,3 +71,11 @@ def test_without_names_the_selector_decides():
 
 def test_the_real_tree_has_scenarios_to_choose_from():
     assert "php" in fast.scenarios_on_disk()
+
+
+def test_a_scenario_named_twice_runs_once():
+    assert fast.choose("", ["php", "nginx", "php"]) == ["php", "nginx"]
+
+
+def test_each_scenario_gets_a_home_of_its_own():
+    assert fast.HOMES / "php" != fast.HOMES / "nginx"
