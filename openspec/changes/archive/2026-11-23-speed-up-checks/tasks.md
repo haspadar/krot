@@ -5,5 +5,5 @@
 - [x] Move scenarios out of pull requests and pushes to main; drop `molecule` from required checks
 - [x] Add the local pre-merge command and cover its selection with unit tests
 - [x] Document the commands, the release order and what is no longer checked per pull request
-- [ ] Run checks and independent behavior and adversarial reviews
-- [ ] Reconcile wiki and archive the reviewed change before delivery
+- [x] Run checks and independent behavior and adversarial reviews
+- [x] Reconcile wiki and archive the reviewed change before delivery
