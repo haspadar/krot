@@ -198,6 +198,26 @@
         - site_registrar == 'dynadot'
         - site_preflight_zone.exists
 
+    # Read only. With a zone it says whether the record still needs bringing to the full
+    # form; without one it still lists the account, when the inventory names it, which
+    # proves the token may read Web Analytics before the launch creates anything. That
+    # the token may also write is known only by the write.
+    - name: Cloudflare Web Analytics
+      haspadar.krot.cloudflare_web_analytics:
+        zone_id: "{{ site_preflight_zone.zone_id | default(omit) }}"
+        account_id: "{{ site_cloudflare_account_id | default(omit, true) }}"
+        api_token: "{{ site_cloudflare_token }}"
+        api_url: "{{ site_cloudflare_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_web_analytics
+      when:
+        - site_analytics.cloudflare_web_analytics | default(false)
+        - site_preflight_zone.exists or site_cloudflare_account_id | length > 0
+
     - name: Certificate pair
       ansible.builtin.stat:
         path: "{{ site_certificate_dir }}/{{ site_domain }}.{{ item }}"
@@ -325,6 +345,11 @@
       umami: >-
         {{ 'skipped' if site_preflight_umami is skipped
            else 'pending' if site_preflight_umami.changed else 'done' }}
+      # Without a zone the only thing known is that the token can read the account.
+      cloudflare web analytics: >-
+        {{ 'skipped' if site_preflight_web_analytics is skipped
+           else 'after the zone' if not site_preflight_zone.exists
+           else 'pending' if site_preflight_web_analytics.changed else 'done' }}
       monitor: >-
         {{ 'skipped' if site_preflight_monitor is skipped
            else 'pending' if site_preflight_monitor.changed else 'done' }}

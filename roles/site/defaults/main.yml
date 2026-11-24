@@ -91,8 +91,15 @@ site_database_owner: ""
 
 # --- Analytics ----------------------------------------------------------------
 
+# A consumer passes the whole dictionary, so a key it does not name is off, not
+# inherited from here: the roles read cloudflare_web_analytics with a default of
+# false, and the line below documents the switch rather than setting it for anyone.
+#   umami                     the site's own counter, on the machine
+#   cloudflare_web_analytics  Cloudflare's, inserted into the zone's HTML for every
+#                             visitor, the EU included; no code in the site's templates
 site_analytics:
   umami: true
+  cloudflare_web_analytics: false
 
 # Umami answers on the machine itself; port and base path are the umami role's
 # own variables, so the number is written in one place.

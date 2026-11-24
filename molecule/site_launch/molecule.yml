@@ -85,7 +85,7 @@ provisioner:
         site_bing_api_url: http://127.0.0.1:47180/bing
         site_uptimerobot_api_url: http://127.0.0.1:47180/uptimerobot
 
-        site_analytics: {umami: true}
+        site_analytics: {umami: true, cloudflare_web_analytics: true}
         site_monitor: {enabled: true, keyword: Anzeigen, path: /profil/}
         site_search_console_owners: [operator@krot-launch.de]
         site_search_wait_delay: 1
