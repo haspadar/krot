@@ -91,9 +91,12 @@ def listing(account):
 
 
 def record_of(api, account, zone):
-    found = [e for e in api.pages(listing(account)) if (e.get("ruleset") or {}).get("zone_tag") == zone]
+    found = [e for e in api.pages(listing(account))
+             if isinstance(e, dict) and isinstance(e.get("ruleset"), dict) and e["ruleset"].get("zone_tag") == zone]
     if len(found) > 1:
         raise Refused("%d Web Analytics records name zone %s; remove the extra ones by hand" % (len(found), zone))
+    if found and not found[0].get("site_tag"):
+        raise Refused("Cloudflare lists the Web Analytics record of zone %s without a site_tag" % zone)
     return found[0] if found else None
 
 
@@ -140,12 +143,16 @@ def main():
         required_one_of=[["zone_id", "account_id"]],
         supports_check_mode=True,
     )
-    zone = module.params["zone_id"]
+    zone = module.params["zone_id"] or None
+    given = module.params["account_id"] or None
+    if not zone and not given:
+        module.fail_json(msg="one of zone_id or account_id must not be empty")
     api = Cloudflare(module.params["api_token"], module.params["api_url"])
 
     try:
+        # Outside the hint below: a refusal to read the zone says nothing about Web Analytics.
+        account = given or account_of(api, zone)
         try:
-            account = module.params["account_id"] or account_of(api, zone)
             if not zone:
                 api.call("GET", listing(account), {"per_page": 1, "page": 1})
                 module.exit_json(changed=False, changed_fields=[])

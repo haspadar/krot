@@ -1,5 +1,13 @@
 # Changelog
 
+## 15.1.1 — 2026-11-25
+
+- Hardened `cloudflare_web_analytics` after review: the list walk no longer ends early on a
+  page count that is zero, a flag, or counted by the size asked rather than answered; records
+  without a ruleset, zone or `site_tag` are passed over or refused with a message rather than
+  crashing the module; empty `zone_id` and `account_id` are refused before any request
+- The token hint is given only for Web Analytics calls, not when the zone itself could not be read
+
 ## 15.1.0 — 2026-11-24
 
 - Added the `cloudflare_web_analytics` module: brings a zone's Web Analytics record to
