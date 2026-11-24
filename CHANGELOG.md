@@ -1,5 +1,17 @@
 # Changelog
 
+## 15.1.0 — 2026-11-24
+
+- Added the `cloudflare_web_analytics` module: brings a zone's Web Analytics record to
+  automatic installation, enabled and not lite, so the script reaches visitors from the EU too;
+  creates the record when the zone has none and reads it back
+- Added the `cloudflare_web_analytics` key to `site_analytics`, off by default. A consumer passes
+  the dictionary whole, so a key it does not name stays off and nothing changes for it; the
+  `site_launch` step runs after the zone is active, takes the account from `site_cloudflare_account_id`
+  or from the zone, and `site_preflight` reports it as `cloudflare web analytics`
+- The token needs Account Settings Read and Write; a token that cannot read is refused in
+  preflight, one that cannot write only at the write
+
 ## 15.0.0 — 2026-11-23
 
 - Removed UptimeRobot registration from updates_monitor; remove updates_monitor_register,

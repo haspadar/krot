@@ -2,7 +2,7 @@
 kind: runbook
 title: Запустить сайт
 owner: haspadar
-verified: 2026-11-18
+verified: 2026-11-24
 roles: [site, site_preflight, site_dns_zone, site_domain, site_tls, site_dns_records, site_database, site_analytics, site_serve_precheck, site_serve_check, site_monitor, site_search, site_check]
 ---
 
@@ -32,7 +32,7 @@ nginx, PostgreSQL, Umami. Роли сайта машину не настраив
 | 5 | `site_dns_records` | настройки зоны, apex и www proxied A, правила зоны — только когда зона active **и** два публичных резолвера видят NS Cloudflare |
 | 6 | `site_database` | база от роли сайта, не от postgres; шаг идёт, если задано `site_database_name`, и тогда обязателен `site_database_owner` — роль PostgreSQL, которую проект заводит до запуска |
 | 7 | *проект: fill* | наполнение |
-| 8 | `site_analytics` | Umami на машине; ID уходит фактом `site_analytics_results` |
+| 8 | `site_analytics` | Umami на машине; ID уходит фактом `site_analytics_results`. Если включён `cloudflare_web_analytics` — запись Cloudflare Web Analytics зоны приводится к полной: после шага 5, когда зона уже active |
 | 9 | *проект: results_writer* | кладёт ID туда, откуда их читает приложение |
 | 10 | `site_serve_precheck` | каталог сайта есть в `main` на машине — **до** деплоя; после деплоя проверка уже ничего не спасает |
 | 11 | *проект: deploy* | |
@@ -84,6 +84,30 @@ GA4, проверки preflight и требование GA при открыти
 проверяет HTML работающих доменов, включая новые сайты. Krot не рендерит страницы и не
 держит реестр доменов. Внешние GA-аккаунты, свойства и исторические данные не удаляются.
 Search Console, индексация, Umami и Cloudflare продолжают работать прежним способом.
+
+## Cloudflare Web Analytics
+
+Переключатель — ключ `cloudflare_web_analytics` словаря `site_analytics`, **по умолчанию выключен**.
+Словарь потребитель передаёт целиком, поэтому отсутствие ключа и есть «выключено»: сайты, которым
+счётчик Cloudflare не нужен, ничего не меняют. Включённый, он ничего не кладёт в шаблоны сайта:
+Cloudflare сам подставляет `beacon.min.js` в HTML проксируемой зоны.
+
+Зачем шаг, если Cloudflare заводит запись Web Analytics сам. Новые зоны получают её в
+облегчённом виде (`lite: true`), и скрипт тогда не попадает к посетителям из ЕС. Модуль
+`cloudflare_web_analytics` приводит запись зоны к `auto_install: true`, `enabled: true`,
+`lite: false` и читает обратно; записи нет — создаёт и приводит так же. Ищет запись по `zone_tag`,
+а не по имени зоны; больше одной записи на зону — отказ, а не выбор наугад. Список читается по
+всем страницам: на аккаунте их десятки, и запись зоны может стоять на последней.
+
+Аккаунт — `site_cloudflare_account_id`, а если он пуст — аккаунт самой зоны. Токену нужен
+Account Settings (чтение и запись; в токене это право Account Settings Write).
+В preflight шаг только спрашивает: с зоной — нужна ли правка (`cloudflare web analytics:
+pending/done` в отчёте), без зоны и с названным аккаунтом — читается ли список токеном. Что токен
+может **писать**, видно только по самой записи: чтение этого не доказывает.
+
+⚠️ Скрипт виден в HTML только на запрос с браузерными заголовками (`Accept: text/html` и
+`User-Agent` браузера), а появляется примерно через минуту после правки: проверка `curl` без них
+скажет «нет» там, где всё в порядке. Что именно запись приведена, доказывает чтение API, а не HTML.
 
 ## Что кусается
 

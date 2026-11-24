@@ -2,7 +2,7 @@
 kind: index
 title: Changes
 owner: generated
-verified: 2026-11-23
+verified: 2026-11-25
 roles: []
 ---
 
@@ -11,9 +11,9 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **57**.
+В работе — **0**, заархивировано — **58**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **24** из 57: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **25** из 58: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
@@ -21,6 +21,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
+| [`launch-web-analytics`](../../openspec/changes/archive/2026-11-24-launch-web-analytics/proposal.md) | 2026-11-24 | — | Запуск сайта включает Cloudflare Web Analytics для всех посетителей |
 | [`speed-up-checks`](../../openspec/changes/archive/2026-11-23-speed-up-checks/proposal.md) | 2026-11-23 | — | Check a role before merging it, not after pushing it |
 | [`update-facts-for-janus`](../../openspec/changes/archive/2026-11-23-update-facts-for-janus/proposal.md) | 2026-11-23 | — | Expose raw machine update facts |
 | [`allow-unattended-php-patches`](../../openspec/changes/archive/2026-11-22-allow-unattended-php-patches/proposal.md) | 2026-11-22 | [#121](https://github.com/haspadar/krot/pull/121) | Allow unattended PHP patches |

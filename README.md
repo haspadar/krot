@@ -116,7 +116,7 @@ verify, open, and writing the counters' ids — are task files passed by absolut
 `site_results_writer`); under `--check` the writing ones are not called at all.
 
 The cloud modules this needs are in the collection too (`plugins/modules`): `cloudflare_zone`,
-`cloudflare_zone_settings`, `cloudflare_record`, `cloudflare_ruleset`, `cloudflare_origin_cert`,
+`cloudflare_zone_settings`, `cloudflare_web_analytics`, `cloudflare_record`, `cloudflare_ruleset`, `cloudflare_origin_cert`,
 `dns_delegation`, `dynadot_ns`, `umami_website`, `uptimerobot_monitor`,
 `gsc_site`, `gsc_access`, `yandex_site`, `bing_site`. What bites and why the order is what it is —
 `wiki/runbooks/launch-a-site.md`.
