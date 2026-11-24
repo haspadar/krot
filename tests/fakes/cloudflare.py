@@ -4,6 +4,7 @@ Answers in Cloudflare's envelope: `success`, `errors`, `result`, with refusals
 as `success: false` — including on HTTP 200 where Cloudflare does that.
 """
 
+import copy
 import itertools
 import re
 
@@ -17,6 +18,9 @@ PAIRS = {
 # Made-up tokens: they exist only between a test and this fake, on 127.0.0.1.
 TOKEN = "cf-token"  # secret-lint: allow — fake token, never leaves the test process
 OTHER_TOKEN = "other-cf-token"  # secret-lint: allow — the fake's side of a token mismatch
+
+# The account a zone made without one is in: Cloudflare puts every zone in some account.
+DEFAULT_ACCOUNT = "acc-main"
 
 DEFAULT_SETTINGS = {"ssl": "full", "always_use_https": "off", "browser_cache_ttl": 14400,
                     "tls_client_auth": "off"}
@@ -45,13 +49,35 @@ class FakeCloudflare:
         self.forgets_records = False
         # Reads a certificate back as something other than what was issued.
         self.certificates_drift = False
+        # Web Analytics records, as Cloudflare lists them under an account.
+        self.rum = []
+        # A zone gets its record when it is added, in the lite form that leaves the
+        # script out of pages for visitors from the EU — the case this is here for.
+        self.rum_on_new_zone = True
+        self.rum_creates_lite = True
+        # Takes a Web Analytics write and keeps nothing.
+        self.forgets_rum = False
+        # A token without the right for Web Analytics: every answer is a 403.
+        self.rum_forbidden = False
+        # The largest page a list is answered with, whatever page size was asked.
+        self.rum_page_cap = 100
+        # Whether a list says how many pages it has.
+        self.rum_counts_pages = True
 
     def add_zone(self, name, account=None, status="active"):
         zone = {"id": "zone-%d" % next(self.ids), "name": name, "status": status,
                 "account": {"id": account}, "name_servers": list(PAIRS.get(account, PAIRS[None]))}
         self.zones.append(zone)
         self.settings[zone["id"]] = dict(DEFAULT_SETTINGS)
+        if self.rum_on_new_zone:
+            self.add_rum(zone, lite=self.rum_creates_lite)
         return zone
+
+    def add_rum(self, zone, lite=False, enabled=True, auto_install=True):
+        entry = {"site_tag": "tag-%d" % next(self.ids), "auto_install": auto_install,
+                 "ruleset": {"zone_tag": zone["id"], "zone_name": zone["name"], "enabled": enabled, "lite": lite}}
+        self.rum.append(entry)
+        return entry
 
     def add_record(self, zone_id, kind, name, content, proxied=None):
         record = {"id": "rec-%d" % next(self.ids), "zone_id": zone_id, "type": kind, "name": name,
@@ -82,6 +108,16 @@ class FakeCloudflare:
             if self.hides_new_zones:
                 self.zones.remove(zone)
             return ok(zone)
+
+        if method == "GET" and re.match(r"^/zones/[^/]+$", path):
+            zone = next((z for z in self.zones if z["id"] == path.split("/")[2]), None)
+            if zone is None:
+                return refused(404, "Invalid zone identifier", 7003)
+            return ok(dict(zone, account={"id": zone["account"]["id"] or DEFAULT_ACCOUNT}))
+
+        rum = self.handle_rum(request)
+        if rum is not None:
+            return rum
 
         every = re.match(r"^/zones/([^/]+)/settings$", path)
         if every and method == "GET":
@@ -141,4 +177,41 @@ class FakeCloudflare:
                 return ok(dict(self.certificates[held.group(1)], certificate=other))
             return ok(self.certificates[held.group(1)])
 
+        return refused(404, "No route for %s %s" % (method, path), 7000)
+
+    def handle_rum(self, request):
+        """Web Analytics under /accounts, or None for a path that is not one."""
+        path, method = request.path, request.method
+        found = re.match(r"^/accounts/([^/]+)/rum/site_info(/list|/[^/]+)?$", path)
+        if not found:
+            return None
+        if self.rum_forbidden:
+            return refused(403, "Authentication error", 10000)
+        tail = found.group(2)
+
+        if tail == "/list" and method == "GET":
+            size = min(int(request.query.get("per_page", 10)), self.rum_page_cap)
+            page = int(request.query.get("page", 1))
+            answer = ok(copy.deepcopy(self.rum[(page - 1) * size:page * size]))
+            if self.rum_counts_pages:
+                answer[1]["result_info"] = {"page": page, "per_page": size, "total_count": len(self.rum),
+                                            "total_pages": max(1, -(-len(self.rum) // size))}
+            return answer
+        if tail is None and method == "POST":
+            zone = next((z for z in self.zones if z["id"] == request.body.get("zone_tag")), None)
+            if zone is None:
+                return refused(400, "zone_tag is not a zone of this account", 10001)
+            if self.forgets_rum:
+                return ok({"site_tag": "tag-lost"})
+            entry = self.add_rum(zone, lite=self.rum_creates_lite, auto_install=bool(request.body.get("auto_install")))
+            return ok(entry)
+        if tail and method == "PUT":
+            entry = next((e for e in self.rum if e["site_tag"] == tail[1:]), None)
+            if entry is None:
+                return refused(404, "site not found", 10002)
+            if not self.forgets_rum:
+                body = request.body
+                entry["auto_install"] = body["auto_install"]
+                entry["ruleset"].update(enabled=body["enabled"], lite=body["lite"])
+            return ok(entry)
         return refused(404, "No route for %s %s" % (method, path), 7000)

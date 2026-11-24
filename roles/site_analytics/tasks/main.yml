@@ -14,6 +14,24 @@
   when: site_analytics.umami | default(true)
   register: site_analytics_umami
 
+# After site_dns_records, which stops until the zone is active: Cloudflare makes the
+# zone's record on its own, and one made before that is the one this step would find
+# in the lite form. The account comes from the zone unless the inventory names it.
+- name: Turn Cloudflare Web Analytics on for every visitor
+  haspadar.krot.cloudflare_web_analytics:
+    zone_id: "{{ site_dns_zone_found.zone_id }}"
+    account_id: "{{ site_cloudflare_account_id | default(omit, true) }}"
+    api_token: "{{ site_cloudflare_token }}"
+    api_url: "{{ site_cloudflare_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  when:
+    - site_analytics.cloudflare_web_analytics | default(false)
+    - site_dns_zone_found.exists | default(false)
+
 - name: Hand the ids to the project
   ansible.builtin.set_fact:
     site_analytics_results:

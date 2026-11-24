@@ -203,6 +203,7 @@ class Launch:
             "records": self.cloudflare.records,
             "rulesets": [dict(r, key=list(k)) for k, r in self.cloudflare.rulesets.items()],
             "certificates": list(self.cloudflare.certificates.values()),
+            "web_analytics": self.cloudflare.rum,
             "umami": umami.websites,
             "google": {"resources": self.google.resources, "sites": self.google.sites,
                        "others": self.google.others,

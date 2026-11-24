@@ -1,0 +1,14 @@
+---
+# krot has no openspec/specs/ and is not meant to: its unit of knowledge is a
+# role, not a capability. Without this file `openspec archive` refuses with "No
+# deltas found" and has to be talked round with --skip-specs on every call — a
+# flag that is easy to forget and whose absence looks like a broken change
+# rather than a missing argument.
+#
+# schema: spec-driven is required for the marker to be honoured, and it is the
+# only schema this version ships. Measured on openspec 1.9.0: with
+# `schema: change` validation fails with "unknown schema 'change'" and the
+# marker is ignored; with this file as written, `openspec validate` passes on a
+# change that has no specs/ at all.
+schema: spec-driven
+skip_specs: true

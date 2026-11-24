@@ -2,7 +2,8 @@
 galaxy_info:
   author: haspadar
   description: >-
-    Registers the site in Umami and hands back its id.
+    Registers the site in Umami and hands back its id; turns on Cloudflare Web Analytics
+    for the zone when asked.
   license: MIT
   min_ansible_version: "2.15"
   platforms:

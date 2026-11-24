@@ -2,8 +2,8 @@
 kind: guide
 title: Cloudflare-замок и закрытые сайты
 owner: haspadar
-verified: 2026-09-29
-roles: [firewall, nginx, bootstrap]
+verified: 2026-11-24
+roles: [firewall, nginx, bootstrap, site_analytics, site_preflight]
 ---
 
 # Cloudflare-замок и закрытые сайты
@@ -92,3 +92,17 @@ auth_basic_user_file /etc/nginx/.htpasswd;
 
 Роль, которой нужен пароль, **падает на `assert`, а не ставит пустой**: пустой `htpasswd` пустил
 бы на закрытый сайт кого угодно.
+
+## Web Analytics зоны
+
+Счётчик Cloudflare включает не шаблон сайта, а запись зоны: Cloudflare подставляет скрипт в HTML
+проксируемой зоны сам. Новая зона получает запись с `lite: true`, и посетители из ЕС скрипта не
+видят — так было на сайтах, запущенных без шага. Запуск сайта приводит запись к `auto_install`,
+`enabled`, не `lite`, если в `site_analytics` включён `cloudflare_web_analytics`
+(по умолчанию выключен). Устройство шага, права токена и что кусается —
+[Запустить сайт](../runbooks/launch-a-site.md#cloudflare-web-analytics).
+
+Для чтения и правки уже запущенных зон нужны те же API: `GET /accounts/{account}/rum/site_info/list`
+(страницы по 50; поля `site_tag`, `auto_install`, `ruleset.{zone_tag,zone_name,enabled,lite}`) и
+`PUT /accounts/{account}/rum/site_info/{site_tag}`. Роль к живым зонам сама не прикасается: шаг
+выполняется только в запуске сайта.

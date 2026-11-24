@@ -31,6 +31,30 @@ class Cloudflare:
         self.http = Http(url, headers={"Authorization": "Bearer " + token})
 
     def call(self, method, path, query=None, body=None):
+        return self._answer(method, path, query, body)["result"]
+
+    def pages(self, path, per_page=50, query=None):
+        """Every item of a paginated list, however many pages it takes.
+
+        Stops on the page Cloudflare names last (result_info.total_pages) or, when it names
+        none, on the first empty one — never on a short page, since a server that caps
+        per_page below the asked size would end the walk with items still unread.
+        """
+        items, page = [], 1
+        while True:
+            answer = self._answer("GET", path, dict(query or {}, per_page=per_page, page=page))
+            found = answer["result"]
+            if not isinstance(found, list):
+                raise Unreachable("Cloudflare answered %s without a list" % path)
+            items.extend(found)
+            last = (answer.get("result_info") or {}).get("total_pages")
+            if not found or (isinstance(last, int) and page >= last):
+                return items
+            page += 1
+            if page > 1000:
+                raise Unreachable("Cloudflare kept answering %s with more pages than any account has" % path)
+
+    def _answer(self, method, path, query=None, body=None):
         status, answer = self.http.call(method, path, query, body)
         if not isinstance(answer, dict):
             raise Unreachable("Cloudflare answered %s %s with no body (HTTP %d)" % (method, path, status))
@@ -43,7 +67,7 @@ class Cloudflare:
                           status)
         if "result" not in answer:
             raise Unreachable("Cloudflare answered %s %s without a result" % (method, path))
-        return answer["result"]
+        return answer
 
     def zones(self, domain, account_id=None):
         query = {"name": domain}

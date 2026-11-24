@@ -28,3 +28,17 @@ def calls_of(module):
 # the Search Console API off passes the check and fails the launch after its deploy.
 def test_google_is_checked_with_verify_so_search_console_answers_the_launching_key():
     assert [call.get("verify") for call in calls_of("haspadar.krot.gsc_site")] == [True]
+
+
+# The Web Analytics question must stay a question: written outside check mode it would turn the
+# record on in the report that is meant to change nothing, for a launch that was only asked about.
+def test_web_analytics_is_asked_only_inside_the_block_that_writes_nothing():
+    with open(TASKS) as handle:
+        blocks = [task for task in yaml.safe_load(handle) if "block" in task and task.get("check_mode") is True]
+    asked = [t for b in blocks for t in b["block"] if "haspadar.krot.cloudflare_web_analytics" in t]
+    assert len(asked) == 1 and calls_of("haspadar.krot.cloudflare_web_analytics") == [asked[0]["haspadar.krot.cloudflare_web_analytics"]]
+
+
+def test_web_analytics_is_asked_only_when_the_switch_is_on():
+    (task,) = [t for t in tasks(yaml.safe_load(open(TASKS))) if "haspadar.krot.cloudflare_web_analytics" in t]
+    assert "site_analytics.cloudflare_web_analytics | default(false)" in task["when"]

@@ -117,6 +117,20 @@
         that: state.umami | selectattr('domain', 'equalto', domain) | list | length == 1
         quiet: true
 
+    # The fake gives a new zone the lite record Cloudflare does: a launch that left it so
+    # would leave visitors from the EU without the script, and report nothing wrong.
+    - name: Web Analytics is on for the zone, not lite, once
+      ansible.builtin.assert:
+        that:
+          - records_of_zone | length == 1
+          - records_of_zone[0].auto_install
+          - records_of_zone[0].ruleset.enabled
+          - not records_of_zone[0].ruleset.lite
+        fail_msg: "{{ state.web_analytics | to_json }}"
+        quiet: true
+      vars:
+        records_of_zone: "{{ state.web_analytics | selectattr('ruleset.zone_tag', 'equalto', zone[0].id) | list }}"
+
     - name: Google holds the site as its owner, shared, with the sitemap
       ansible.builtin.assert:
         that:
