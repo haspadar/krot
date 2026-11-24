@@ -11,7 +11,8 @@ def args(server, zone_id=None, **extra):
 
 
 def entry_of(cloudflare, zone_id):
-    return next(e for e in cloudflare.rum if e["ruleset"]["zone_tag"] == zone_id)
+    return next(e for e in cloudflare.rum
+                if isinstance(e, dict) and (e["ruleset"] or {}).get("zone_tag") == zone_id)
 
 
 def test_lite_record_of_a_new_zone_is_brought_to_the_full_one(run, serve):
@@ -164,8 +165,8 @@ def test_a_wrong_token_is_refused_and_nothing_is_written(run, serve):
     cloudflare = FakeCloudflare()
     zone = cloudflare.add_zone("falschertoken.de")
     server = serve(cloudflare)
-    run("cloudflare_web_analytics", dict(args(server, zone["id"]), api_token="other"))
-    assert server.writes() == []
+    result = run("cloudflare_web_analytics", dict(args(server, zone["id"]), api_token="other"))
+    assert (result["failed"], server.writes()) == (True, [])
 
 
 def test_without_a_zone_the_account_is_only_read(run, serve):
@@ -190,3 +191,86 @@ def test_neither_zone_nor_account_is_refused_before_any_request(run, serve):
 def test_unknown_zone_fails_with_cloudflares_reason(run, serve):
     result = run("cloudflare_web_analytics", args(serve(FakeCloudflare()), "zone-missing"))
     assert "Invalid zone identifier" in result["msg"]
+
+
+def test_a_token_that_reads_but_may_not_write_is_told_what_it_lacks(run, serve):
+    cloudflare = FakeCloudflare()
+    cloudflare.rum_write_forbidden = True
+    zone = cloudflare.add_zone("nurlesen2.de")
+    assert "Account Settings Read and Write" in run("cloudflare_web_analytics", args(serve(cloudflare), zone["id"]))["msg"]
+
+
+def test_a_check_with_that_token_still_reads(run, serve):
+    cloudflare = FakeCloudflare()
+    cloudflare.rum_write_forbidden = True
+    zone = cloudflare.add_zone("nurpruefen.de")
+    assert run("cloudflare_web_analytics", args(serve(cloudflare), zone["id"]), check=True)["changed_fields"] == ["lite"]
+
+
+def test_the_hint_about_the_token_is_not_given_for_a_zone_it_could_not_read(run, serve):
+    result = run("cloudflare_web_analytics", dict(args(serve(FakeCloudflare()), "zone-missing"), api_token="other"))
+    assert "Account Settings" not in result["msg"]
+
+
+def test_records_without_a_ruleset_or_a_zone_are_passed_over(run, serve):
+    cloudflare = FakeCloudflare()
+    zone = cloudflare.add_zone("zwischen.de")
+    cloudflare.rum.insert(0, {"site_tag": "host-only", "auto_install": False, "ruleset": None})
+    cloudflare.rum.insert(0, {"site_tag": "no-zone", "auto_install": True, "ruleset": {"zone_tag": None, "lite": True}})
+    cloudflare.rum.insert(0, "not a record")
+    run("cloudflare_web_analytics", args(serve(cloudflare), zone["id"]))
+    assert entry_of(cloudflare, zone["id"])["ruleset"]["lite"] is False
+
+
+def test_a_record_without_a_lite_field_is_written_not_skipped(run, serve):
+    cloudflare = FakeCloudflare()
+    zone = cloudflare.add_zone("ohnelite.de")
+    del entry_of(cloudflare, zone["id"])["ruleset"]["lite"]
+    result = run("cloudflare_web_analytics", args(serve(cloudflare), zone["id"]))
+    assert (result["changed_fields"], entry_of(cloudflare, zone["id"])["ruleset"]["lite"]) == (["lite"], False)
+
+
+def test_a_record_listed_without_a_site_tag_fails_instead_of_crashing(run, serve):
+    cloudflare = FakeCloudflare()
+    zone = cloudflare.add_zone("ohnetag.de")
+    del entry_of(cloudflare, zone["id"])["site_tag"]
+    assert "without a site_tag" in run("cloudflare_web_analytics", args(serve(cloudflare), zone["id"]))["msg"]
+
+
+def test_a_page_count_that_is_a_flag_does_not_end_the_walk_early(run, serve):
+    cloudflare = FakeCloudflare()
+    for number in range(7):
+        cloudflare.add_zone("flagge%d.de" % number)
+    target = cloudflare.add_zone("flaggehinten.de")
+    cloudflare.rum_page_cap = 3
+    cloudflare.rum_page_count = True
+    run("cloudflare_web_analytics", args(serve(cloudflare), target["id"]))
+    assert entry_of(cloudflare, target["id"])["ruleset"]["lite"] is False
+
+
+def test_a_page_count_of_zero_does_not_end_the_walk_early(run, serve):
+    cloudflare = FakeCloudflare()
+    for number in range(7):
+        cloudflare.add_zone("null%d.de" % number)
+    target = cloudflare.add_zone("nullhinten.de")
+    cloudflare.rum_page_cap = 3
+    cloudflare.rum_page_count = 0
+    run("cloudflare_web_analytics", args(serve(cloudflare), target["id"]))
+    assert entry_of(cloudflare, target["id"])["ruleset"]["lite"] is False
+
+
+def test_pages_counted_by_the_size_asked_do_not_hide_the_last_ones(run, serve):
+    cloudflare = FakeCloudflare()
+    for number in range(7):
+        cloudflare.add_zone("gezaehlt%d.de" % number)
+    target = cloudflare.add_zone("gezaehlthinten.de")
+    cloudflare.rum_page_cap = 3
+    cloudflare.rum_counts_asked_pages = True
+    run("cloudflare_web_analytics", args(serve(cloudflare), target["id"]))
+    assert (entry_of(cloudflare, target["id"])["ruleset"]["lite"], len(cloudflare.rum)) == (False, 8)
+
+
+def test_empty_strings_for_both_are_refused_before_any_request(run, serve):
+    server = serve(FakeCloudflare())
+    run("cloudflare_web_analytics", args(server, "", account_id=""))
+    assert server.requests == []

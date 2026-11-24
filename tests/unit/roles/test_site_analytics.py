@@ -75,8 +75,10 @@ def test_a_second_run_changes_nothing(tmp_path, serve):
     zone = lite_zone(cloudflare)
     server = serve(cloudflare)
     given = {"site_analytics": {"umami": False, "cloudflare_web_analytics": True}}
-    run(tmp_path, server, zone, **given)
-    assert "changed=0" in run(tmp_path, server, zone, **given).stdout
+    first = run(tmp_path, server, zone, **given)
+    second = run(tmp_path, server, zone, **given)
+    # "changed=0" is also in the recap of a run that failed: the exit code and failed=0 are what say it ran.
+    assert (first.returncode, second.returncode, "changed=0" in second.stdout, "failed=0" in second.stdout) == (0, 0, True, True)
 
 
 def test_the_account_the_inventory_names_is_the_one_asked(tmp_path, serve):

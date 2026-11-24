@@ -63,6 +63,12 @@ class FakeCloudflare:
         self.rum_page_cap = 100
         # Whether a list says how many pages it has.
         self.rum_counts_pages = True
+        # What a list says its page count is instead of the true one: 0, True, a number.
+        self.rum_page_count = None
+        # A list that counts its pages by the size that was asked, not the size it answered with.
+        self.rum_counts_asked_pages = False
+        # A token that reads Web Analytics but may not write it.
+        self.rum_write_forbidden = False
 
     def add_zone(self, name, account=None, status="active"):
         zone = {"id": "zone-%d" % next(self.ids), "name": name, "status": status,
@@ -188,14 +194,19 @@ class FakeCloudflare:
         if self.rum_forbidden:
             return refused(403, "Authentication error", 10000)
         tail = found.group(2)
+        if self.rum_write_forbidden and method != "GET":
+            return refused(403, "Authentication error", 10000)
 
         if tail == "/list" and method == "GET":
-            size = min(int(request.query.get("per_page", 10)), self.rum_page_cap)
+            asked = int(request.query.get("per_page", 10))
+            size = min(asked, self.rum_page_cap)
             page = int(request.query.get("page", 1))
             answer = ok(copy.deepcopy(self.rum[(page - 1) * size:page * size]))
             if self.rum_counts_pages:
+                counted = asked if self.rum_counts_asked_pages else size
+                pages = self.rum_page_count if self.rum_page_count is not None else max(1, -(-len(self.rum) // counted))
                 answer[1]["result_info"] = {"page": page, "per_page": size, "total_count": len(self.rum),
-                                            "total_pages": max(1, -(-len(self.rum) // size))}
+                                            "total_pages": pages}
             return answer
         if tail is None and method == "POST":
             zone = next((z for z in self.zones if z["id"] == request.body.get("zone_tag")), None)
@@ -206,7 +217,7 @@ class FakeCloudflare:
             entry = self.add_rum(zone, lite=self.rum_creates_lite, auto_install=bool(request.body.get("auto_install")))
             return ok(entry)
         if tail and method == "PUT":
-            entry = next((e for e in self.rum if e["site_tag"] == tail[1:]), None)
+            entry = next((e for e in self.rum if isinstance(e, dict) and e.get("site_tag") == tail[1:]), None)
             if entry is None:
                 return refused(404, "site not found", 10002)
             if not self.forgets_rum:

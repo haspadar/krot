@@ -36,9 +36,10 @@ class Cloudflare:
     def pages(self, path, per_page=50, query=None):
         """Every item of a paginated list, however many pages it takes.
 
-        Stops on the page Cloudflare names last (result_info.total_pages) or, when it names
-        none, on the first empty one — never on a short page, since a server that caps
-        per_page below the asked size would end the walk with items still unread.
+        Stops on an empty page, or on the page Cloudflare names last once as many items are in
+        hand as it says exist. A server that caps per_page below the asked size, or counts its
+        pages by the asked size, would otherwise end the walk with items still unread — and a
+        record missed here is one the caller creates a second time.
         """
         items, page = [], 1
         while True:
@@ -47,8 +48,12 @@ class Cloudflare:
             if not isinstance(found, list):
                 raise Unreachable("Cloudflare answered %s without a list" % path)
             items.extend(found)
-            last = (answer.get("result_info") or {}).get("total_pages")
-            if not found or (isinstance(last, int) and page >= last):
+            info = answer.get("result_info") or {}
+            last, total = info.get("total_pages"), info.get("total_count")
+            # bool is an int in Python; a flag is not a page count.
+            counted = isinstance(last, int) and not isinstance(last, bool) and last >= 1
+            complete = not isinstance(total, int) or isinstance(total, bool) or len(items) >= total
+            if not found or (counted and page >= last and complete):
                 return items
             page += 1
             if page > 1000:
