@@ -49,15 +49,22 @@ def serve():
 
 
 @pytest.fixture
-def run(capsys):
+def run(capsys, monkeypatch):
     """Runs a module's main() and returns what it reported to Ansible."""
 
     def call(name, args, check=False):
-        module = importlib.import_module("ansible_collections.haspadar.krot.plugins.modules." + name)
-        args = dict(args, _ansible_check_mode=check)
-        with patch_module_args(args):
-            with pytest.raises(SystemExit):
-                module.main()
+        # Filter plugins import controller APIs during pytest collection. Real
+        # modules run in another process; emulate that context for every call so
+        # warnings remain in module JSON rather than going to Display on stderr.
+        from ansible.module_utils import _internal
+
+        with monkeypatch.context() as context:
+            context.setattr(_internal, "is_controller", False)
+            module = importlib.import_module("ansible_collections.haspadar.krot.plugins.modules." + name)
+            args = dict(args, _ansible_check_mode=check)
+            with patch_module_args(args):
+                with pytest.raises(SystemExit):
+                    module.main()
         return json.loads(capsys.readouterr().out)
 
     return call

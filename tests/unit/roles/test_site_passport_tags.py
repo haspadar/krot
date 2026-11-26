@@ -11,7 +11,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[3]
 ROLE = ROOT / "roles/site_passport"
-LAST = "Stop when the domain origin is not declared correctly"
+LAST = "Work out the passport's path"
 SECRET = "unit-test-throwaway-secret-0123456789"  # secret-lint: allow — a throwaway value
 FILE = "passport.json"
 
@@ -29,8 +29,12 @@ def run(tmp_path, **given):
     play = [{"hosts": "localhost", "gather_facts": False, "vars": variables, "tasks": tasks}]
     path = tmp_path / "play.yml"
     path.write_text(yaml.safe_dump(play))
+    collections = tmp_path / "collections" / "ansible_collections" / "haspadar"
+    collections.mkdir(parents=True, exist_ok=True)
+    if not (collections / "krot").exists():
+        (collections / "krot").symlink_to(ROOT)
     result = subprocess.run([sys.executable, "-m", "ansible.cli.playbook", "-i", "localhost,", "-c", "local", str(path)],
-                            cwd=ROOT, env={**os.environ, "ANSIBLE_NOCOLOR": "1"}, capture_output=True, text=True)
+                            cwd=ROOT, env={**os.environ, "ANSIBLE_NOCOLOR": "1", "ANSIBLE_COLLECTIONS_PATH": str(tmp_path / "collections")}, capture_output=True, text=True)
     return result, tmp_path / FILE
 
 
@@ -102,3 +106,28 @@ def test_the_closed_list_is_gone_and_the_pattern_is_the_readers_rule():
 
     assert "site_passport_profiles" not in variables
     assert variables["site_passport_tag_pattern"] == r"^[a-z][a-z0-9-]{0,31}\Z"
+
+
+GA4 = dict(account_id="301144", property_id="550407450", stream_id="993201", measurement_id="G-EXAMPLE123",
+           owner="operator@example.de", timezone="Europe/Berlin", since="2026-11-27")
+
+
+def test_ga4_assignment_reaches_the_rendered_passport(tmp_path):
+    result, body = run(tmp_path, site_passport_topic="travel", site_passport_google_analytics=GA4)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(body.read_text())["google_analytics"] == GA4
+
+
+def test_reissuing_the_assignment_keeps_since(tmp_path):
+    run(tmp_path, site_passport_topic="travel", site_passport_google_analytics=GA4)
+    result, body = run(tmp_path, site_passport_topic="travel", site_passport_google_analytics=GA4)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert json.loads(body.read_text())["google_analytics"]["since"] == "2026-11-27"
+
+
+def test_invalid_ga4_assignment_leaves_the_existing_file_untouched(tmp_path):
+    run(tmp_path, site_passport_topic="travel", site_passport_google_analytics=GA4)
+    before = (tmp_path / FILE).read_bytes()
+    result, body = run(tmp_path, site_passport_topic="travel", site_passport_google_analytics=GA4 | {"timezone": "Europe/Unknown"})
+    assert result.returncode != 0
+    assert body.read_bytes() == before

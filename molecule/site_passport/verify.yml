@@ -9,6 +9,14 @@
   vars:
     secret: molecule-throwaway-secret-0123456789  # secret-lint: allow — the scenario's throwaway value
     root: /var/lib/krot-passport
+    expected_ga4:
+      account_id: "301144"
+      property_id: "550407450"
+      stream_id: "993201"
+      measurement_id: G-EXAMPLE123
+      owner: operator@example.de
+      timezone: Europe/Berlin
+      since: "2026-11-27"
   tasks:
     - name: Compute the paths independently
       ansible.builtin.shell: |
@@ -89,8 +97,8 @@
       ansible.builtin.assert:
         that:
           - >-
-            (bodies.results[0].content | b64decode)
-            == '{"country":"KZ","profile":"str-esc","launched":null,"origin":null}' ~ "\n"
+            (bodies.results[0].content | b64decode | from_json)
+            == dict(country='KZ', profile='str-esc', launched=none, origin=none, google_analytics=expected_ga4)
           - >-
             (bodies.results[1].content | b64decode)
             == '{"country":"DE","profile":"dir","launched":"2026-01-15","origin":"drop"}' ~ "\n"
@@ -120,7 +128,7 @@
           - served.stdout | regex_search('(?im)^x-(?!frame-options)') is none
           - served.stdout | regex_search('(?im)^(cache-control|expires):') is none
           - served.stdout | regex_search('(?im)^server-timing') is none
-          - served.stdout_lines[-1] == '{"country":"KZ","profile":"str-esc","launched":null,"origin":null}'
+          - served.stdout_lines[-1] == (bodies.results[0].content | b64decode | trim)
         fail_msg: "{{ served.stdout }}"
         quiet: true
 
@@ -237,6 +245,9 @@
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: a.test/../b}
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_domain: localhost}
         - {site_passport_country: KZ, site_passport_profile: str-esc, site_passport_launched: "15.01.2026"}
+        - {site_passport_google_analytics: {}}
+        - {site_passport_google_analytics: "{{ expected_ga4 | combine({'timezone': 'Europe/Unknown'}) }}"}
+        - {site_passport_google_analytics: "{{ expected_ga4 | combine({'since': '2026-02-30'}) }}"}
         - {site_passport_origin: ""}
         - {site_passport_origin: unknown}
         - {site_passport_origin: NEW}

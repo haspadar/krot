@@ -2,7 +2,7 @@
 kind: index
 title: Changes
 owner: generated
-verified: 2026-11-25
+verified: 2026-11-26
 roles: []
 ---
 
@@ -11,9 +11,9 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **58**.
+В работе — **0**, заархивировано — **59**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **25** из 58: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **26** из 59: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
@@ -21,6 +21,7 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
+| [`restore-human-owned-ga4`](../../openspec/changes/archive/2026-11-26-restore-human-owned-ga4/proposal.md) | 2026-11-26 | — | Restore human-owned GA4 provisioning |
 | [`launch-web-analytics`](../../openspec/changes/archive/2026-11-24-launch-web-analytics/proposal.md) | 2026-11-24 | — | Запуск сайта включает Cloudflare Web Analytics для всех посетителей |
 | [`speed-up-checks`](../../openspec/changes/archive/2026-11-23-speed-up-checks/proposal.md) | 2026-11-23 | — | Check a role before merging it, not after pushing it |
 | [`update-facts-for-janus`](../../openspec/changes/archive/2026-11-23-update-facts-for-janus/proposal.md) | 2026-11-23 | — | Expose raw machine update facts |

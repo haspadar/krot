@@ -1,5 +1,15 @@
 # Changelog
 
+## 15.2.0 — 2026-11-26
+
+- Restored opt-in GA4 registration with an explicit Analytics account and human GSC owner;
+  account administrator membership is proved before creating any Analytics resources
+- Reused properties and domain-matching web streams across all pages, with explicit IDs for
+  ambiguous matches; preserved existing settings and used Europe/Berlin and EUR for new properties
+- Restored explicit reader access with Data API verification and no downgrade of existing rights
+- Returned account, owner, property, stream, measurement ID and timezone to the consumer
+- Added an optional validated GA4 assignment to the existing site passport for discovery
+
 ## 15.1.1 — 2026-11-25
 
 - Hardened `cloudflare_web_analytics` after review: the list walk no longer ends early on a

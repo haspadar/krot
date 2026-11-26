@@ -83,6 +83,11 @@
       unset (null) or a date written YYYY-MM-DD.
     quiet: true
 
+- name: Validate the optional GA4 passport assignment
+  ansible.builtin.assert:
+    that: site_passport_google_analytics | haspadar.krot.valid_google_analytics
+    quiet: true
+
 # The hash is not the secret, but it is the lock: anyone holding the path reads
 # the file. So it stays out of the task output like the secret does.
 - name: Work out the passport's path

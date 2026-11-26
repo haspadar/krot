@@ -5,6 +5,15 @@
     - name: Run the role for the main site
       ansible.builtin.include_role:
         name: site_passport
+      vars:
+        site_passport_google_analytics:
+          account_id: "301144"
+          property_id: "550407450"
+          stream_id: "993201"
+          measurement_id: G-EXAMPLE123
+          owner: operator@example.de
+          timezone: Europe/Berlin
+          since: "2026-11-27"
 
     # A second site with a launch date, a www prefix and a trailing dot, which
     # the path must not see. Run in its own role call: the facts the role sets

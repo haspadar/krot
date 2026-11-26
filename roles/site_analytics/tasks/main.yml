@@ -32,7 +32,93 @@
     - site_analytics.cloudflare_web_analytics | default(false)
     - site_dns_zone_found.exists | default(false)
 
+- name: Check the GA4 reader and explicit human owner before registration
+  ansible.builtin.assert:
+    that:
+      - site_ga4_reader_service_account | length > 0
+      - site_ga4_owner_email in site_search_console_owners
+      - "'google' in site_search_engines"
+    quiet: true
+  when: site_analytics.ga4 | default(false)
+  no_log: true
+
+- name: Plan GA4 registration with the explicit human account
+  haspadar.krot.ga4_property:
+    domain: "{{ site_domain }}"
+    account_id: "{{ site_ga4_account_id }}"
+    owner_email: "{{ site_ga4_owner_email }}"
+    property_id: "{{ site_ga4_property_id }}"
+    stream_id: "{{ site_ga4_stream_id }}"
+    service_account: "{{ site_google_service_account }}"
+    token_uri: "{{ site_google_token_uri }}"
+    api_url: "{{ site_ga4_api_url }}"
+    access_api_url: "{{ site_ga4_access_api_url }}"
+    google_api_url: "{{ site_google_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  register: site_analytics_ga4_plan
+  check_mode: true
+  when: site_analytics.ga4 | default(false)
+
+# Google verification must precede GA registration on a new site. The sitemap is
+# still submitted by site_search only after the project opens the site.
+- name: Establish the human GSC ownership before GA4 registration
+  ansible.builtin.include_role:
+    name: haspadar.krot.site_search
+    tasks_from: google-ownership
+  when:
+    - site_analytics.ga4 | default(false)
+    - not (site_analytics_ga4_plan.owner_verified | default(false))
+
+- name: Find or create the human-owned GA4 property and stream
+  haspadar.krot.ga4_property:
+    domain: "{{ site_domain }}"
+    account_id: "{{ site_ga4_account_id }}"
+    owner_email: "{{ site_ga4_owner_email }}"
+    property_id: "{{ site_ga4_property_id }}"
+    stream_id: "{{ site_ga4_stream_id }}"
+    service_account: "{{ site_google_service_account }}"
+    token_uri: "{{ site_google_token_uri }}"
+    api_url: "{{ site_ga4_api_url }}"
+    access_api_url: "{{ site_ga4_access_api_url }}"
+    google_api_url: "{{ site_google_api_url }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  register: site_analytics_ga4
+  when: site_analytics.ga4 | default(false)
+
+- name: Prove the explicit reader can read GA4
+  haspadar.krot.ga4_access:
+    property_id: "{{ site_analytics_ga4.property_id }}"
+    service_account: "{{ site_google_service_account }}"
+    reader_service_account: "{{ site_ga4_reader_service_account }}"
+    token_uri: "{{ site_google_token_uri }}"
+    api_url: "{{ site_ga4_access_api_url }}"
+    data_api_url: "{{ site_ga4_data_api_url }}"
+    wait_attempts: "{{ site_ga4_access_wait_attempts }}"
+    wait_delay: "{{ site_ga4_access_wait_delay }}"
+  delegate_to: localhost
+  run_once: true
+  become: false
+  vars:
+    ansible_python_interpreter: "{{ ansible_playbook_python }}"
+  when:
+    - site_analytics.ga4 | default(false)
+    - site_analytics_ga4.property_id | default('') | length > 0
+
 - name: Hand the ids to the project
   ansible.builtin.set_fact:
     site_analytics_results:
       umami_website_id: "{{ site_analytics_umami.website_id | default('') }}"
+      ga4_property_id: "{{ site_analytics_ga4.property_id | default('') }}"
+      ga4_stream_id: "{{ site_analytics_ga4.stream_id | default('') }}"
+      ga4_measurement_id: "{{ site_analytics_ga4.measurement_id | default('') }}"
+      ga4_account_id: "{{ site_analytics_ga4.account_id | default('') }}"
+      ga4_owner_email: "{{ site_analytics_ga4.owner_email | default('') }}"
+      ga4_timezone: "{{ site_analytics_ga4.time_zone | default('') }}"
