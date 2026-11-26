@@ -115,7 +115,7 @@ journalctl -u krot-collect-<проект>-gsc -n 50
 sudo -u krot_collect env PYTHONPATH=/usr/local/lib/krot-collect python3 -m krot_collect --config /etc/krot-collect/<проект>.json gsc --from 2026-09-01 --to 2026-09-28
 ```
 
-Для CLI нужен PYTHONPATH=/usr/local/lib/krot-collect, как у сервисного юнита. Явный диапазон
+Для CLI пакета Krot нужен PYTHONPATH=/usr/local/lib/krot-collect, как у его сервисного юнита. Явный диапазон
 не включает сегодня в PT и не выходит за retention; свежесть при таком backfill не оценивается.
 
 Приложение и extra_readers получают CONNECT/USAGE/SELECT и SELECT на будущие таблицы.
