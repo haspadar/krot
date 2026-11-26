@@ -8,4 +8,3 @@ Some consumers now run GSC from an external artifact, while others still use the
 
 - Document the external GSC runtime boundary and distinguish it from Krot's remaining crawler/ranges runtime
 - Warn against changing or deleting the Krot GSC copy and shared schema without checking consumers and coordinating compatibility
-- Add a short AGENTS.md link to the canonical wiki page
