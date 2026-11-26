@@ -131,6 +131,22 @@
       vars:
         records_of_zone: "{{ state.web_analytics | selectattr('ruleset.zone_tag', 'equalto', zone[0].id) | list }}"
 
+    - name: One human-owned GA4 property with a matching web stream and a separate reader
+      ansible.builtin.assert:
+        that:
+          - state.google.properties | length == 1
+          - state.google.properties[0].parent == 'accounts/301144'
+          - state.google.properties[0].timeZone == 'Europe/Berlin'
+          - state.google.properties[0].currencyCode == 'EUR'
+          - streams | length == 1
+          - streams[0].webStreamData.defaultUri == 'https://' + domain
+          - state.google.access[property_id][collector] == 'predefinedRoles/viewer'
+        quiet: true
+      vars:
+        property_id: "{{ state.google.properties[0].name | replace('properties/', '') }}"
+        streams: "{{ state.google.streams[property_id] }}"
+        collector: collector@krot-launch.iam.gserviceaccount.com
+
     - name: Google holds the site as its owner, shared, with the sitemap
       ansible.builtin.assert:
         that:
@@ -197,4 +213,13 @@
       ansible.builtin.assert:
         that:
           - (counters.content | b64decode | from_json).umami_website_id == (state.umami | first).id
+          - (counters.content | b64decode | from_json).ga4_account_id == '301144'
+          - (counters.content | b64decode | from_json).ga4_owner_email == 'operator@' + domain
+          - (counters.content | b64decode | from_json).ga4_timezone == 'Europe/Berlin'
+          - (counters.content | b64decode | from_json).ga4_property_id == property_id
+          - (counters.content | b64decode | from_json).ga4_stream_id == stream.name.split('/')[-1]
+          - (counters.content | b64decode | from_json).ga4_measurement_id == stream.webStreamData.measurementId
         quiet: true
+      vars:
+        property_id: "{{ state.google.properties[0].name | replace('properties/', '') }}"
+        stream: "{{ state.google.streams[property_id][0] }}"

@@ -100,10 +100,23 @@ site_database_owner: ""
 site_analytics:
   umami: true
   cloudflare_web_analytics: false
+  ga4: false
 
 # Umami answers on the machine itself; port and base path are the umami role's
 # own variables, so the number is written in one place.
 site_umami_api_url: "http://127.0.0.1:{{ umami_port | default(3000) }}{{ umami_base_path | default('') }}"
+
+# No account or human owner fallback. Consumers enable ga4 for new sites.
+site_ga4_account_id: ""
+site_ga4_owner_email: ""
+site_ga4_property_id: ""
+site_ga4_stream_id: ""
+site_ga4_reader_service_account: ""
+site_ga4_api_url: https://analyticsadmin.googleapis.com/v1beta
+site_ga4_access_api_url: https://analyticsadmin.googleapis.com/v1alpha
+site_ga4_data_api_url: https://analyticsdata.googleapis.com/v1beta
+site_ga4_access_wait_attempts: 8
+site_ga4_access_wait_delay: 4
 
 site_google_token_uri: https://oauth2.googleapis.com/token
 

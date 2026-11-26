@@ -34,7 +34,8 @@ from fakes.bing import FakeBing  # noqa: E402
 from fakes.cloudflare_rulesets import FakeCloudflareRulesets  # noqa: E402
 from fakes.doh import FakeDoh  # noqa: E402
 from fakes.dynadot import FakeDynadot  # noqa: E402
-from fakes.google import FakeGoogle, FakeTokens, service_account  # noqa: E402
+from fakes.google import FakeTokens, service_account
+from fakes.analytics import FakeAnalytics as FakeGoogle, ADMIN  # noqa: E402
 from fakes.server import FakeServer  # noqa: E402
 from fakes.umami import FakeUmami  # noqa: E402
 from fakes.uptimerobot import FakeUptimeRobot  # noqa: E402
@@ -93,6 +94,7 @@ class Launch:
         self.dynadot.domains[DOMAIN] = list(PARKING)
         self.cloudflare = FakeCloudflareRulesets()
         self.google = FakeGoogle()
+        self.google.account_bindings["301144"] = [{"user": "operator@krot-launch.de", "roles": [ADMIN]}]
         self.tokens = Tokens(public_url + "/google-token/token")
         self.routes = {
             "cloudflare": self.cloudflare,
@@ -150,7 +152,8 @@ class Launch:
         signs_in = head == "google-token" or request.path.endswith("/auth/login")
         # A POST that reads: Site Verification's getToken only hands out the
         # TXT value and records nothing on Google's side.
-        asks_token = head == "google" and request.path == "/siteVerification/v1/token"
+        asks_token = head == "google" and (request.path == "/siteVerification/v1/token"
+                                          or request.path.endswith(":runReport"))
         # And a GET that writes: Dynadot takes every command as a query.
         sets_ns = head == "dynadot" and request.query.get("command") == "set_ns"
         if (request.method not in ("GET", "HEAD") and not signs_in and not asks_token) or sets_ns:
@@ -207,7 +210,8 @@ class Launch:
             "umami": umami.websites,
             "google": {"resources": self.google.resources, "sites": self.google.sites,
                        "others": self.google.others,
-                       "sitemaps": self.google.sitemaps},
+                       "sitemaps": self.google.sitemaps, "properties": self.google.properties,
+                       "streams": self.google.streams, "access": self.google.access},
             "yandex": getattr(yandex, "hosts", None),
             "bing": {"sites": bing.sites, "feeds": bing.feeds},
             "monitors": self.routes["uptimerobot"].monitors,

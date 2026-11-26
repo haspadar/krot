@@ -2,7 +2,7 @@
 kind: index
 title: Роли коллекции
 owner: generated
-verified: 2026-11-24
+verified: 2026-11-26
 roles: []
 ---
 
@@ -29,8 +29,8 @@ roles: []
 | [`nginx`](../../roles/nginx/) | 21 | [operations/cloudflare.md](../operations/cloudflare.md), [operations/logging.md](../operations/logging.md), [operations/secrets.md](../operations/secrets.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`php`](../../roles/php/) | 22 | [operations/logging.md](../operations/logging.md), [operations/php-updates.md](../operations/php-updates.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [research/2026-10-22-php-security-patch.md](../research/2026-10-22-php-security-patch.md), [research/fpm-pools-cannot-share-a-socket.md](../research/fpm-pools-cannot-share-a-socket.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
 | [`postgresql`](../../roles/postgresql/) | 17 | [operations/logging.md](../operations/logging.md), [operations/postgresql.md](../operations/postgresql.md), [operations/silent-failures.md](../operations/silent-failures.md), [operations/testing-roles.md](../operations/testing-roles.md), [runbooks/provision-a-machine.md](../runbooks/provision-a-machine.md) |
-| [`site`](../../roles/site/) | 58 | [operations/site-passport.md](../operations/site-passport.md), [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
-| [`site_analytics`](../../roles/site_analytics/) | 0 | [operations/cloudflare.md](../operations/cloudflare.md), [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
+| [`site`](../../roles/site/) | 68 | [operations/google-analytics.md](../operations/google-analytics.md), [operations/site-passport.md](../operations/site-passport.md), [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
+| [`site_analytics`](../../roles/site_analytics/) | 0 | [operations/cloudflare.md](../operations/cloudflare.md), [operations/google-analytics.md](../operations/google-analytics.md), [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_check`](../../roles/site_check/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_database`](../../roles/site_database/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_dns_records`](../../roles/site_dns_records/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
@@ -38,8 +38,8 @@ roles: []
 | [`site_domain`](../../roles/site_domain/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_monitor`](../../roles/site_monitor/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_passport`](../../roles/site_passport/) | 0 | [operations/site-passport.md](../operations/site-passport.md) |
-| [`site_preflight`](../../roles/site_preflight/) | 0 | [operations/cloudflare.md](../operations/cloudflare.md), [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
-| [`site_search`](../../roles/site_search/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
+| [`site_preflight`](../../roles/site_preflight/) | 0 | [operations/cloudflare.md](../operations/cloudflare.md), [operations/google-analytics.md](../operations/google-analytics.md), [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
+| [`site_search`](../../roles/site_search/) | 0 | [operations/google-analytics.md](../operations/google-analytics.md), [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_serve_check`](../../roles/site_serve_check/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_serve_precheck`](../../roles/site_serve_precheck/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |
 | [`site_tls`](../../roles/site_tls/) | 0 | [runbooks/launch-a-site.md](../runbooks/launch-a-site.md) |

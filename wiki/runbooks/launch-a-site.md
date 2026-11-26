@@ -32,7 +32,7 @@ nginx, PostgreSQL, Umami. Роли сайта машину не настраив
 | 5 | `site_dns_records` | настройки зоны, apex и www proxied A, правила зоны — только когда зона active **и** два публичных резолвера видят NS Cloudflare |
 | 6 | `site_database` | база от роли сайта, не от postgres; шаг идёт, если задано `site_database_name`, и тогда обязателен `site_database_owner` — роль PostgreSQL, которую проект заводит до запуска |
 | 7 | *проект: fill* | наполнение |
-| 8 | `site_analytics` | Umami на машине; ID уходит фактом `site_analytics_results`. Если включён `cloudflare_web_analytics` — запись Cloudflare Web Analytics зоны приводится к полной: после шага 5, когда зона уже active |
+| 8 | `site_analytics` | Umami на машине и GA4 в явном человеческом аккаунте; ID уходят фактом `site_analytics_results`. Если включён `cloudflare_web_analytics` — запись Cloudflare Web Analytics зоны приводится к полной: после шага 5, когда зона уже active |
 | 9 | *проект: results_writer* | кладёт ID туда, откуда их читает приложение |
 | 10 | `site_serve_precheck` | каталог сайта есть в `main` на машине — **до** деплоя; после деплоя проверка уже ничего не спасает |
 | 11 | *проект: deploy* | |
@@ -74,16 +74,11 @@ nginx, PostgreSQL, Umami. Роли сайта машину не настраив
 
 ## Аналитика при запуске
 
-С версии 12.0.0 Google Analytics не подключается ни к действующим, ни к новым сайтам.
-Удалены модули `ga4_property` и `ga4_access`, настройки `site_ga4_*`, часовые пояса и валюта
-GA4, проверки preflight и требование GA при открытии сайта. `site_analytics` поддерживает
-только `umami`; `site_analytics_results` передаёт только `umami_website_id`.
-
-Проект-потребитель убирает старые GA-настройки, чтение GA-ID из результата и вставки
-`gtag`/Google Tag Manager для Analytics из своих HTML-шаблонов и активов. После выкатки он
-проверяет HTML работающих доменов, включая новые сайты. Krot не рендерит страницы и не
-держит реестр доменов. Внешние GA-аккаунты, свойства и исторические данные не удаляются.
-Search Console, индексация, Umami и Cloudflare продолжают работать прежним способом.
+GA4 поддерживается через `site_analytics.ga4: true` с явными Analytics account ID,
+человеческим владельцем GSC и ключом читателя. Контракт и контрольные сценарии —
+[Регистрация GA4](../operations/google-analytics.md). Новые свойства получают Europe/Berlin
+и EUR; настройки существующих не меняются. Приложение сохраняет полученные ID и вставляет тег
+самостоятельно. Umami и Cloudflare Web Analytics включаются независимо.
 
 ## Cloudflare Web Analytics
 

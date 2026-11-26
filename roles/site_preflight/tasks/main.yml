@@ -19,6 +19,19 @@
       none; engines are google, yandex, bing.
     quiet: true
 
+- name: Check GA4 has an explicit human owner and reader
+  ansible.builtin.assert:
+    that:
+      - site_ga4_account_id is match('^[0-9]+$')
+      - site_ga4_owner_email | length > 0
+      - site_ga4_owner_email in site_search_console_owners
+      - "'google' in site_search_engines"
+      - site_ga4_reader_service_account | length > 0
+    fail_msg: GA4 requires an explicit account ID, human GSC owner and explicit reader key
+    quiet: true
+  when: site_analytics.ga4 | default(false)
+  no_log: true
+
 # A site without Google has no Search Console property for the project's collector, and
 # nothing downstream would say so. Leaving it out is allowed, but only in words.
 - name: Check Google is among the engines, or the reason it is not is given
@@ -233,6 +246,43 @@
       register: site_preflight_umami
       when: site_analytics.umami | default(true)
 
+    - name: GA4 account ownership and resources
+      haspadar.krot.ga4_property:
+        domain: "{{ site_domain }}"
+        account_id: "{{ site_ga4_account_id }}"
+        owner_email: "{{ site_ga4_owner_email }}"
+        property_id: "{{ site_ga4_property_id }}"
+        stream_id: "{{ site_ga4_stream_id }}"
+        service_account: "{{ site_google_service_account }}"
+        token_uri: "{{ site_google_token_uri }}"
+        api_url: "{{ site_ga4_api_url }}"
+        access_api_url: "{{ site_ga4_access_api_url }}"
+        google_api_url: "{{ site_google_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      register: site_preflight_ga4
+      when: site_analytics.ga4 | default(false)
+
+    - name: GA4 reader access
+      haspadar.krot.ga4_access:
+        property_id: "{{ site_preflight_ga4.property_id }}"
+        service_account: "{{ site_google_service_account }}"
+        reader_service_account: "{{ site_ga4_reader_service_account }}"
+        token_uri: "{{ site_google_token_uri }}"
+        api_url: "{{ site_ga4_access_api_url }}"
+        data_api_url: "{{ site_ga4_data_api_url }}"
+      delegate_to: localhost
+      run_once: true
+      become: false
+      vars:
+        ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      when:
+        - site_analytics.ga4 | default(false)
+        - site_preflight_ga4.property_id | default('') | length > 0
+
     # Asks about the monitor site_monitor makes: the keyword one when a word is set, the
     # HTTP one otherwise. Asking about a monitor the role no longer makes reads "pending"
     # on every run, and the second run of the scenario never goes quiet.
@@ -350,6 +400,10 @@
         {{ 'skipped' if site_preflight_web_analytics is skipped
            else 'after the zone' if not site_preflight_zone.exists
            else 'pending' if site_preflight_web_analytics.changed else 'done' }}
+      ga4: >-
+        {{ 'skipped' if site_preflight_ga4 is skipped
+           else 'pending' if site_preflight_ga4.changed
+           else 'done (' ~ site_preflight_ga4.property_id ~ ', ' ~ site_preflight_ga4.time_zone ~ ')' }}
       monitor: >-
         {{ 'skipped' if site_preflight_monitor is skipped
            else 'pending' if site_preflight_monitor.changed else 'done' }}
