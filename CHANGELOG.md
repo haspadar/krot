@@ -8,6 +8,7 @@
   ambiguous matches; preserved existing settings and used Europe/Berlin and EUR for new properties
 - Restored explicit reader access with Data API verification and no downgrade of existing rights
 - Returned account, owner, property, stream, measurement ID and timezone to the consumer
+- Added an optional validated GA4 assignment to the existing site passport for discovery
 
 ## 15.1.1 — 2026-11-25
 

@@ -177,6 +177,10 @@ site_passport_tag_pattern: '^[a-z][a-z0-9-]{0,31}\Z'
 site_passport_launched: null
 # Declared only by the consumer's inventory: new or drop; unknown stays null.
 site_passport_origin: null
+# Optional non-secret GA4 assignment. The consumer supplies the first complete
+# day after tag installation in the property's calendar and keeps it on reruns.
+# Null omits the key to retain the bytes of old passports.
+site_passport_google_analytics: null
 # A value, never a vault name, like the other secrets; empty stops the role.
 site_passport_secret: ""
 # The path is the only lock, so a short secret is refused (openssl rand -hex 16 gives 32).

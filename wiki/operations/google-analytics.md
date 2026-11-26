@@ -73,6 +73,10 @@ Analytics Admin API должен быть включён в его Cloud project
 
 `site_analytics_results` содержит `ga4_account_id`, `ga4_owner_email`,
 `ga4_property_id`, `ga4_stream_id`, `ga4_measurement_id`, `ga4_timezone`.
+После проверки тега потребитель публикует назначение через
+`site_passport_google_analytics` — [контракт паспорта](site-passport.md).
+Это штатный путь обнаружения GA4 читателем паспортов, без отдельного реестра в коллекции.
+
 ID пусты, если check mode лишь планирует создание; проектный writer в check mode
 не вызывается. Список остальных переменных — в defaults роли `site`.
 
