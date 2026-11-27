@@ -19,6 +19,9 @@
       # An engine this scenario's project no longer declares: goes.
       - unit: krot-index-molecule-yandex
         marker: "# krot-indexing-unit"
+      # The counts job, as a run before 17.0.0 left it: goes.
+      - unit: krot-index-molecule-counts
+        marker: "# krot-indexing-unit"
   tasks:
     - name: Install Postgres
       ansible.builtin.apt:
@@ -109,6 +112,20 @@
         dest: /etc/krot-index/README
         content: "an operator's note\n"
         mode: "0644"
+
+    # What a run before 17.0.0 left in the program's directory.
+    - name: The directory of the counting module and its bytecode
+      ansible.builtin.file:
+        path: /usr/local/lib/krot-index/krot_index/__pycache__
+        state: directory
+        mode: "0755"
+
+    - name: The counting module and its bytecode, left behind
+      ansible.builtin.copy:
+        dest: "/usr/local/lib/krot-index/krot_index/{{ item }}"
+        content: "# left by an earlier version\n"
+        mode: "0644"
+      loop: [counts.py, __pycache__/counts.cpython-312.pyc]
 
     - name: Let systemd see the planted units
       ansible.builtin.systemd_service:

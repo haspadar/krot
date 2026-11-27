@@ -2,7 +2,7 @@
 kind: index
 title: Changes
 owner: generated
-verified: 2026-11-27
+verified: 2026-11-28
 roles: []
 ---
 
@@ -11,9 +11,9 @@ roles: []
 > **Сгенерировано.** Руками не править — правка будет затёрта.
 > Обновить: `python3 scripts/wiki-index.py`
 
-В работе — **0**, заархивировано — **61**.
+В работе — **0**, заархивировано — **62**.
 
-Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **26** из 61: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
+Номер PR восстановлен из merge-коммита по совпадению имени ветки с именем change после отбрасывания даты и префикса типа (`feat/`, `fix/`). Сравнение остаётся строгим, поэтому не восстановлен у **26** из 62: нестрогое приписало бы change чужой PR — прочерк честнее неверного номера.
 
 **Строка «влит, не заархивирован» — это долг**: работа в `main`, а `openspec archive` не выполнен, значит вики не узнала, что устарело.
 
@@ -21,7 +21,8 @@ roles: []
 
 | Change | Состояние | PR | О чём |
 |---|---|---|---|
-| [`remove-collecting-gsc`](../../openspec/changes/archive/2026-11-27-remove-collecting-gsc/proposal.md) | 2026-11-27 | — | Remove GSC from collecting |
+| [`remove-indexing-counts`](../../openspec/changes/archive/2026-11-28-remove-indexing-counts/proposal.md) | 2026-11-28 | — | Remove the counts job from indexing |
+| [`remove-collecting-gsc`](../../openspec/changes/archive/2026-11-27-remove-collecting-gsc/proposal.md) | 2026-11-27 | [#130](https://github.com/haspadar/krot/pull/130) | Remove GSC from collecting |
 | [`document-gsc-ownership-boundary`](../../openspec/changes/archive/2026-11-26-document-gsc-ownership-boundary/proposal.md) | 2026-11-26 | [#129](https://github.com/haspadar/krot/pull/129) | Document the GSC ownership boundary |
 | [`restore-human-owned-ga4`](../../openspec/changes/archive/2026-11-26-restore-human-owned-ga4/proposal.md) | 2026-11-26 | [#128](https://github.com/haspadar/krot/pull/128) | Restore human-owned GA4 provisioning |
 | [`launch-web-analytics`](../../openspec/changes/archive/2026-11-24-launch-web-analytics/proposal.md) | 2026-11-24 | — | Запуск сайта включает Cloudflare Web Analytics для всех посетителей |

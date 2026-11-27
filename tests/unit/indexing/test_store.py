@@ -5,7 +5,6 @@ starts the server. Without it the module is skipped, which is why CI must set it
 skipped, these would pass by never running.
 """
 
-import datetime
 import os
 
 import pytest
@@ -64,10 +63,12 @@ def test_schema_one_version_behind_still_passes_for_a_night(store, admin):
     store.check()
 
 
-def test_schema_one_version_behind_is_refused_for_counting(store, admin):
-    sql(admin, "UPDATE krot_index.schema_version SET version = %s", (SCHEMA_VERSION - 1,))
-    with pytest.raises(Missing):
-        store.check(oldest=SCHEMA_VERSION)
+def test_reapplying_the_schema_keeps_the_index_count_history(admin):
+    sql(admin, "CREATE TABLE krot_index.index_count (in_index integer)")
+    sql(admin, "INSERT INTO krot_index.index_count (in_index) VALUES (14)")
+    with open(SCHEMA) as source:
+        sql(admin, source.read())
+    assert sql(admin, "SELECT in_index FROM krot_index.index_count") == [(14,)]
 
 
 def test_schema_with_two_version_rows_is_refused(store, admin):
@@ -171,51 +172,3 @@ def test_refused_night_row_is_said_not_raised(store, admin, capsys):
     sql(admin, "DROP TABLE krot_index.index_run")
     store.record(night.Spending(SITE, "google", night.Offer({"unknown": 1}), 66, True))
     assert "not recorded" in capsys.readouterr().err
-
-
-DAY = datetime.date(2026, 10, 2)
-
-
-def test_count_is_written_as_given(store):
-    store.count(SITE, "bing", DAY, 12, None)
-    assert store._rows("SELECT in_index, not_in_index FROM krot_index.index_count") == [(12, None)]
-
-
-def test_count_of_zero_is_a_zero_not_unknown(store):
-    store.count(SITE, "bing", DAY, 0, 0)
-    assert store._rows("SELECT in_index, not_in_index FROM krot_index.index_count") == [(0, 0)]
-
-
-def test_count_read_again_replaces_the_day(store):
-    store.count(SITE, "bing", DAY, 12, None)
-    store.count(SITE, "bing", DAY, 14, None)
-    assert store._rows("SELECT in_index FROM krot_index.index_count") == [(14,)]
-
-
-def test_count_unknown_this_time_keeps_the_known_figure(store):
-    store.count(SITE, "yandex", DAY, 12, 3)
-    store.count(SITE, "yandex", DAY, None, 5)
-    assert store._rows("SELECT in_index, not_in_index FROM krot_index.index_count") == [(12, 5)]
-
-
-def test_count_of_zero_replaces_a_known_figure(store):
-    store.count(SITE, "yandex", DAY, 12, 3)
-    store.count(SITE, "yandex", DAY, 0, None)
-    assert store._rows("SELECT in_index FROM krot_index.index_count") == [(0,)]
-
-
-def test_counts_of_two_engines_on_one_day_are_two_rows(store):
-    store.count(SITE, "bing", DAY, 1, None)
-    store.count(SITE, "yandex", DAY, 2, None)
-    assert store._rows("SELECT engine, in_index FROM krot_index.index_count ORDER BY engine") == [("bing", 1), ("yandex", 2)]
-
-
-def test_count_read_again_moves_its_collection_time(store, admin):
-    store.count(SITE, "bing", DAY, 1, None)
-    sql(admin, "UPDATE krot_index.index_count SET collected_at = now() - interval '2 days'")
-    store.count(SITE, "bing", DAY, 1, None)
-    assert store._rows("SELECT collected_at > now() - interval '1 hour' FROM krot_index.index_count") == [(True,)]
-
-
-def test_machine_day_is_a_date(store):
-    assert isinstance(store.today(), datetime.date)

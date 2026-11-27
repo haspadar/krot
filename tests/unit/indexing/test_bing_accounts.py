@@ -1,19 +1,17 @@
-"""Sites in another Bing Webmaster account are offered and read with that account's key.
+"""Sites in another Bing Webmaster account are offered with that account's key.
 
 The key belongs to the account: its allowance, its throttle and the cut-off after three sites it
 cannot answer. Walked with the project's key, a site of another account is refused every night.
 """
 
-import datetime
 import io
 import json
 
 import pytest
 
 from fakes.indexing import FakeStore
-from krot_index import cli, counts, store as stores
+from krot_index import cli
 
-DAY = datetime.date(2026, 11, 10)
 OWN = {"domain": "own.test", "sitemap_url": "https://own.test/s.xml"}
 KEPT = {"domain": "kept.test", "sitemap_url": "https://kept.test/s.xml", "bing_account": "kogutaone"}
 ALSO = {"domain": "also.test", "sitemap_url": "https://also.test/s.xml", "bing_account": "kogutaone"}
@@ -57,21 +55,6 @@ class Walked:
         return 0
 
 
-class Counting:
-    def __init__(self, answers):
-        self.answers = answers
-        self.asked = []
-
-    def index_counts(self, domain, today):
-        self.asked.append(domain)
-        return self.answers[domain]
-
-
-class Checked(FakeStore):
-    def check(self, oldest=1):
-        return None
-
-
 def write(tmp_path, sites, engines=("bing",)):
     path = tmp_path / "first.json"
     path.write_text(json.dumps({"project": "first", "database": "first", "engines": list(engines),
@@ -83,12 +66,6 @@ def night(path, build):
     err = io.StringIO()
     code = cli.main(["--config", path, "--engine", "bing"], connect=Answering(), engines=build,
                     out=io.StringIO(), err=err)
-    return code, err.getvalue()
-
-
-def reading(path, build):
-    err = io.StringIO()
-    code = counts.main(["--config", path], engines=build, store=Checked(), out=io.StringIO(), err=err)
     return code, err.getvalue()
 
 
@@ -161,30 +138,3 @@ def test_a_row_that_cannot_be_written_stops_the_night_before_the_next_account(tm
     monkeypatch.setattr(cli, "Walk", Failing)
     code, said = night(write(tmp_path, [OWN, KEPT]), lambda name, key: key)
     assert (code, "stopped" in said, Walked.walks) == (cli.FAILED, True, [("own-key", ["own.test"])])
-
-
-def test_a_key_that_cannot_be_used_is_red_for_the_counts_without_stopping_the_other_account(tmp_path, keys):
-    own = Counting({"own.test": [(DAY, 3, None)]})
-
-    def build(name, key):
-        if key == "account-key":
-            raise ValueError("not a key")
-        return own
-
-    code, said = reading(write(tmp_path, [OWN, KEPT]), build)
-    assert (code, "account kogutaone" in said, own.asked) == (1, True, ["own.test"])
-
-
-def test_the_counts_read_each_account_with_its_own_key_and_only_its_sites(tmp_path, keys):
-    own = Counting({"own.test": [(DAY, 3, None)]})
-    account = Counting({"kept.test": [(DAY, 9, None)]})
-    code, _ = reading(write(tmp_path, [OWN, KEPT]), lambda name, key: {"own-key": own, "account-key": account}[key])
-    assert (code, own.asked, account.asked) == (0, ["own.test"], ["kept.test"])
-
-
-def test_the_counts_of_an_account_without_its_key_are_red_while_the_other_is_still_read(tmp_path, monkeypatch):
-    monkeypatch.setenv("KROT_INDEX_BING_KEY", "own-key")
-    monkeypatch.delenv("KROT_INDEX_BING_KEY_KOGUTAONE", raising=False)
-    own = Counting({"own.test": [(DAY, 3, None)]})
-    code, said = reading(write(tmp_path, [OWN, KEPT]), lambda name, key: own)
-    assert (code, "KROT_INDEX_BING_KEY_KOGUTAONE is empty" in said, own.asked) == (1, True, ["own.test"])

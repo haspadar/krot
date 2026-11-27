@@ -14,9 +14,9 @@ indexing_config_dir: /etc/krot-index
 # units, installed through the cron role, carry cron's marker and are left alone.
 indexing_unit_marker: "# krot-indexing-unit"
 
-# The version schema.sql creates. The counts unit refuses a database at any other;
-# the nights still take version 1 (see store.OLDEST_FOR_NIGHTS). A unit test holds
-# the three — this, schema.sql and the program — equal.
+# The version schema.sql creates. The nights also take version 1 (see
+# store.OLDEST_FOR_NIGHTS). A unit test holds the three — this, schema.sql and the
+# program — equal.
 indexing_schema_version: 2
 
 # Named after the program, as the collector's krot_collect is. Before 7.0.0 it was
@@ -45,12 +45,6 @@ indexing_rename_wait_retries: >-
 
 indexing_engines: [google, bing, yandex, indexnow]
 
-# The engines whose figure for a site is read once a day (krot_index.index_count).
-# A project that declares one of them also gets the `counts` job: its own unit,
-# because it only reads and spends none of the allowance the nights offer pages
-# against, and a red one must not colour a night of offering.
-indexing_counted_engines: [bing, yandex]
-
 # Where each engine's key sits in a project's entry.
 indexing_key_fields:
   google: google_service_account
@@ -66,7 +60,6 @@ indexing_plans: >-
   {%- set plans = [] -%}
   {%- for project, spec in indexing_projects.items() -%}
   {%- set engines = spec.engines | default([]) -%}
-  {%- set counted = engines | select('in', indexing_counted_engines) | list -%}
   {%- set accounts = spec.bing_accounts | default({}) -%}
   {%- set yandex_accounts = spec.yandex_accounts | default({}) -%}
   {%- set _ = plans.append({'name': project,
@@ -77,20 +70,18 @@ indexing_plans: >-
                             'database': spec.database | default(''),
                             'reader': spec.reader | default(''),
                             'engines': engines,
-                            'jobs': engines + (['counts'] if counted else []),
                             'schedules': spec.schedules | default({}),
                             'sites': spec.sites | default([])}) -%}
   {%- endfor -%}
   {{ plans }}
 
-# Every (project, job) pair declared — each engine and, where it is counted, `counts` —
-# as unit names. Derived once so the install, the enable and the retirement agree on
-# what is declared.
+# Every (project, engine) pair declared, as unit names. Derived once so the
+# install, the enable and the retirement agree on what is declared.
 indexing_units: >-
   {%- set units = [] -%}
   {%- for plan in indexing_plans -%}
-  {%- for job in plan.jobs -%}
-  {%- set _ = units.append('krot-index-' ~ plan.name ~ '-' ~ job) -%}
+  {%- for engine in plan.engines -%}
+  {%- set _ = units.append('krot-index-' ~ plan.name ~ '-' ~ engine) -%}
   {%- endfor -%}
   {%- endfor -%}
   {{ units }}

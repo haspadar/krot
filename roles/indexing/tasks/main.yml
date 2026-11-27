@@ -380,6 +380,28 @@
         mode: "0644"
         directory_mode: "0755"
 
+    # copy never removes: the counts job dropped in 17.0.0 would stay on the machine.
+    # Its units go below, with every other timer no longer declared.
+    - name: Remove the obsolete counting module
+      ansible.builtin.file:
+        path: "{{ indexing_program_dir }}/krot_index/counts.py"
+        state: absent
+
+    - name: Find obsolete counting bytecode
+      ansible.builtin.find:
+        paths: "{{ indexing_program_dir }}/krot_index"
+        patterns: "counts.*.pyc"
+        recurse: true
+      register: indexing_obsolete_bytecode
+
+    - name: Remove obsolete counting bytecode
+      ansible.builtin.file:
+        path: "{{ item.path }}"
+        state: absent
+      loop: "{{ indexing_obsolete_bytecode.files }}"
+      loop_control:
+        label: "{{ item.path }}"
+
     # The only way to know the copy is whole: a module that did not arrive, or a
     # package that is missing, would otherwise show at 01:00 as a traceback.
     - name: Check the program imports whole on this machine
@@ -389,7 +411,7 @@
           - -c
           - >-
             import psycopg2;
-            from krot_index import cli, counts, google_jwt;
+            from krot_index import cli, google_jwt;
             from krot_index.engines import google, bing, yandex, indexnow;
             assert google_jwt.HAS_CRYPTOGRAPHY, google_jwt.CRYPTOGRAPHY_ERROR
       environment:
@@ -426,7 +448,7 @@
         owner: root
         group: root
         mode: "0644"
-      loop: "{{ indexing_plans | subelements('jobs') }}"
+      loop: "{{ indexing_plans | subelements('engines') }}"
       loop_control:
         label: "{{ item.0.name }} {{ item.1 }}"
       notify: Reload systemd
@@ -446,7 +468,7 @@
         owner: root
         group: root
         mode: "0644"
-      loop: "{{ indexing_plans | subelements('jobs') }}"
+      loop: "{{ indexing_plans | subelements('engines') }}"
       loop_control:
         label: "{{ item.0.name }} {{ item.1 }}"
       notify: Reload systemd
