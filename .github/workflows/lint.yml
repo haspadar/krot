@@ -159,8 +159,7 @@ jobs:
       # runs only them. A new file that uses the database belongs in `db` below.
       - name: Module unit tests
         run: |
-          db="tests/unit/collecting/test_gsc_store.py
-          tests/unit/collecting/test_collect_store.py
+          db="tests/unit/collecting/test_collect_store.py
           tests/unit/indexing/test_store.py"
           python3 -m pytest tests/unit -q -p no:cacheprovider -n auto \
             $(for f in $db; do echo "--ignore=$f"; done)
