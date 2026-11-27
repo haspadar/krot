@@ -2,7 +2,7 @@
 kind: guide
 title: Сбор обходов краулеров
 owner: haspadar
-verified: 2026-10-14
+verified: 2026-11-27
 roles: [collecting]
 ---
 
