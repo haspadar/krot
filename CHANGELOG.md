@@ -1,5 +1,12 @@
 # Changelog
 
+## 16.0.0 — 2026-11-27
+
+- Removed the collecting GSC job, search export, API keys and bundled search runtime;
+  collecting now accepts only ranges and crawl
+- Stopped creating search tables while preserving existing search history and schema version 2
+- Removed obsolete search runtime files and credentials on collecting upgrades
+
 ## 15.2.0 — 2026-11-26
 
 - Restored opt-in GA4 registration with an explicit Analytics account and human GSC owner;

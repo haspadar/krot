@@ -17,57 +17,21 @@
 
     - name: A project that asked for no timers has none running
       ansible.builtin.command: systemctl is-enabled krot-collect-quiet-{{ item }}.timer
-      loop: [gsc]
+      loop: [crawl]
       register: collecting_quiet
       changed_when: false
       failed_when: collecting_quiet.stdout != "disabled"
-
-    - name: GSC import leaves crawler timers running
-      ansible.builtin.command: systemctl is-enabled krot-collect-molecule-gsc.timer
-      register: collecting_gsc_disabled
-      changed_when: false
-      failed_when: collecting_gsc_disabled.stdout != "disabled"
-
-    - name: A GSC-only project has no crawler units
-      ansible.builtin.stat:
-        path: "/etc/systemd/system/krot-collect-quiet-{{ item }}.service"
-      loop: [ranges, crawl]
-      register: collecting_unselected
-
-    - name: Unselected jobs were never installed
-      ansible.builtin.assert:
-        that:
-          - collecting_unselected.results | map(attribute='stat.exists') | list == [false, false]
-        quiet: true
-
-    - name: Read GSC credential permissions
-      ansible.builtin.stat:
-        path: /etc/krot-collect/molecule.google.json
-      register: collecting_credential
-
-    - name: Only the collector owns and reads its credential
-      ansible.builtin.assert:
-        that:
-          - collecting_credential.stat.exists
-          - collecting_credential.stat.mode == '0600'
-          - collecting_credential.stat.pw_name == 'krot_collect'
-          - collecting_credential.stat.gr_name == 'krot_collect'
-        quiet: true
 
     - name: Read the public configuration
       ansible.builtin.slurp:
         src: /etc/krot-collect/molecule.json
       register: collecting_public
 
-    - name: The public configuration contains settings and properties without keys
+    - name: The public configuration contains crawler settings without keys
       ansible.builtin.assert:
         that:
-          - >-
-            collecting_public_json.gsc == {'backfill_days': 28, 'overlap_days': 7,
-            'retention_months': 16, 'freshness_days': 5}
-          - collecting_public_json.jobs == ['ranges', 'crawl', 'gsc']
-          - collecting_public_json.disabled_timers == ['gsc']
-          - collecting_public_json.sites[0].property == 'sc-domain:whole.test'
+          - collecting_public_json.jobs == ['ranges', 'crawl']
+          - collecting_public_json.disabled_timers == []
           - "'private_key' not in (collecting_public.content | b64decode)"
           - "'service_account' not in (collecting_public.content | b64decode)"
         quiet: true
@@ -80,8 +44,8 @@
         query: >-
           SELECT has_database_privilege('molecule_analyst', current_database(), 'CONNECT') AS connect,
             has_schema_privilege('molecule_analyst', 'krot_collect', 'USAGE') AS usage,
-            has_table_privilege('molecule_analyst', 'krot_collect.search_day', 'SELECT') AS read,
-            has_table_privilege('molecule_analyst', 'krot_collect.search_day', 'INSERT') AS write,
+            has_table_privilege('molecule_analyst', 'krot_collect.crawler_day', 'SELECT') AS read,
+            has_table_privilege('molecule_analyst', 'krot_collect.crawler_day', 'INSERT') AS write,
             EXISTS (SELECT 1 FROM pg_default_acl d, LATERAL aclexplode(d.defaclacl) a
                     WHERE d.defaclrole = 'krot_collect'::regrole
                       AND d.defaclnamespace = 'krot_collect'::regnamespace
@@ -111,7 +75,7 @@
       register: collecting_owners
       # The count too: on an empty schema "none foreign" would hold vacuously.
       failed_when: >-
-        collecting_owners.query_result[0].tables != 12
+        collecting_owners.query_result[0].tables != 7
         or collecting_owners.query_result[0].foreign != 0
 
     # Red on purpose: three of five sites cannot be read. It reaches that after

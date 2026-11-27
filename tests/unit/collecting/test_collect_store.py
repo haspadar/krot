@@ -143,3 +143,11 @@ def test_crawler_reads_version_one_until_that_projects_role_is_applied(store, ad
     store.check()
     store.store(SITE, reading([line()]))
     assert rows(admin, "SELECT requests FROM krot_collect.crawler_day") == [(1,)]
+
+
+def test_reapplying_schema_preserves_application_history(admin):
+    rows(admin, "CREATE TABLE krot_collect.search_day (site text); "
+                "INSERT INTO krot_collect.search_day VALUES ('archive.example') RETURNING site")
+    with admin.cursor() as cursor, open(SCHEMA) as source:
+        cursor.execute(source.read())
+    assert rows(admin, "SELECT site FROM krot_collect.search_day") == [("archive.example",)]

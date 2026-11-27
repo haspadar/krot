@@ -69,3 +69,7 @@ def test_crawl_passes_configured_path_families_to_the_existing_tally(tmp_path):
                    'logs': {'directory': str(tmp_path)}, 'crawl': {'path_families': ['googlebot']}},
                   memory, io.StringIO(), io.StringIO())
     assert memory.readings['pages.test'].paths == {(date(2026, 10, 13), 'googlebot', '/berlin'): 1}
+
+
+def test_cli_offers_only_crawler_jobs():
+    assert cli.JOBS == ("ranges", "crawl")
