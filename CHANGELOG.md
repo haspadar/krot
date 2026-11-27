@@ -1,5 +1,15 @@
 # Changelog
 
+## 17.0.0 — 2026-11-28
+
+- Removed the indexing counts job: its unit and timer, `krot_index.counts`, the engines' reading
+  of page figures and the `counts` schedule and timeout; reading those figures belongs to the
+  application. A run removes the obsolete units of the projects it declares and the old module;
+  apply the role for every project of a shared machine in one go
+- Stopped creating `krot_index.index_count`; an existing table keeps its rows, and the schema
+  version stays 2
+- Nightly submissions to Google, Bing, IndexNow and Yandex are unchanged
+
 ## 16.0.0 — 2026-11-27
 
 - Removed the collecting GSC job, search export, API keys and bundled search runtime;

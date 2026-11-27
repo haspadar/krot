@@ -66,8 +66,8 @@ provisioner:
               - domain: skipped.test
                 sitemap_url: http://127.0.0.1:9/sitemap.xml
                 engines: [bing, google]
-              # In the second Bing account and offered to Bing alone: the counts unit must read it
-              # with that account's key, and no other engine may leave a row for it.
+              # In the second Bing account and offered to Bing alone: the account's key has
+              # to be written for it.
               - domain: account.test
                 sitemap_url: http://127.0.0.1:9/sitemap.xml
                 engines: [bing]

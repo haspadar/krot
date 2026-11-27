@@ -26,14 +26,12 @@
 #              that account's API key, for sites that live in another account than the
 #              one bing_key belongs to. Bing's allowance, throttle and ownership belong to
 #              the key, so such a site is asked with its own account's key and the
-#              nights and counts treat each account as a key of its own. Every account
-#              must be named by a site, and two keys may not be the same.
+#              nights treat each account as a key of its own. Every account must be
+#              named by a site, and two keys may not be the same.
 #   yandex_accounts:   optional mapping of a Yandex Webmaster account's name ([a-z0-9]+) to
 #              its OAuth token. Same rules as bing_accounts: existing ownership is
-#              selected, not changed; each account has its own engine for nights and counts.
-#   schedules: optional dict engine -> OnCalendar, over indexing_schedules. The key
-#              `counts` is the daily reading of the engines' figures for each site,
-#              which a project gets when it declares bing or yandex.
+#              selected, not changed; each account has its own engine.
+#   schedules: optional dict engine -> OnCalendar, over indexing_schedules.
 #   sites:     required list of
 #                domain:        the site as the engines know it.
 #                sitemap_url:   read over HTTP, as a search engine reads it.
@@ -71,9 +69,6 @@ indexing_schedules:
   indexnow: "*-*-* 18:00:00"
   bing: "*-*-* 20:00:00"
   yandex: "*-*-* 02:00:00"
-  # Bing's days run a day or two behind and Yandex refreshes its results during
-  # the day, so the hour matters little; off every night's hour all the same.
-  counts: "*-*-* 06:00:00"
 
 # A hung site must not hold its unit forever: the timer would keep firing into a
 # unit still active, and the engine would stop being offered while everything
@@ -85,8 +80,6 @@ indexing_timeouts:
   # One post a site, but a run with new keys spends up to ten one-minute
   # pauses repeating first posts (engines/indexnow.py, FIRST_KEY_WAITS).
   indexnow: 1h
-  # Two requests a site at most, and the reading spends no allowance.
-  counts: 30min
 
 # At most 15 minutes: Google's night starts an hour after its reset, and the
 # spread is taken out of that margin, not added to it.
